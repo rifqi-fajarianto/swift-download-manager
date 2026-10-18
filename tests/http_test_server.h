@@ -23,6 +23,9 @@
 
 namespace testutil {
 
+inline std::atomic<int> g_cookie_requests{0};
+inline std::atomic<int> g_non_matching_cookie_requests{0};
+
 inline uint8_t content_byte(uint64_t i) {
     uint32_t x = static_cast<uint32_t>(i) * 2654435761u + 12345u;
     x ^= x >> 13;
@@ -91,6 +94,11 @@ class TestHttpServer {
     std::atomic<bool> running_{false};
     std::thread thread_;
 
+  public:
+    int cookie_requests() const { return g_cookie_requests.load(); }
+    int non_matching_cookie_requests() const { return g_non_matching_cookie_requests.load(); }
+
+  private:
     void accept_loop() {
         while (running_.load()) {
             sockaddr_in peer{};
@@ -170,6 +178,21 @@ class TestHttpServer {
             query = target.substr(q + 1);
         }
         const bool slow = query.find("slow=1") != std::string::npos;
+
+        const std::string lower_request = lower_copy(request);
+        const size_t cookie_pos = lower_request.find("\r\ncookie:");
+        if (cookie_pos != std::string::npos) {
+            const size_t begin = cookie_pos + 9;
+            const size_t end = request.find("\r\n", begin);
+            const std::string cookie = request.substr(
+                begin, end == std::string::npos ? std::string::npos : end - begin);
+            if (cookie.find("swift_test=secret") != std::string::npos) {
+                g_cookie_requests.fetch_add(1);
+            }
+            if (cookie.find("other_test=private") != std::string::npos) {
+                g_non_matching_cookie_requests.fetch_add(1);
+            }
+        }
 
         if (path.rfind("/file/", 0) == 0) {
             serve_file(fd, method, path.substr(6), range, slow);

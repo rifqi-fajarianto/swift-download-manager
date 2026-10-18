@@ -11,8 +11,10 @@ swiftdm::HttpOptions http_options_for(const swiftdm::Settings& settings,
                                       const DownloadTask::Options& options) {
     swiftdm::HttpOptions http;
     http.url = options.url.toStdString();
-    http.user_agent = settings.default_agent;
+    http.user_agent = options.user_agent.isEmpty() ? settings.default_agent
+                                                   : options.user_agent.toStdString();
     http.referer = options.referer.toStdString();
+    http.cookies = options.cookies;
     if (settings.proxy.type != "none" && !settings.proxy.address.empty()) {
         http.proxy_type = settings.proxy.type;
         http.proxy_address = settings.proxy.address;
@@ -97,7 +99,9 @@ void DownloadTask::run_probe() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        resolved_filename_ = QString::fromStdString(probe.filename_hint);
+        resolved_filename_ = options_.filename.isEmpty()
+                                 ? QString::fromStdString(probe.filename_hint)
+                                 : options_.filename;
         resolved_size_ = probe.content_length;
         resumable_ = probe.accept_ranges;
     }
@@ -127,7 +131,9 @@ void DownloadTask::run() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        resolved_filename_ = QString::fromStdString(probe.filename_hint);
+        resolved_filename_ = options_.filename.isEmpty()
+                                 ? QString::fromStdString(probe.filename_hint)
+                                 : options_.filename;
         resolved_size_ = probe.content_length;
         resumable_ = probe.accept_ranges;
     }
@@ -138,6 +144,8 @@ void DownloadTask::run() {
     request.output_dir = options_.output_dir.toStdString();
     request.filename = options_.filename.toStdString();
     request.referer = options_.referer.toStdString();
+    request.cookies = options_.cookies;
+    request.user_agent = options_.user_agent.toStdString();
     request.connections = options_.connections;
     request.bandwidth_limit_kbps = options_.limit_kbps;
 

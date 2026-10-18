@@ -16,6 +16,17 @@ struct HttpHeader {
     std::string value;
 };
 
+// Browser cookies retain their URL scope so libcurl does not forward them to
+// unrelated hosts when following redirects.
+struct HttpCookie {
+    std::string domain;
+    std::string path = "/";
+    std::string name;
+    std::string value;
+    bool secure = false;
+    int64_t expires = 0;  // Unix seconds; 0 means a session cookie
+};
+
 struct ProbeResult {
     bool ok = false;
     long status_code = 0;
@@ -33,6 +44,7 @@ struct ProbeResult {
 struct HttpOptions {
     std::string url;
     std::vector<HttpHeader> headers;
+    std::vector<HttpCookie> cookies;
     std::string user_agent;
     std::string referer;
     std::string proxy_type;  // "none"/"http"/"socks4"/"socks5"

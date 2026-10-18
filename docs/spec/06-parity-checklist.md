@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.6.0.
+Status as of 0.8.0.
 
 ## v1 — core engine + GUI
 
@@ -30,7 +30,7 @@ Status as of 0.6.0.
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
 | Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |
 | Delete File (remove the downloaded file from disk) | Added (not in the original) | toolbar button + warning dialog; drops the list entry too |
-| Browsers dialog (info page) | Replicated (static info) | extensions ship in v2 |
+| Extensions dialog | Implemented | Shows local integration server status and Chromium development setup |
 | About dialog | Diverges | no update check, no license tier |
 | Update check to vendor server | Dropped | intentionally not implemented |
 | Windows registry storage | Diverges | INI in `~/.config/swiftdm` |
@@ -46,15 +46,17 @@ Status as of 0.6.0.
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
 | "Get File Creation Date From Server" applied to file mtime | Planned (setting saved, not applied) |
-| Browser-sent URL passthrough headers (cookies/referer from extension) | Planned with v2 |
+| Firefox extension + automatic download interception | Planned |
 
 ## v2 — browser integration
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Planned |
-| Chrome (MV3) + Firefox extension sources in `ext/` | Planned |
-| `addDownload`, `showPanel`, `ping` commands | Planned |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium origin and subprotocol validation; `ping`, `getVersion`, `showPanel`, `addDownload` |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup and explicit link/page context menu; cookie permission is optional and per-origin |
+| Firefox extension | Planned |
+| Automatic browser-download interception | Planned | Current extension requires an explicit user action |
+| Browser-sent page metadata | Partial | `pageUrl` and title sent by the extension; download history does not yet persist these fields |
 
 ## v3 — extra protocols and media
 

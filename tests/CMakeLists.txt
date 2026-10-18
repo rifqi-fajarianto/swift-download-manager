@@ -35,4 +35,13 @@ if(SWIFTSDM_BUILD_UI)
     )
     add_test(NAME icons COMMAND test_icons)
     set_tests_properties(icons PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(test_browser_protocol
+        test_browser_protocol.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/browser_integration.cpp"
+    )
+    target_include_directories(test_browser_protocol PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_browser_protocol PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_browser_protocol PRIVATE swiftdm_core Qt6::Network)
+    add_test(NAME browser_protocol COMMAND test_browser_protocol)
 endif()

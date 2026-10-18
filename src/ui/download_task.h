@@ -9,6 +9,7 @@
 #include <mutex>
 #include <thread>
 
+#include "net/http.h"
 #include "store/settings.h"
 
 namespace swiftdm::ui {
@@ -22,6 +23,8 @@ class DownloadTask : public QObject {
         QString output_dir;  // empty = settings default
         QString filename;    // empty = from server/URL
         QString referer;
+        std::vector<swiftdm::HttpCookie> cookies;
+        QString user_agent;
         int connections = 0;   // 0 = settings
         int limit_kbps = 0;    // 0 = settings
     };

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — 2026-10-18
+
+Initial Chromium browser integration development preview.
+
+- Added a loopback WebSocket server for the `swiftdm.v1` protocol, with
+  Chromium-origin validation and `ping`, `getVersion`, `showPanel` and
+  `addDownload` commands.
+- Added an unpacked Manifest V3 extension for Chromium-based browsers. Users can
+  send the active page or a link explicitly through the popup/context menu.
+- Cookie access is optional and requested per origin; scoped cookies are
+  forwarded without turning them into unrestricted Cookie headers.
+- Firefox support and automatic download interception remain planned.
+
 ## 0.7.0 — 2026-10-18
 
 Toolbar usability polish.

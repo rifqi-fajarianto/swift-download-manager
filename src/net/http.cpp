@@ -95,6 +95,30 @@ void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* header
     if (!o.referer.empty()) curl_easy_setopt(handle, CURLOPT_REFERER, o.referer.c_str());
     if (headers) curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
 
+    if (!o.cookies.empty()) {
+        // Enable the cookie engine and seed URL-scoped cookies. libcurl then
+        // selects the matching domain/path cookies on each redirect target.
+        curl_easy_setopt(handle, CURLOPT_COOKIEFILE, "");
+        bool cookie_setup_ok = true;
+        for (const HttpCookie& cookie : o.cookies) {
+            const bool include_subdomains = !cookie.domain.empty() && cookie.domain.front() == '.';
+            std::string domain = cookie.domain;
+            if (!domain.empty() && domain.front() == '.') domain.erase(domain.begin());
+            if (domain.empty()) continue;
+            const std::string line = domain + "\t" +
+                                     (include_subdomains ? "TRUE" : "FALSE") + "\t" +
+                                     (cookie.path.empty() ? "/" : cookie.path) + "\t" +
+                                     (cookie.secure ? "TRUE" : "FALSE") + "\t" +
+                                     std::to_string(cookie.expires) + "\t" + cookie.name +
+                                     "\t" + cookie.value;
+            if (curl_easy_setopt(handle, CURLOPT_COOKIELIST, line.c_str()) != CURLE_OK) {
+                cookie_setup_ok = false;
+                break;
+            }
+        }
+        if (!cookie_setup_ok) curl_easy_setopt(handle, CURLOPT_COOKIEFILE, nullptr);
+    }
+
     if (o.proxy_type == "http") {
         curl_easy_setopt(handle, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     } else if (o.proxy_type == "socks4") {

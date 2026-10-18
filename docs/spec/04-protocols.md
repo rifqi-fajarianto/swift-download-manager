@@ -55,10 +55,15 @@ Commands (v1 of our extension protocol):
 
 Server reply: `{ "v":1, "id":..., "ok": true|false, "error"?: "..." }`.
 
-Port is configurable (default 10007 for familiarity); server binds only
-loopback and rejects non-loopback connections at accept time. v1 does not ship
-the extension; the protocol layer is built and tested headlessly as part of the
-browser-extension milestone (see 06-parity-checklist.md).
+Port defaults to 10007. The current implementation binds IPv4 loopback only and
+validates the Chromium extension origin and `swiftdm.v1` subprotocol during the
+handshake. The Chromium development extension uses Manifest V3 and sends a
+download only after an explicit context-menu or popup action. Cookie permission
+is optional and requested for the target origin; scoped cookie attributes are
+passed to libcurl so cookies follow domain/path/secure rules across redirects.
+The server rejects unsafe URLs, malformed messages, oversized frames, and
+cookies scoped to a different host. Firefox and automatic download interception
+remain future work.
 
 ## 4. Log/error formats
 

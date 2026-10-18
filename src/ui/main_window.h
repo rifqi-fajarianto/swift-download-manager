@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonObject>
 #include <QMainWindow>
 #include <QPoint>
 #include <QPointer>
@@ -21,6 +22,7 @@ namespace swiftdm::ui {
 class DownloadFilterProxy;
 class DownloadModel;
 class DownloadWindow;
+class BrowserIntegration;
 
 // Main window: toolbar, category tree, downloads table, status bar and tray
 // (layout per docs/spec/01-product.md §2).
@@ -53,6 +55,7 @@ class MainWindow : public QMainWindow {
     void build_tray();
     void update_status_bar();
     void add_download(const QString& url);
+    void add_browser_download(const QJsonObject& data);
     void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr);
     void start_probe_at_row(int row);
     void on_probe_completed(DownloadTask* task, bool ok, const QString& error);
@@ -76,6 +79,7 @@ class MainWindow : public QMainWindow {
     QTreeWidget* tree_ = nullptr;
     QLabel* status_label_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
+    BrowserIntegration* browser_integration_ = nullptr;
 
     QAction* act_new_ = nullptr;
     QAction* act_resume_ = nullptr;

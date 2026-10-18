@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.7.0
+    VERSION 0.8.0
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -31,7 +31,7 @@ configure_file(
 find_package(Threads REQUIRED)
 find_package(CURL REQUIRED)
 if(SWIFTSDM_BUILD_UI)
-    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    find_package(Qt6 REQUIRED COMPONENTS Network Widgets)
 
     # Icon assets, shared by the app and the headless icons test.
     set(SWIFTSDM_ASSET_ICONS
@@ -114,9 +114,10 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/properties_dialog.cpp
         src/ui/settings_dialog.cpp
         src/ui/download_window.cpp
+        src/ui/browser_integration.cpp
         src/ui/main_window.cpp
     )
-    target_link_libraries(swiftdm PRIVATE Qt6::Widgets)
+    target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)
 endif()
 

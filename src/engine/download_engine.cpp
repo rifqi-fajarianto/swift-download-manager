@@ -104,6 +104,7 @@ DownloadResult DownloadEngine::run(
     HttpOptions options;
     options.url = request.url;
     options.headers = request.headers;
+    options.cookies = request.cookies;
     options.user_agent = !request.user_agent.empty() ? request.user_agent
                                                      : settings_.default_agent;
     options.referer = request.referer;

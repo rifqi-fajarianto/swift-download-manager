@@ -12,6 +12,7 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
 - [x] Milestone 2 — core engine: segmented HTTP/HTTPS, resume, limits, CLI
 - [x] Milestone 3 — Qt6 GUI (first increment; v1.1 gaps tracked in
       `docs/spec/06-parity-checklist.md`)
+- [x] Chromium integration — development preview (`ext/chromium/`)
 - [ ] Milestone 4 — verification & packaging
 
 ## Versioning
@@ -50,6 +51,7 @@ src/engine/       download engine (segmentation, resume, categories)
 src/net/          HTTP/curl layer (probe, segmented transfer, streaming)
 src/store/        settings (INI); SQLite history planned for v1.1
 src/ui/           Qt6 Widgets GUI (main window, download window, dialogs)
+ext/chromium/     Chromium Manifest V3 development extension
 tests/            CLI/backend tests (+ headless icon rendering test)
 binary-original/  analysis-only reference (read-only, not distributed)
 ui-assets/        user-provided toolbar icons (SVG)

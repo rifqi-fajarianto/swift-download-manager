@@ -64,6 +64,25 @@ void test_probe(testutil::TestHttpServer& server) {
     CHECK(probe.etag.find("etag-1048576") != std::string::npos);
 }
 
+void test_browser_cookie_scope(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    const std::string url = server.base_url() + "/file/65536";
+    const std::string host = "127.0.0.1";
+
+    DownloadRequest request;
+    request.url = url;
+    request.cookies.push_back({host, "/file", "swift_test", "secret", false, 0});
+    request.cookies.push_back({"other.invalid", "/", "other_test", "private", false, 0});
+
+    const int matching_before = server.cookie_requests();
+    const int non_matching_before = server.non_matching_cookie_requests();
+    const auto result = engine.run(request);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(server.cookie_requests() > matching_before);
+    CHECK_EQ(server.non_matching_cookie_requests(), non_matching_before);
+}
+
 void test_download_segmented(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -216,6 +235,7 @@ int main() {
     }
 
     test_probe(server);
+    test_browser_cookie_scope(dir + "/browser-cookie", server);
     test_download_segmented(dir + "/segmented", server);
     test_download_single_connection(dir + "/single", server);
     test_resume_after_pause(dir + "/resume", server);

@@ -11,7 +11,9 @@
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QItemSelectionModel>
+#include <QJsonArray>
 #include <QLabel>
+#include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
@@ -31,6 +33,7 @@
 #include "engine/categories.h"
 #include "swiftdm/version.h"
 #include "ui/add_download_dialog.h"
+#include "ui/browser_integration.h"
 #include "ui/confirm_download_dialog.h"
 #include "ui/download_model.h"
 #include "ui/download_window.h"
@@ -71,6 +74,23 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
 
     build_actions();
     build_body();
+    browser_integration_ = new BrowserIntegration(this);
+    connect(browser_integration_, &BrowserIntegration::downloadRequested, this,
+            &MainWindow::add_browser_download);
+    connect(browser_integration_, &BrowserIntegration::showPanelRequested, this,
+            [this](bool visible) {
+                if (visible) {
+                    showNormal();
+                    raise();
+                    activateWindow();
+                } else {
+                    hide();
+                }
+            });
+    connect(browser_integration_, &BrowserIntegration::serverError, this,
+            [this](const QString& error) {
+                statusBar()->showMessage(tr("Browser integration unavailable: %1").arg(error));
+            });
     build_tray();
 
     connect(model_, &QAbstractItemModel::rowsInserted, this,
@@ -278,6 +298,61 @@ void MainWindow::add_download(const QString& url) {
     item.state = DownloadItem::State::Probing;
     const int row = model_->add_item(item);
     start_probe_at_row(row);
+}
+
+void MainWindow::add_browser_download(const QJsonObject& data) {
+    const QUrl url(data.value(QStringLiteral("url")).toString());
+    if (!url.isValid() || (url.scheme() != QStringLiteral("http") &&
+                           url.scheme() != QStringLiteral("https")) ||
+        url.host().isEmpty()) {
+        return;
+    }
+
+    DownloadTask::Options options;
+    options.url = url.toString();
+    options.output_dir = QString::fromStdString(settings_.download_dir);
+    const std::string requested_filename = swiftdm::sanitize_filename(
+        data.value(QStringLiteral("filename")).toString().toStdString());
+    options.filename = QString::fromStdString(requested_filename);
+    options.referer = data.value(QStringLiteral("referer")).toString();
+    if (!options.referer.isEmpty()) {
+        const QUrl referer(options.referer);
+        const bool same_origin = referer.scheme() == url.scheme() &&
+                                 referer.host().compare(url.host(), Qt::CaseInsensitive) == 0 &&
+                                 referer.port(0) == url.port(0);
+        if (!same_origin) options.referer.clear();
+    }
+    options.user_agent = data.value(QStringLiteral("userAgent")).toString();
+    if (settings_.use_ua_for_browser) options.user_agent.clear();
+    const QJsonArray cookie_entries = data.value(QStringLiteral("cookies")).toArray();
+    for (const QJsonValue& entry : cookie_entries) {
+        const QJsonObject cookie = entry.toObject();
+        swiftdm::HttpCookie value;
+        value.domain = cookie.value(QStringLiteral("domain")).toString().toStdString();
+        value.path = cookie.value(QStringLiteral("path")).toString().toStdString();
+        value.name = cookie.value(QStringLiteral("name")).toString().toStdString();
+        value.value = cookie.value(QStringLiteral("value")).toString().toStdString();
+        value.secure = cookie.value(QStringLiteral("secure")).toBool();
+        value.expires = static_cast<int64_t>(
+            cookie.value(QStringLiteral("expires")).toDouble());
+        options.cookies.push_back(std::move(value));
+    }
+
+    DownloadItem item;
+    item.url = options.url;
+    item.file_name = options.filename.isEmpty()
+                         ? QString::fromStdString(
+                               swiftdm::file_name_from_url(options.url.toStdString()))
+                         : options.filename;
+    item.category = QString::fromStdString(
+        swiftdm::category_folder_for(item.file_name.toStdString()));
+    item.output_dir = options.output_dir;
+    item.last_try = now_stamp();
+    item.state = DownloadItem::State::Queued;
+    const int row = model_->add_item(item);
+    const int id = model_->item_at(row)->id;
+    start_task_at_row(row, &options);
+    open_download_window(id);
 }
 
 void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options_override) {
@@ -668,11 +743,16 @@ void MainWindow::on_settings() {
 }
 
 void MainWindow::on_browsers() {
+    const QString state = browser_integration_ && browser_integration_->isListening()
+                              ? tr("Listening on 127.0.0.1:%1")
+                                    .arg(browser_integration_->port())
+                              : tr("The local browser service is unavailable.");
     QMessageBox::information(
-        this, tr("Browsers"),
-        tr("Browser integration (Chrome / Edge / Firefox / Brave / Opera) arrives with\n"
-           "the extension milestone (spec 04-protocols.md, subprotocol neatextension.v1).\n\n"
-           "For now, add links with the \"New URL\" button."));
+        this, tr("Browser Extensions"),
+        tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
+           "Load the unpacked development extension from ext/chromium.\n"
+           "Setup and limitations are documented in ext/chromium/README.md.")
+            .arg(state));
 }
 
 void MainWindow::on_about() {

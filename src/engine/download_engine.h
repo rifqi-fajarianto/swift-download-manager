@@ -18,6 +18,7 @@ struct DownloadRequest {
     int bandwidth_limit_kbps = 0;  // 0 = settings.bandwidth_limit_kbps (itself 0 = unlimited)
     bool resume = true;
     std::vector<HttpHeader> headers;
+    std::vector<HttpCookie> cookies;
     std::string referer;
     std::string user_agent;
     std::string post_data;
