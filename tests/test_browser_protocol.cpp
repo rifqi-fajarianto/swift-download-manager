@@ -74,7 +74,7 @@ QByteArray parse_server_frame(QByteArray& bytes) {
     return payload;
 }
 
-bool connect_extension(QTcpSocket& socket, quint16 port) {
+bool connect_with_origin(QTcpSocket& socket, quint16 port, const QByteArray& origin) {
     socket.connectToHost(QHostAddress::LocalHost, port);
     if (!socket.waitForConnected(1000)) return false;
     const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -82,7 +82,7 @@ bool connect_extension(QTcpSocket& socket, quint16 port) {
         "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
         "Connection: Upgrade\r\nSec-WebSocket-Key: " + key + "\r\n"
         "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: swiftdm.v1\r\n"
-        "Origin: chrome-extension://hagednkleljjijmjonpeiokknhngknbb\r\n\r\n";
+        "Origin: " + origin + "\r\n\r\n";
     socket.write(request);
     if (!pump_until([&] { return socket.bytesToWrite() == 0; })) return false;
     QByteArray response = socket.readAll();
@@ -92,9 +92,13 @@ bool connect_extension(QTcpSocket& socket, quint16 port) {
             return response.contains("\r\n\r\n");
         });
     }
-    const bool accepted = response.startsWith("HTTP/1.1 101 Switching Protocols") &&
-                          response.contains("Sec-WebSocket-Protocol: swiftdm.v1");
-    return accepted;
+    return response.startsWith("HTTP/1.1 101 Switching Protocols") &&
+           response.contains("Sec-WebSocket-Protocol: swiftdm.v1");
+}
+
+bool connect_extension(QTcpSocket& socket, quint16 port) {
+    return connect_with_origin(socket, port,
+                               "chrome-extension://hagednkleljjijmjonpeiokknhngknbb");
 }
 
 QJsonObject command(QTcpSocket& socket, const QString& cmd, const QJsonObject& data,
@@ -182,6 +186,55 @@ int main(int argc, char** argv) {
         check(downloads_received == 1, "valid download signal is emitted");
     }
 
+    // Reloading an unpacked extension from another path can change its ID. A
+    // different well-formed Chromium extension origin must still connect.
+    QTcpSocket other_extension;
+    check(connect_with_origin(other_extension, server.port(),
+                              "chrome-extension://abcdefghijklmnopabcdefghijklmnop"),
+          "a different valid extension ID is accepted");
+    if (other_extension.state() == QAbstractSocket::ConnectedState) {
+        const QJsonObject ping =
+            command(other_extension, QStringLiteral("ping"), {}, QStringLiteral("p2"));
+        check(ping.value(QStringLiteral("ok")).toBool(),
+              "ping works from a different extension ID");
+    }
+
+    // Each extension command opens a short-lived socket and closes it. Repeat
+    // the cycle to catch server-side lifecycle/cleanup regressions.
+    for (int i = 0; i < 5; ++i) {
+        QTcpSocket repeated;
+        const bool connected = connect_extension(repeated, server.port());
+        check(connected, "repeated short-lived connection is accepted");
+        if (!connected) break;
+        const QJsonObject ping =
+            command(repeated, QStringLiteral("ping"), {}, QStringLiteral("repeat-%1").arg(i));
+        check(ping.value(QStringLiteral("ok")).toBool(), "repeated ping succeeds");
+    }
+
+    QTcpSocket malformed;
+    malformed.connectToHost(QHostAddress::LocalHost, server.port());
+    if (malformed.waitForConnected(1000)) {
+        const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
+        malformed.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                        "Connection: Upgrade\r\nSec-WebSocket-Key: " + key +
+                        "\r\nSec-WebSocket-Version: 13\r\n"
+                        "Sec-WebSocket-Protocol: swiftdm.v1\r\n"
+                        "Origin: chrome-extension://not-a-valid-extension-id\r\n\r\n");
+        pump_until([&] { return malformed.bytesToWrite() == 0; });
+        if (pump_until([&] {
+                return malformed.bytesAvailable() > 0 ||
+                       malformed.state() != QAbstractSocket::ConnectedState;
+            })) {
+            const QByteArray response = malformed.readAll();
+            check(!response.startsWith("HTTP/1.1 101"),
+                  "malformed extension origin is rejected");
+        } else {
+            check(false, "malformed extension origin is rejected");
+        }
+    } else {
+        check(false, "malformed-origin client can connect for handshake test");
+    }
+
     QTcpSocket untrusted;
     untrusted.connectToHost(QHostAddress::LocalHost, server.port());
     if (untrusted.waitForConnected(1000)) {
@@ -192,11 +245,14 @@ int main(int argc, char** argv) {
                         "Sec-WebSocket-Protocol: swiftdm.v1\r\n"
                         "Origin: https://example.com\r\n\r\n");
         pump_until([&] { return untrusted.bytesToWrite() == 0; });
-        if (pump_until([&] { return untrusted.bytesAvailable() > 0; })) {
+        if (pump_until([&] {
+                return untrusted.bytesAvailable() > 0 ||
+                       untrusted.state() != QAbstractSocket::ConnectedState;
+            })) {
             const QByteArray response = untrusted.readAll();
             check(!response.startsWith("HTTP/1.1 101"), "non-extension browser origin rejected");
         } else {
-            check(true, "non-extension browser origin rejected");
+            check(false, "non-extension browser origin rejected");
         }
     } else {
         check(false, "untrusted client can connect to loopback for handshake test");

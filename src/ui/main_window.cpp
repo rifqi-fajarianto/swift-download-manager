@@ -743,14 +743,26 @@ void MainWindow::on_settings() {
 }
 
 void MainWindow::on_browsers() {
-    const QString state = browser_integration_ && browser_integration_->isListening()
-                              ? tr("Listening on 127.0.0.1:%1")
-                                    .arg(browser_integration_->port())
-                              : tr("The local browser service is unavailable.");
+    QString state;
+    if (browser_integration_ && browser_integration_->isListening()) {
+        state = tr("Listening on 127.0.0.1:%1").arg(browser_integration_->port());
+    } else {
+        state = tr("The local browser service is unavailable");
+        if (browser_integration_ && !browser_integration_->lastError().isEmpty()) {
+            state += QStringLiteral(": %1").arg(browser_integration_->lastError());
+        } else {
+            state += QLatin1Char('.');
+        }
+    }
     QMessageBox::information(
         this, tr("Browser Extensions"),
         tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
-           "Load the unpacked development extension from ext/chromium.\n"
+           "Automatic browser download handoff is enabled in the extension popup.\n"
+           "Load the unpacked development extension from ext/chromium, and reload it\n"
+           "after updating the extension files.\n\n"
+           "If the popup cannot connect, check the status above. Port 10007 must be\n"
+           "free: a hidden SwiftDM tray instance or another program may be using it.\n"
+           "Quit the old instance from the tray, then restart SwiftDM.\n\n"
            "Setup and limitations are documented in ext/chromium/README.md.")
             .arg(state));
 }

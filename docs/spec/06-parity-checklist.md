@@ -18,14 +18,14 @@ Status as of 0.8.0.
 | Retry with backoff | Replicated (approximation) | exact original values UNKNOWN (E23) |
 | HTTP proxy + CONNECT tunnel | Replicated | via libcurl; settings dialog |
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |
-| Custom headers / cookies passthrough | Replicated | CLI `--header`; GUI passthrough later |
+| Custom headers / cookies passthrough | Replicated | CLI `--header`; Chromium extension forwards scoped cookies and same-origin referrer |
 | User-Agent setting + reset | Replicated | default UA string (E24) |
 | Download complete dialog | Replicated | toggle in settings; independent top-level window (not attached to the main window) |
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |
 | Tray icon + close-to-tray | Replicated | QSystemTrayIcon; hidden when unavailable |
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) |
 | New URL dialog | Replicated | URL field + Download/Cancel; probes first, then a confirmation window (file name + size) before the transfer starts |
-| Progress window opens when a transfer starts | Replicated | manual adds (after confirmation) and toolbar Resume; browser adds will skip the confirmation in v2 |
+| Progress window opens when a transfer starts | Replicated | manual adds (after confirmation), toolbar Resume, and browser handoff (skips the confirmation) |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
 | Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |
@@ -46,16 +46,16 @@ Status as of 0.8.0.
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
 | "Get File Creation Date From Server" applied to file mtime | Planned (setting saved, not applied) |
-| Firefox extension + automatic download interception | Planned |
+| Firefox extension | Planned |
 
 ## v2 — browser integration
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium origin and subprotocol validation; `ping`, `getVersion`, `showPanel`, `addDownload` |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup and explicit link/page context menu; cookie permission is optional and per-origin |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload` |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup, explicit link/page context menu, and automatic download handoff; cookie permission is optional and per-origin |
+| Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Firefox extension | Planned |
-| Automatic browser-download interception | Planned | Current extension requires an explicit user action |
 | Browser-sent page metadata | Partial | `pageUrl` and title sent by the extension; download history does not yet persist these fields |
 
 ## v3 — extra protocols and media

@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QObject>
+#include <QString>
 #include <QTcpServer>
 
 class QTcpSocket;
@@ -18,6 +19,7 @@ class BrowserIntegration : public QObject {
 
     bool isListening() const { return server_.isListening(); }
     quint16 port() const { return server_.serverPort(); }
+    QString lastError() const { return error_; }
 
   signals:
     void downloadRequested(const QJsonObject& data);
@@ -32,6 +34,7 @@ class BrowserIntegration : public QObject {
     QJsonObject handle_message(const QJsonObject& message);
 
     QTcpServer server_;
+    QString error_;
     QHash<QTcpSocket*, QByteArray> buffers_;
     QHash<QTcpSocket*, bool> handshaken_;
 };

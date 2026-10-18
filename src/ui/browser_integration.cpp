@@ -1,6 +1,7 @@
 #include "ui/browser_integration.h"
 
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -16,10 +17,19 @@ namespace swiftdm::ui {
 namespace {
 
 constexpr qsizetype kMaxFrameBytes = 1024 * 1024;
+constexpr int kMaxClients = 32;
 const QByteArray kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const QString kSubprotocol = QStringLiteral("swiftdm.v1");
-const QByteArray kExtensionOrigin =
-    "chrome-extension://hagednkleljjijmjonpeiokknhngknbb";
+
+// Chromium extension IDs are 32 characters from the alphabet a-p. The exact ID
+// can change when an unpacked extension is reloaded from another path or when
+// the manifest key is regenerated, so validate the origin shape rather than one
+// development ID. This still rejects ordinary web pages.
+bool is_chromium_extension_origin(const QByteArray& origin) {
+    static const QRegularExpression pattern(
+        QStringLiteral("^chrome-extension://[a-p]{32}$"));
+    return pattern.match(QString::fromLatin1(origin)).hasMatch();
+}
 
 QByteArray websocket_frame(const QByteArray& payload, quint8 opcode = 0x1) {
     QByteArray frame;
@@ -58,7 +68,13 @@ BrowserIntegration::BrowserIntegration(QObject* parent, quint16 port) : QObject(
     connect(&server_, &QTcpServer::newConnection, this,
             &BrowserIntegration::accept_connections);
     if (!server_.listen(QHostAddress::LocalHost, port)) {
-        emit serverError(server_.errorString());
+        error_ = server_.errorString();
+        qWarning() << "browser integration: cannot listen on 127.0.0.1" << port << "-"
+                   << error_;
+        // Emit after construction so MainWindow can connect to this signal.
+        const QString error = error_;
+        QMetaObject::invokeMethod(
+            this, [this, error] { emit serverError(error); }, Qt::QueuedConnection);
     }
 }
 
@@ -79,6 +95,12 @@ void BrowserIntegration::accept_connections() {
     while (server_.hasPendingConnections()) {
         QTcpSocket* socket = server_.nextPendingConnection();
         if (!socket) continue;
+        if (buffers_.size() >= kMaxClients) {
+            qWarning() << "browser integration: too many clients; rejecting connection";
+            socket->abort();
+            socket->deleteLater();
+            continue;
+        }
         buffers_.insert(socket, {});
         handshaken_.insert(socket, false);
         connect(socket, &QTcpSocket::readyRead, this,
@@ -98,25 +120,34 @@ void BrowserIntegration::accept_connections() {
 }
 
 void BrowserIntegration::read_socket(QTcpSocket* socket) {
-    auto it = buffers_.find(socket);
-    if (it == buffers_.end()) return;
-    it.value().append(socket->readAll());
-    if (it.value().size() > kMaxFrameBytes + 16384) {
+    if (!buffers_.contains(socket)) return;
+    QByteArray buffer = buffers_.value(socket);
+    buffer.append(socket->readAll());
+    if (buffer.size() > kMaxFrameBytes + 16384) {
+        qWarning() << "browser integration: oversized handshake/frame; closing connection";
+        buffers_.remove(socket);
         socket->disconnectFromHost();
         return;
     }
 
     if (!handshaken_.value(socket)) {
-        const qsizetype end = it.value().indexOf("\r\n\r\n");
-        if (end < 0) return;
+        const qsizetype end = buffer.indexOf("\r\n\r\n");
+        if (end < 0) {
+            buffers_[socket] = buffer;
+            return;
+        }
         if (end > 16384) {
+            buffers_.remove(socket);
             socket->disconnectFromHost();
             return;
         }
-        const QByteArray request = it.value().left(end);
-        it.value().remove(0, end + 4);
+        const QByteArray request = buffer.left(end);
+        buffer.remove(0, end + 4);
         const QList<QByteArray> lines = request.split('\n');
         if (lines.isEmpty() || lines.first().trimmed() != "GET / HTTP/1.1") {
+            qWarning() << "browser integration: rejected request line"
+                       << (lines.isEmpty() ? QByteArray() : lines.first().trimmed());
+            buffers_.remove(socket);
             socket->disconnectFromHost();
             return;
         }
@@ -133,16 +164,23 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         const QByteArray key = headers.value("sec-websocket-key");
         const QByteArray protocols = headers.value("sec-websocket-protocol");
         const QByteArray decoded_key = QByteArray::fromBase64(key);
-        const bool extension_origin = origin == kExtensionOrigin;
         bool connection_upgrade = false;
         for (QByteArray token : headers.value("connection").toLower().split(',')) {
             if (token.trimmed() == "upgrade") connection_upgrade = true;
         }
-        if (!extension_origin || decoded_key.size() != 16 ||
-            headers.value("upgrade").toLower() != "websocket" ||
-            !connection_upgrade ||
-            headers.value("sec-websocket-version") != "13" ||
-            !protocols.split(',').contains(kSubprotocol.toUtf8())) {
+        const QByteArray needed_protocol = kSubprotocol.toUtf8();
+        bool protocol_ok = false;
+        for (QByteArray token : protocols.split(',')) {
+            if (token.trimmed() == needed_protocol) protocol_ok = true;
+        }
+        if (!is_chromium_extension_origin(origin) || decoded_key.size() != 16 ||
+            headers.value("upgrade").toLower() != "websocket" || !connection_upgrade ||
+            headers.value("sec-websocket-version") != "13" || !protocol_ok) {
+            qWarning() << "browser integration: rejected handshake; origin='"
+                       << origin.constData() << "' protocol='" << protocols.constData() << "'";
+            buffers_.remove(socket);
+            socket->write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n"
+                          "Connection: close\r\n\r\n");
             socket->disconnectFromHost();
             return;
         }
@@ -153,17 +191,20 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
                               "Upgrade: websocket\r\n"
                               "Connection: Upgrade\r\n"
                               "Sec-WebSocket-Accept: " + accept + "\r\n"
-                              "Sec-WebSocket-Protocol: " + kSubprotocol.toUtf8() +
+                              "Sec-WebSocket-Protocol: " + needed_protocol +
                               "\r\n\r\n";
         socket->write(response);
         handshaken_[socket] = true;
     }
 
-    while (handshaken_.value(socket) && buffers_.contains(socket)) {
-        const qsizetype before = it.value().size();
-        process_frame(socket, it.value());
-        if (buffers_.value(socket).size() == before) break;
+    while (handshaken_.value(socket) &&
+           socket->state() == QAbstractSocket::ConnectedState) {
+        const qsizetype before = buffer.size();
+        process_frame(socket, buffer);
+        if (!buffers_.contains(socket)) return;
+        if (buffer.size() == before) break;
     }
+    if (buffers_.contains(socket)) buffers_[socket] = buffer;
 }
 
 void BrowserIntegration::process_frame(QTcpSocket* socket, QByteArray& buffer) {

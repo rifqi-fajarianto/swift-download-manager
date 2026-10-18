@@ -24,4 +24,11 @@ button {
 }
 
 button:disabled { opacity: .55; cursor: default; }
+button.secondary {
+  margin-bottom: 8px;
+  color: #e8edf4;
+  background: #39414d;
+}
 .hint { margin: 12px 0 0; color: #aeb9c8; font-size: 12px; }
+.toggle { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; }
+.toggle input { margin: 4px 0 0; accent-color: #348dcc; }

@@ -16,6 +16,13 @@ add_executable(test_http test_http.cpp)
 target_link_libraries(test_http PRIVATE swiftdm_core)
 add_test(NAME http COMMAND test_http)
 
+# The extension logic runs headlessly with mocked Chrome APIs and WebSocket.
+find_program(NODE_EXECUTABLE node)
+if(NODE_EXECUTABLE)
+    add_test(NAME extension_logic
+        COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_logic.js")
+endif()
+
 if(SWIFTSDM_BUILD_UI)
     # Headless (offscreen) icon pipeline check; no windows are shown.
     add_executable(test_icons

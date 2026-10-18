@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — 2026-10-18
+
+Chromium can now hand off browser downloads to SwiftDM automatically.
+
+- Added an enabled-by-default extension setting to intercept HTTP(S) downloads.
+  The extension cancels the browser item and asks SwiftDM to take it over; if
+  SwiftDM is unavailable, the browser download is restarted automatically.
+- Browser download handoff skips downloads started by the extension itself,
+  non-HTTP(S) URLs, and incognito downloads.
+- Users can turn automatic handoff off in the extension popup.
+- Connection diagnostics now surface the real WebSocket error in the popup and
+  the app logs rejected handshakes. The server accepts any well-formed Chromium
+  extension origin instead of one hard-coded development ID, so reloading an
+  unpacked extension from another path no longer breaks the connection.
+
 ## 0.8.0 — 2026-10-18
 
 Initial Chromium browser integration development preview.

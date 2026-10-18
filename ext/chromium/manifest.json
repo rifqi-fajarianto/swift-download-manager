@@ -4,7 +4,7 @@
   "name": "SwiftDM Browser Integration",
   "version": "0.1.0",
   "description": "Send links and pages from Chromium browsers to SwiftDM.",
-  "permissions": ["activeTab", "contextMenus"],
+  "permissions": ["activeTab", "contextMenus", "downloads", "storage"],
   "optional_permissions": ["cookies"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "host_permissions": ["http://127.0.0.1:10007/*"],

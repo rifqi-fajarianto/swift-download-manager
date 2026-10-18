@@ -10,8 +10,13 @@
     <main>
       <h1>SwiftDM</h1>
       <p id="status" role="status">Checking connection…</p>
+      <button id="retry" type="button" class="secondary" hidden>Retry connection</button>
+      <label class="toggle">
+        <input id="auto-intercept" type="checkbox" checked>
+        <span>Automatically use SwiftDM for downloads</span>
+      </label>
       <button id="download" type="button" disabled>Download this page</button>
-      <p class="hint">For links, right-click and choose “Download link with SwiftDM”.</p>
+      <p class="hint">When SwiftDM is unavailable, the browser download is restored automatically. For links, right-click and choose “Download link with SwiftDM”.</p>
     </main>
     <script src="popup.js"></script>
   </body>
