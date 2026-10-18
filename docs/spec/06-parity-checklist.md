@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.3.0 (Milestone 3, first GUI increment).
+Status as of 0.6.0.
 
 ## v1 — core engine + GUI
 
@@ -27,6 +27,9 @@ Status as of 0.3.0 (Milestone 3, first GUI increment).
 | New URL dialog | Replicated | URL field + Download/Cancel; probes first, then a confirmation window (file name + size) before the transfer starts |
 | Progress window opens when a transfer starts | Replicated | manual adds (after confirmation) and toolbar Resume; browser adds will skip the confirmation in v2 |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
+| Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
+| Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |
+| Delete File (remove the downloaded file from disk) | Added (not in the original) | toolbar button + warning dialog; drops the list entry too |
 | Browsers dialog (info page) | Replicated (static info) | extensions ship in v2 |
 | About dialog | Diverges | no update check, no license tier |
 | Update check to vendor server | Dropped | intentionally not implemented |
@@ -39,7 +42,7 @@ Status as of 0.3.0 (Milestone 3, first GUI increment).
 | Feature | Status |
 |---|---|
 | SQLite download history (`downloads` table) + restore list at startup | Planned |
-| Properties dialog + per-download log file | Planned |
+| Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
 | "Get File Creation Date From Server" applied to file mtime | Planned (setting saved, not applied) |

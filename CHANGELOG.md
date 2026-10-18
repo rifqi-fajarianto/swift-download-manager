@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 — 2026-10-18
+
+Download-item actions: a right-click menu on the table and a `Delete File`
+toolbar button.
+
+- Right-clicking a download row opens a context menu with `Open File`,
+  `Open File Location` and `Properties`. The original shows the same menu on the
+  list's right-click notification (E25); unlike the original, our `Open File`
+  item is only enabled when the completed file is still on disk.
+- `Properties` opens a read-only *Download Properties* window: file name, file
+  size (bytes + human), status, saved-to path (+ `Open Folder`), temp path, URL,
+  category, downloaded bytes/percent, resumability, segment count, added-on and
+  last-try timestamps.
+- New toolbar button `Delete File`: after a warning dialog it deletes the file
+  of the selected completed download(s) from disk; the list entries are dropped
+  as well. The button is enabled only while a selected download's file exists.
+
 ## 0.5.1 — 2026-10-18
 
 The download window closes itself when the transfer finishes, and the

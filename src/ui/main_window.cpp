@@ -7,8 +7,10 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
@@ -32,6 +34,7 @@
 #include "ui/download_model.h"
 #include "ui/download_window.h"
 #include "ui/icons.h"
+#include "ui/properties_dialog.h"
 #include "ui/settings_dialog.h"
 
 namespace swiftdm::ui {
@@ -90,6 +93,10 @@ void MainWindow::build_actions() {
                             tr("Stop"), this);
     act_delete_ = new QAction(tinted_icon(QStringLiteral(":/icons/delete.svg"), colors::kDanger),
                               tr("Delete"), this);
+    act_delete_file_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/delete-file.svg"), colors::kDanger),
+                    tr("Delete File"), this);
+    act_delete_file_->setToolTip(tr("Delete the downloaded file from disk"));
     act_settings_ =
         new QAction(tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::kNeutral),
                     tr("Settings"), this);
@@ -108,6 +115,7 @@ void MainWindow::build_actions() {
     connect(act_resume_, &QAction::triggered, this, &MainWindow::on_resume);
     connect(act_stop_, &QAction::triggered, this, &MainWindow::on_stop);
     connect(act_delete_, &QAction::triggered, this, &MainWindow::on_delete);
+    connect(act_delete_file_, &QAction::triggered, this, &MainWindow::on_delete_file);
     connect(act_settings_, &QAction::triggered, this, &MainWindow::on_settings);
     connect(act_browsers_, &QAction::triggered, this, &MainWindow::on_browsers);
     connect(act_about_, &QAction::triggered, this, &MainWindow::on_about);
@@ -122,6 +130,7 @@ void MainWindow::build_actions() {
     toolbar->addAction(act_resume_);
     toolbar->addAction(act_stop_);
     toolbar->addAction(act_delete_);
+    toolbar->addAction(act_delete_file_);
     auto* spacer = new QWidget(toolbar);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar->addWidget(spacer);
@@ -185,6 +194,10 @@ void MainWindow::build_body() {
                                                          QHeaderView::ResizeToContents);
     }
     connect(table_, &QTableView::doubleClicked, this, &MainWindow::on_row_activated);
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QTableView::customContextMenuRequested, this, &MainWindow::on_context_menu);
+    connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { update_action_states(); });
 
     splitter->addWidget(tree_);
     splitter->addWidget(table_);
@@ -450,6 +463,160 @@ QList<int> MainWindow::selected_rows() const {
     return rows;
 }
 
+int MainWindow::row_at_view_pos(const QPoint& pos) const {
+    const QModelIndex index = table_->indexAt(pos);
+    if (!index.isValid()) return -1;
+    return proxy_->mapToSource(index).row();
+}
+
+void MainWindow::on_context_menu(const QPoint& pos) {
+    const int row = row_at_view_pos(pos);
+    const DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+
+    // Right-click selects the row under the cursor first (like the original,
+    // which shows this menu on the list's NM_RCLICK notification).
+    const QModelIndex index = proxy_->mapFromSource(model_->index(row, 0));
+    if (!table_->selectionModel()->isSelected(index)) {
+        table_->clearSelection();
+        table_->selectionModel()->setCurrentIndex(
+            index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    }
+
+    const QFileInfo file(item->dest_path);
+    const bool file_ok = item->is_complete() && !item->dest_path.isEmpty() && file.exists();
+    const QString dir = item->dest_path.isEmpty() ? item->output_dir : file.absolutePath();
+    const bool dir_ok = !dir.isEmpty() && QFileInfo(dir).isDir();
+
+    QMenu menu(this);
+    QAction* open_file = menu.addAction(
+        tinted_icon(QStringLiteral(":/icons/document.svg"), colors::kNeutral), tr("Open File"));
+    QAction* open_folder = menu.addAction(
+        tinted_icon(QStringLiteral(":/icons/folder.svg"), colors::kNeutral),
+        tr("Open File Location"));
+    menu.addSeparator();
+    QAction* properties = menu.addAction(
+        tinted_icon(QStringLiteral(":/icons/properties.svg"), colors::kNeutral), tr("Properties"));
+    open_file->setEnabled(file_ok);
+    open_folder->setEnabled(dir_ok);
+
+    QAction* chosen = menu.exec(table_->viewport()->mapToGlobal(pos));
+    if (chosen == open_file) {
+        open_file_for_row(row);
+    } else if (chosen == open_folder) {
+        open_folder_for_row(row);
+    } else if (chosen == properties) {
+        show_properties_for_row(row);
+    }
+}
+
+void MainWindow::open_file_for_row(int row) {
+    const DownloadItem* item = model_->item_at(row);
+    if (!item || item->dest_path.isEmpty()) return;
+    if (!QFileInfo::exists(item->dest_path)) {
+        show_error_dialog(item->url, tr("File not found:\n%1").arg(item->dest_path));
+        return;
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(item->dest_path));
+}
+
+void MainWindow::open_folder_for_row(int row) {
+    const DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+    const QString dir =
+        item->dest_path.isEmpty() ? item->output_dir : QFileInfo(item->dest_path).absolutePath();
+    if (dir.isEmpty() || !QFileInfo(dir).isDir()) return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+}
+
+void MainWindow::show_properties_for_row(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+    PropertiesDialog dialog(*item, item->task, this);
+    dialog.exec();
+}
+
+void MainWindow::remove_row_with_cleanup(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+    const int id = item->id;
+    DownloadTask* task = item->task;
+    if (task) {
+        if (task->active()) {
+            // Cleanup + deleteLater happen when finished(Canceled) arrives.
+            task->cancel();
+        } else {
+            if (!task->workspace_dir().isEmpty()) {
+                QDir(task->workspace_dir()).removeRecursively();
+            }
+            task->deleteLater();
+        }
+    }
+    if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
+    windows_.remove(id);
+    model_->remove_row(row);
+}
+
+void MainWindow::update_action_states() {
+    bool can_delete_file = false;
+    for (const int row : selected_rows()) {
+        const DownloadItem* item = model_->item_at(row);
+        if (item && item->is_complete() && !item->dest_path.isEmpty() &&
+            QFileInfo::exists(item->dest_path)) {
+            can_delete_file = true;
+            break;
+        }
+    }
+    act_delete_file_->setEnabled(can_delete_file);
+}
+
+void MainWindow::on_delete_file() {
+    // Only completed downloads whose file is still on disk can be deleted.
+    QVector<QPair<int, QString>> targets;  // (item id, file path)
+    for (const int row : selected_rows()) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item || !item->is_complete() || item->dest_path.isEmpty()) continue;
+        if (!QFileInfo::exists(item->dest_path)) continue;
+        targets.append({item->id, item->dest_path});
+    }
+    if (targets.isEmpty()) return;
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Delete File"));
+    box.setIcon(QMessageBox::Warning);
+    if (targets.size() == 1) {
+        box.setText(tr("Delete \"%1\" from disk?").arg(QFileInfo(targets.first().second).fileName()));
+        box.setInformativeText(
+            tr("%1\n\nThis cannot be undone.").arg(targets.first().second));
+    } else {
+        QStringList names;
+        for (const auto& target : targets) names << QFileInfo(target.second).fileName();
+        box.setText(tr("Delete %1 files from disk?").arg(targets.size()));
+        box.setInformativeText(tr("%1\n\nThis cannot be undone.").arg(names.join('\n')));
+    }
+    QPushButton* delete_button = box.addButton(tr("Delete"), QMessageBox::DestructiveRole);
+    QPushButton* cancel_button = box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(cancel_button);
+    box.exec();
+    if (box.clickedButton() != delete_button) return;
+
+    QStringList failed;
+    for (const auto& target : targets) {
+        if (!QFile::remove(target.second)) {
+            failed << QFileInfo(target.second).fileName();
+            continue;
+        }
+        // The list entry only refers to the file that is now gone: drop it too.
+        const int row = model_->row_for_id(target.first);
+        if (row >= 0) remove_row_with_cleanup(row);
+    }
+    update_status_bar();
+    if (!failed.isEmpty()) {
+        show_error_dialog(failed.join(QStringLiteral(", ")),
+                          tr("Could not delete the file(s) from disk."));
+    }
+}
+
 void MainWindow::on_resume() {
     const QList<int> rows = selected_rows();
     for (const int row : rows) {
@@ -480,26 +647,7 @@ void MainWindow::on_stop() {
 
 void MainWindow::on_delete() {
     const QList<int> rows = selected_rows();
-    for (const int row : rows) {
-        DownloadItem* item = model_->item_at(row);
-        if (!item) continue;
-        const int id = item->id;
-        DownloadTask* task = item->task;
-        if (task) {
-            if (task->active()) {
-                // Cleanup + deleteLater happen when finished(Canceled) arrives.
-                task->cancel();
-            } else {
-                if (!task->workspace_dir().isEmpty()) {
-                    QDir(task->workspace_dir()).removeRecursively();
-                }
-                task->deleteLater();
-            }
-        }
-        if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
-        windows_.remove(id);
-        model_->remove_row(row);
-    }
+    for (const int row : rows) remove_row_with_cleanup(row);
     update_status_bar();
 }
 
@@ -601,6 +749,7 @@ void MainWindow::update_status_bar() {
             .arg(paused)
             .arg(complete)
             .arg(failed));
+    update_action_states();
 }
 
 }  // namespace swiftdm::ui

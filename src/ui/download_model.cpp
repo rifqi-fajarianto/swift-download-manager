@@ -10,9 +10,7 @@
 
 namespace swiftdm::ui {
 
-namespace {
-
-QColor status_color(const DownloadItem& item) {
+QColor download_status_color(const DownloadItem& item) {
     switch (item.state) {
         case DownloadItem::State::Downloading:
         case DownloadItem::State::Paused:
@@ -27,6 +25,8 @@ QColor status_color(const DownloadItem& item) {
     }
     return QColor(0xb8, 0xb8, 0xb8);
 }
+
+namespace {
 
 QString format_size(quint64 bytes) {
     if (bytes == 0) return QString();
@@ -99,7 +99,7 @@ QVariant DownloadModel::data(const QModelIndex& index, int role) const {
     }
 
     if (role == Qt::ForegroundRole && index.column() == ColStatus) {
-        return QBrush(status_color(item));
+        return QBrush(download_status_color(item));
     }
 
     if (role == Qt::ToolTipRole) {
@@ -130,6 +130,9 @@ QVariant DownloadModel::headerData(int section, Qt::Orientation orientation, int
 
 int DownloadModel::add_item(DownloadItem item) {
     item.id = next_id_++;
+    if (item.added.isEmpty()) {
+        item.added = QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
+    }
     const int row = static_cast<int>(items_.size());
     beginInsertRows(QModelIndex(), row, row);
     items_.append(item);

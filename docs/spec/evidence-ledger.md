@@ -32,6 +32,8 @@ tooling (strings/PE parsing), not REA output.
 | E22 | Temp path default `%APPDATA%\Roaming\NeatDM\` (per Properties dialog) | screenshot E18 |
 | E23 | Min chunk sizing, exact segment split formula, exact retry counts/timeouts, exact bandwidth-limiting mechanism | UNKNOWN — further RE optional; SwiftDM uses documented design values (spec 03-engine.md) |
 | E24 | Default User-Agent string `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36` | REA `search_strings` "Mozilla/5.0" @ `0x565138` |
+| E25 | Main-window item context menu: `Resume`, `Stop`, `Redownload`, `Show Window`, separator, `Open Folder`, `Open`, `Delete`, separator, `Properties`; built in the main-window constructor, shown on the list's `NM_RCLICK` (-5) at the click point; `NM_DBLCLK` (-3) opens the per-download window | REA `procedure_pseudo_code` FUN_00504490 (menu build + `AppendMenuW` sites), FUN_00505240 (NM_RCLICK dispatch; `TrackPopupMenu` call 0x50535b), xrefs 0x504bcd / 0x504c20 / 0x504c5c / 0x504c91 |
+| E26 | Tray icon: `NOTIFYICONDATAW` with callback message `0x40f`; tray menu holds `NeatDownloadManager Main Window` plus dynamically added download entries; left/right button up (`0x202`/`0x205`) shows the menu when it has more than 2 items, left double-click (`0x203`) restores the main window | REA `procedure_pseudo_code` FUN_00504490 (`Shell_NotifyIconW`, tray menu at object+0xc4), FUN_00506960 (callback handler) |
 
 ## Notes
 

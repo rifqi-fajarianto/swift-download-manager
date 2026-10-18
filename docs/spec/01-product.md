@@ -14,8 +14,9 @@ queueing, per-download speed limits, proxy support, and a download history.
 
 Layout (from `main-window.png`):
 
-- **Toolbar** (left to right): `New URL`, `Resume`, `Stop`, `Delete` | (right)
-  `Settings`, `Browsers`, `About`, `Quit`.
+- **Toolbar** (left to right): `New URL`, `Resume`, `Stop`, `Delete`,
+  `Delete File` | (right) `Settings`, `Browsers`, `About`, `Quit`.
+  (`Delete File` is a SwiftDM addition, documented below.)
 - **Left panel**: category tree.
   - `All Downloads` with children: `Video`, `Audio`, `Compressed`, `Document`,
     `Application`, `Misc`.
@@ -23,6 +24,11 @@ Layout (from `main-window.png`):
 - **Right panel**: downloads table with columns:
   `File Name`, `Size`, `Status`, `Bandwidth`, `Remaining Time`, `Last Try`.
   Status column shows e.g. `Complete`, `Paused ( 54% )`, `Error ( 0% )`.
+- **Item context menu** (right-click on a row): `Open File`, `Open File
+  Location`, `Properties`; it selects the row under the cursor first. The
+  original's version of this menu also carries `Resume`, `Stop`, `Redownload`,
+  `Show Window` and `Delete` (E25) — here those stay on the toolbar and in the
+  per-download window.
 - Window title: application name + version.
 
 ## 3. Core user flows
@@ -37,17 +43,31 @@ Layout (from `main-window.png`):
      Remaining Time, Resumable (Yes/No), main progress bar, segment progress
      bar (segments shown as colored slices), segmented count label
      (`Segments : N`), `Resume`/`Cancel` buttons.
-3. **Pause/Resume**: toolbar or download window; paused state keeps partial
+3. **Item actions** (right-click a download row):
+   - `Open File` — opens the downloaded file with the default handler; enabled
+     only when the download is complete and the file still exists on disk.
+   - `Open File Location` — opens the containing folder in the file manager.
+   - `Properties` — read-only *Download Properties* window (see below).
+4. **Delete File** (toolbar): deletes the downloaded file of the selected
+   completed download(s) from disk after a warning confirmation ("This cannot
+   be undone"); the list entries are removed as well. SwiftDM addition, not in
+   the original toolbar.
+5. **Pause/Resume**: toolbar or download window; paused state keeps partial
    data and can resume after restart.
-4. **Completed**: `download-complete-window.png` with `Open Folder`, `Open`,
+6. **Completed**: `download-complete-window.png` with `Open Folder`, `Open`,
    `Close`. Shown only when the completion-dialog setting is on.
-5. **Error**: `download-error-window.png` shows `Error : HTTP/1.1 403 Forbidden`,
+7. **Error**: `download-error-window.png` shows `Error : HTTP/1.1 403 Forbidden`,
    the URL, and offers `Close` and `Log File`.
-6. **Properties** (`download-properties-window.png`): icon, file size bytes,
+8. **Properties** (`download-properties-window.png`): icon, file size bytes,
    status, Saved To path (+ Open Folder), Temp Path, URL (editable), Page URL
    (+ Show Page), Page Title, Browser (source that submitted it), Added On,
    Last Try timestamps, `Log File` button.
-7. **Settings** (`options-window.png`), tabs:
+   *Implemented subset (0.6.0)*: file name, File Size, Status, Saved To
+   (+ Open Folder), Temp Path, URL (read-only), Category, Downloaded,
+   Resumable, Segments, Added On, Last Try. Editable URL, Page
+   URL/Page Title/Browser and `Log File` depend on history / browser
+   integration (v1.1 / v2).
+9. **Settings** (`options-window.png`), tabs:
    - *General*: Max Connections per Download (default 8, "8 Connections
      Recommended"); when-start policy (all at once / one by one); Bandwidth
      Limit per Download (KB/s, 0/blank = no limit); Default User-Agent (+Reset,
@@ -59,13 +79,13 @@ Layout (from `main-window.png`):
      Address/Port/User/Password, "https protocol" handling note.
    - *Passwords*: credential table (Target/User/Password; remembered auth per
      server), matching the `auths` DB table.
-8. **Browser integration**: `Browsers` toolbar button shows supported browsers
-   (Chrome, Firefox, Edge, Opera) and instructions; the app runs a local
-   WebSocket server accepting download requests from browser extensions.
-9. **Tray behavior**: closing the main window hides to tray; tray menu can
-   restore the window (per strings "Quit NeatDownloadManager", "You can hide
-   ... in Notification Area...").
-10. **About**: version, license tier, support contact, website; update check
+10. **Browser integration**: `Browsers` toolbar button shows supported browsers
+    (Chrome, Firefox, Edge, Opera) and instructions; the app runs a local
+    WebSocket server accepting download requests from browser extensions.
+11. **Tray behavior**: closing the main window hides to tray; tray menu can
+    restore the window (per strings "Quit NeatDownloadManager", "You can hide
+    ... in Notification Area...").
+12. **About**: version, license tier, support contact, website; update check
     button (we replace this with "no update check").
 
 ## 4. Non-goals for v1 (see 06-parity-checklist.md)

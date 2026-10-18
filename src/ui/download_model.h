@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QColor>
 #include <QSortFilterProxyModel>
 #include <QString>
 #include <QVector>
@@ -24,6 +25,7 @@ struct DownloadItem {
     double speed_bps = 0.0;
     qint64 remaining_sec = -1;
     QString last_try;
+    QString added;  // filled in by DownloadModel::add_item
     QString error;
     QString dest_path;
     bool resumable = false;
@@ -34,6 +36,9 @@ struct DownloadItem {
 
 // Status text shown in the table and download window ("Paused ( 54% )" etc.).
 QString download_status_text(const DownloadItem& item);
+
+// Status text color used in the table and the properties window.
+QColor download_status_color(const DownloadItem& item);
 
 // Table model for the main window (columns per docs/spec/01-product.md).
 class DownloadModel : public QAbstractTableModel {

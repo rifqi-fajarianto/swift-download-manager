@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QMainWindow>
+#include <QPoint>
 #include <QPointer>
 
 #include "store/settings.h"
@@ -43,6 +44,8 @@ class MainWindow : public QMainWindow {
     void on_quit();
     void on_tree_selection();
     void on_row_activated(const QModelIndex& index);
+    void on_context_menu(const QPoint& pos);
+    void on_delete_file();
 
   private:
     void build_actions();
@@ -58,6 +61,12 @@ class MainWindow : public QMainWindow {
                           const QString& error);
     void show_completion_dialog(const QString& name, const QString& path);
     void show_error_dialog(const QString& url, const QString& error);
+    void open_file_for_row(int row);
+    void open_folder_for_row(int row);
+    void show_properties_for_row(int row);
+    void remove_row_with_cleanup(int row);
+    void update_action_states();
+    int row_at_view_pos(const QPoint& pos) const;  // source row, or -1
     QList<int> selected_rows() const;  // source rows, descending
 
     swiftdm::Settings settings_;
@@ -72,6 +81,7 @@ class MainWindow : public QMainWindow {
     QAction* act_resume_ = nullptr;
     QAction* act_stop_ = nullptr;
     QAction* act_delete_ = nullptr;
+    QAction* act_delete_file_ = nullptr;
     QAction* act_settings_ = nullptr;
     QAction* act_browsers_ = nullptr;
     QAction* act_about_ = nullptr;
