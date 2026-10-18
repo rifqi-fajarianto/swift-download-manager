@@ -1,0 +1,81 @@
+#pragma once
+
+#include <QObject>
+#include <QPair>
+#include <QString>
+#include <QVector>
+
+#include <atomic>
+#include <mutex>
+#include <thread>
+
+#include "store/settings.h"
+
+namespace swiftdm::ui {
+
+// Runs one download (probe + segmented transfer) on a worker thread.
+class DownloadTask : public QObject {
+    Q_OBJECT
+  public:
+    struct Options {
+        QString url;
+        QString output_dir;  // empty = settings default
+        QString filename;    // empty = from server/URL
+        QString referer;
+        int connections = 0;   // 0 = settings
+        int limit_kbps = 0;    // 0 = settings
+    };
+
+    struct Snapshot {
+        quint64 done = 0;
+        quint64 total = 0;
+        double speed_bps = 0.0;
+        int percent = 0;
+        QVector<QPair<quint64, quint64>> segments;  // (done, length) per segment
+    };
+
+    // Values carried by the finished() signal (kept as int for queued
+    // connections).
+    enum class Status { Completed = 0, Paused = 1, Failed = 2, Canceled = 3 };
+
+    DownloadTask(swiftdm::Settings settings, Options options, QObject* parent = nullptr);
+    ~DownloadTask() override;
+
+    const Options& options() const { return options_; }
+    void set_options(const Options& options);
+
+    bool active() const { return active_.load(); }
+    QString resolved_filename() const;
+    quint64 resolved_size() const;
+    bool resumable() const;
+    QString workspace_dir() const;
+    Snapshot snapshot() const;
+
+    void start();   // initial run or resume of a paused/failed task
+    void pause();   // request pause; partial state is kept for resume
+    void cancel();  // abort; state file is kept until the row is removed
+
+  signals:
+    void probed(const QString& filename, quint64 size, bool resumable);
+    void progressed();
+    void finished(int status, const QString& path, const QString& error);
+
+  private:
+    void run();
+
+    swiftdm::Settings settings_;
+    Options options_;
+    std::thread thread_;
+    std::atomic<bool> active_{false};
+    std::atomic<bool> pause_requested_{false};
+    std::atomic<bool> cancel_requested_{false};
+
+    mutable std::mutex mutex_;
+    Snapshot snapshot_;
+    QString resolved_filename_;
+    quint64 resolved_size_ = 0;
+    bool resumable_ = false;
+    QString workspace_dir_;
+};
+
+}  // namespace swiftdm::ui

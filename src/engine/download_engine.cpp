@@ -149,6 +149,7 @@ DownloadResult DownloadEngine::run(
         result.error = dir_error;
         return result;
     }
+    result.workspace_dir = ws.dir;
 
     const bool can_resume = probe.accept_ranges && request.post_data.empty();
     const bool known_size = probe.content_length > 0;
@@ -257,6 +258,7 @@ DownloadResult DownloadEngine::run(
         info.total = total;
         info.speed_bps = speed;
         info.percent = percent_of(done, total);
+        info.segments = state.segments;
         const int64_t t = now_ms();
         if (request.resume && t - last_save >= 2000) {
             last_save = t;

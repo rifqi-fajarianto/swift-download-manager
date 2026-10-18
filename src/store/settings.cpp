@@ -1,5 +1,7 @@
 #include "store/settings.h"
 
+#include <unistd.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -157,6 +159,53 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "ProxyUser = " << settings.proxy.user << "\n"
         << "ProxyPassword = " << settings.proxy.password << "\n";
 
+    out.flush();
+    if (!out) {
+        if (error) *error = "write failed for '" + path + "'";
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+}
+
+bool apply_autostart(bool enabled, std::string* error) {
+    const std::string dir = xdg_config_home() + "/autostart";
+    const std::string path = dir + "/swiftdm.desktop";
+
+    std::error_code ec;
+    if (!enabled) {
+        std::filesystem::remove(path, ec);
+        if (error) error->clear();
+        return true;
+    }
+
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        if (error) *error = "cannot create autostart directory: " + ec.message();
+        return false;
+    }
+
+    std::string exe = "swiftdm";
+    char buffer[4096];
+    const ssize_t length = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (length > 0) {
+        buffer[length] = '\0';
+        exe = buffer;
+    }
+
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        if (error) *error = "cannot write '" + path + "'";
+        return false;
+    }
+    out << "[Desktop Entry]\n"
+        << "Type=Application\n"
+        << "Name=SwiftDM\n"
+        << "Comment=Download manager\n"
+        << "Exec=" << exe << "\n"
+        << "Icon=swiftdm\n"
+        << "Terminal=false\n"
+        << "X-GNOME-Autostart-enabled=true\n";
     out.flush();
     if (!out) {
         if (error) *error = "write failed for '" + path + "'";

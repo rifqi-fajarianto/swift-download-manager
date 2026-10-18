@@ -54,4 +54,8 @@ bool load_settings(const std::string& path, Settings& out, std::string* error = 
 // Saves settings; creates parent directories as needed.
 bool save_settings(const Settings& settings, std::string* error = nullptr);
 
+// Writes/removes the XDG autostart entry (~/.config/autostart/swiftdm.desktop)
+// according to the AppAutoStart setting.
+bool apply_autostart(bool enabled, std::string* error = nullptr);
+
 }  // namespace swiftdm

@@ -28,6 +28,7 @@ struct ProgressInfo {
     uint64_t total = 0;  // 0 = unknown
     double speed_bps = 0.0;
     int percent = 0;
+    std::vector<Segment> segments;  // snapshot for per-segment displays (GUI)
 };
 
 struct DownloadResult {
@@ -36,6 +37,7 @@ struct DownloadResult {
     std::string path;   // final path (Completed) or part path (Paused/Failed)
     std::string error;  // "HTTP/1.1 403 Forbidden" style for Failed
     uint64_t size = 0;
+    std::string workspace_dir;  // temp workspace kept for resume (may be empty)
 };
 
 // Temporary workspace for a download, stable across runs so resume works.
