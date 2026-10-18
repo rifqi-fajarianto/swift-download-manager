@@ -52,6 +52,11 @@ void print_usage(std::FILE* out) {
 #ifdef SWIFTSDM_WITH_GUI
 int run_gui(int argc, char** argv) {
     QApplication app(argc, argv);
+    // This is a tray application: closing a notification or progress window must
+    // not terminate the process while the main window is hidden in the tray.
+    // Quitting is explicit (tray Quit or closing the main window when no tray
+    // icon is available).
+    QApplication::setQuitOnLastWindowClosed(false);
     QApplication::setApplicationName(QStringLiteral("SwiftDM"));
     QApplication::setApplicationVersion(QString::fromLatin1(swiftdm::kVersionString));
     QApplication::setOrganizationName(QStringLiteral("SwiftDM"));

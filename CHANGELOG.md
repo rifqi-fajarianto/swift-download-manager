@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.2 — 2026-10-18
+
+Fix the application quitting when a download notification is dismissed.
+
+- Disable Qt's `quitOnLastWindowClosed` for the tray application. With the main
+  window hidden in the tray and the progress window closed automatically, the
+  `Download Complete` / `Download Error` dialog was the last visible window;
+  clicking any of its buttons terminated the process and removed the tray icon.
+  Quitting is now explicit (tray `Quit`, or closing the main window when no tray
+  icon is available).
+- Close notification dialogs after the button signal finishes, avoiding a race
+  with `QMessageBox`'s internal close/delete handling.
+
 ## 0.9.1 — 2026-10-18
 
 Chromium handoff connection fixes.

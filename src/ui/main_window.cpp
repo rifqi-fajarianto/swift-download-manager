@@ -22,6 +22,7 @@
 #include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTableView>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -283,6 +284,9 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         return;
     }
     event->accept();
+    // quitOnLastWindowClosed is disabled for the tray application, so close the
+    // process explicitly when there is no tray icon to hide into.
+    QApplication::quit();
 }
 
 void MainWindow::on_new_url() {
@@ -514,7 +518,9 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
                 } else if (button == open_file) {
                     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
                 }
-                box->close();
+                // Close after the button signal has finished; closing inside the
+                // handler can race QMessageBox's own close/delete handling.
+                QTimer::singleShot(0, box, &QWidget::close);
             });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());
@@ -533,7 +539,8 @@ void MainWindow::show_error_dialog(const QString& url, const QString& error) {
     box->setText(tr("Error : %1").arg(error));
     box->setInformativeText(url);
     box->addButton(QMessageBox::Close);
-    connect(box, &QMessageBox::buttonClicked, box, [box](QAbstractButton*) { box->close(); });
+    connect(box, &QMessageBox::buttonClicked, box,
+            [box](QAbstractButton*) { QTimer::singleShot(0, box, &QWidget::close); });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());
     box->show();
