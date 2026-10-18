@@ -51,17 +51,20 @@ class DownloadTask : public QObject {
     QString workspace_dir() const;
     Snapshot snapshot() const;
 
-    void start();   // initial run or resume of a paused/failed task
+    void start();        // initial run or resume of a paused/failed task
+    void start_probe();  // probe only; used by the manual-add confirmation
     void pause();   // request pause; partial state is kept for resume
     void cancel();  // abort; state file is kept until the row is removed
 
   signals:
     void probed(const QString& filename, quint64 size, bool resumable);
+    void probe_completed(bool ok, const QString& error);
     void progressed();
     void finished(int status, const QString& path, const QString& error);
 
   private:
     void run();
+    void run_probe();
 
     swiftdm::Settings settings_;
     Options options_;

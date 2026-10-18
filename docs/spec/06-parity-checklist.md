@@ -24,7 +24,8 @@ Status as of 0.3.0 (Milestone 3, first GUI increment).
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...` |
 | Tray icon + close-to-tray | Replicated | QSystemTrayIcon; hidden when unavailable |
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) |
-| New URL dialog | Replicated | URL field + Download/Cancel |
+| New URL dialog | Replicated | URL field + Download/Cancel; probes first, then a confirmation window (file name + size) before the transfer starts |
+| Progress window opens when a transfer starts | Replicated | manual adds (after confirmation) and toolbar Resume; browser adds will skip the confirmation in v2 |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Browsers dialog (info page) | Replicated (static info) | extensions ship in v2 |
 | About dialog | Diverges | no update check, no license tier |

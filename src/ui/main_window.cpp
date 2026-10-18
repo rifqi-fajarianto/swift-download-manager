@@ -27,6 +27,7 @@
 #include "engine/categories.h"
 #include "swiftdm/version.h"
 #include "ui/add_download_dialog.h"
+#include "ui/confirm_download_dialog.h"
 #include "ui/download_model.h"
 #include "ui/download_window.h"
 #include "ui/icons.h"
@@ -254,9 +255,9 @@ void MainWindow::add_download(const QString& url) {
         QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = QString::fromStdString(settings_.download_dir);
     item.last_try = now_stamp();
-    item.state = DownloadItem::State::Downloading;
+    item.state = DownloadItem::State::Probing;
     const int row = model_->add_item(item);
-    start_task_at_row(row);
+    start_probe_at_row(row);
 }
 
 void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options_override) {
@@ -298,6 +299,74 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     model_->touch_row(row);
     task->start();
     update_status_bar();
+}
+
+void MainWindow::start_probe_at_row(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+
+    if (item->task) {
+        item->task->deleteLater();
+        item->task = nullptr;
+    }
+
+    DownloadTask::Options options;
+    options.url = item->url;
+    options.output_dir = item->output_dir;
+
+    auto* task = new DownloadTask(settings_, options, model_);
+    item->task = task;
+    item->state = DownloadItem::State::Probing;
+    item->last_try = now_stamp();
+
+    connect(task, &DownloadTask::probed, this, [this, task] {
+        model_->task_probed(task);
+        update_status_bar();
+    });
+    connect(task, &DownloadTask::probe_completed, this,
+            [this, task](bool ok, const QString& error) { on_probe_completed(task, ok, error); });
+
+    model_->touch_row(row);
+    task->start_probe();
+    update_status_bar();
+}
+
+void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& error) {
+    const int row = model_->row_for_task(task);
+    if (row < 0) {
+        // The row was removed while the probe was still running.
+        task->deleteLater();
+        return;
+    }
+    DownloadItem* item = model_->item_at(row);
+    if (!ok) {
+        if (error.isEmpty()) return;  // canceled probe; the row is already handled
+        item->state = DownloadItem::State::Error;
+        item->error = error;
+        model_->touch_row(row);
+        show_error_dialog(item->url, error);
+        update_status_bar();
+        return;
+    }
+
+    // Confirmation step: show the resolved file name and size first.
+    const QString name = item->file_name;
+    const quint64 size = item->size;
+    const QString url = item->url;
+    const int id = item->id;
+    const DownloadTask::Options options = task->options();
+
+    ConfirmDownloadDialog dialog(name, size, url, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
+        windows_.remove(id);
+        model_->remove_row(row);
+        task->deleteLater();
+        update_status_bar();
+        return;
+    }
+    start_task_at_row(row, &options);
+    open_download_window(id);
 }
 
 void MainWindow::on_task_finished(DownloadTask* task, int status, const QString& path,
@@ -369,8 +438,10 @@ void MainWindow::on_resume() {
             state != DownloadItem::State::Queued) {
             continue;
         }
+        const int id = item->id;
         const DownloadTask::Options options = item->task->options();
         start_task_at_row(row, &options);
+        open_download_window(id);
     }
 }
 
@@ -378,7 +449,10 @@ void MainWindow::on_stop() {
     const QList<int> rows = selected_rows();
     for (const int row : rows) {
         DownloadItem* item = model_->item_at(row);
-        if (item && item->task && item->task->active()) item->task->pause();
+        if (item && item->state == DownloadItem::State::Downloading && item->task &&
+            item->task->active()) {
+            item->task->pause();
+        }
     }
 }
 
@@ -458,7 +532,10 @@ void MainWindow::on_row_activated(const QModelIndex& index) {
     const QModelIndex source = proxy_->mapToSource(index);
     DownloadItem* item = model_->item_at(source.row());
     if (!item || !item->task) return;
-    const int id = item->id;
+    open_download_window(item->id);
+}
+
+void MainWindow::open_download_window(int id) {
     QPointer<DownloadWindow> window = windows_.value(id);
     if (!window) {
         window = new DownloadWindow(model_, id, settings_, this);
@@ -481,6 +558,7 @@ void MainWindow::update_status_bar() {
         switch (item->state) {
             case DownloadItem::State::Downloading:
             case DownloadItem::State::Queued:
+            case DownloadItem::State::Probing:
                 ++active;
                 break;
             case DownloadItem::State::Paused:

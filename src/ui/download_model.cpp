@@ -22,6 +22,7 @@ QColor status_color(const DownloadItem& item) {
         case DownloadItem::State::Error:
             return QColor(0xe0, 0x5a, 0x5a);
         case DownloadItem::State::Queued:
+        case DownloadItem::State::Probing:
             break;
     }
     return QColor(0xb8, 0xb8, 0xb8);
@@ -38,6 +39,8 @@ QString download_status_text(const DownloadItem& item) {
     switch (item.state) {
         case DownloadItem::State::Queued:
             return QObject::tr("Queued");
+        case DownloadItem::State::Probing:
+            return QObject::tr("Connecting...");
         case DownloadItem::State::Downloading:
             return QObject::tr("Downloading ( %1% )").arg(item.percent);
         case DownloadItem::State::Paused:

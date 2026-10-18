@@ -72,6 +72,40 @@ void DownloadTask::start() {
     thread_ = std::thread([this] { run(); });
 }
 
+void DownloadTask::start_probe() {
+    if (active_.exchange(true)) return;
+    if (thread_.joinable()) thread_.join();
+    pause_requested_ = false;
+    cancel_requested_ = false;
+    thread_ = std::thread([this] { run_probe(); });
+}
+
+void DownloadTask::run_probe() {
+    const swiftdm::ProbeResult probe =
+        swiftdm::probe_url(http_options_for(settings_, options_));
+    if (cancel_requested_.load()) {
+        active_ = false;
+        emit probe_completed(false, QString());
+        return;
+    }
+    if (!probe.ok) {
+        active_ = false;
+        const QString message =
+            QString::fromStdString(probe.error.empty() ? "probe failed" : probe.error);
+        emit probe_completed(false, message);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        resolved_filename_ = QString::fromStdString(probe.filename_hint);
+        resolved_size_ = probe.content_length;
+        resumable_ = probe.accept_ranges;
+    }
+    emit probed(resolved_filename(), resolved_size(), resumable());
+    active_ = false;
+    emit probe_completed(true, QString());
+}
+
 void DownloadTask::pause() {
     if (active()) pause_requested_ = true;
 }

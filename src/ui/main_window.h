@@ -51,6 +51,9 @@ class MainWindow : public QMainWindow {
     void update_status_bar();
     void add_download(const QString& url);
     void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr);
+    void start_probe_at_row(int row);
+    void on_probe_completed(DownloadTask* task, bool ok, const QString& error);
+    void open_download_window(int id);
     void on_task_finished(DownloadTask* task, int status, const QString& path,
                           const QString& error);
     void show_completion_dialog(const QString& name, const QString& path);

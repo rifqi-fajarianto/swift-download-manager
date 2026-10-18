@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — 2026-10-18
+
+Manual downloads now confirm before transferring, and the progress window opens
+when a download starts.
+
+- New URL flow: after `Download` the URL is probed (row shows `Connecting...`)
+  and a confirmation window shows the resolved `File Name` and `Size` (plus the
+  URL); `Download` starts the transfer, `Cancel` discards the entry. Probe
+  failures keep the row in `Error` state (Resume retries) and show the error
+  dialog.
+- The download progress window now opens automatically when a download starts
+  from the main window: after the confirmation and on toolbar `Resume`.
+- Model: new `Probing` state; `Stop` ignores items that are still connecting.
+
 ## 0.3.1 — 2026-10-18
 
 GUI polish: the SVG set in `ui-assets/` is now used throughout.

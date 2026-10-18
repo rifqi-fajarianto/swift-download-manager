@@ -10,7 +10,7 @@ namespace swiftdm::ui {
 class DownloadTask;
 
 struct DownloadItem {
-    enum class State { Queued, Downloading, Paused, Complete, Error };
+    enum class State { Queued, Probing, Downloading, Paused, Complete, Error };
 
     int id = 0;
     QString url;
