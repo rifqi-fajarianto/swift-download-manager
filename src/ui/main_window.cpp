@@ -20,6 +20,7 @@
 #include <QSystemTrayIcon>
 #include <QTableView>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QUrl>
 
@@ -84,7 +85,7 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 void MainWindow::build_actions() {
-    act_new_ = new QAction(tinted_icon(QStringLiteral(":/icons/plus.svg"), colors::kActionBlue),
+    act_new_ = new QAction(tinted_icon(QStringLiteral(":/icons/link-plus.svg"), colors::kActionBlue),
                            tr("New URL"), this);
     act_resume_ =
         new QAction(tinted_icon(QStringLiteral(":/icons/resume-start.svg"), colors::kActionBlue),
@@ -102,7 +103,7 @@ void MainWindow::build_actions() {
                     tr("Settings"), this);
     act_browsers_ =
         new QAction(tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::kNeutral),
-                    tr("Browsers"), this);
+                    tr("Extensions"), this);
     act_about_ = new QAction(tinted_icon(QStringLiteral(":/icons/about.svg"), colors::kActionBlue),
                              tr("About"), this);
     act_quit_ = new QAction(tinted_icon(QStringLiteral(":/icons/quit.svg"), colors::kDanger),
@@ -138,6 +139,11 @@ void MainWindow::build_actions() {
     toolbar->addAction(act_browsers_);
     toolbar->addAction(act_about_);
     toolbar->addAction(act_quit_);
+    for (QAction* action : toolbar->actions()) {
+        if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(action))) {
+            button->setFixedSize(88, 76);
+        }
+    }
 }
 
 void MainWindow::build_body() {
@@ -558,6 +564,11 @@ void MainWindow::remove_row_with_cleanup(int row) {
 }
 
 void MainWindow::update_action_states() {
+    const bool has_selection = !selected_rows().isEmpty();
+    act_resume_->setEnabled(has_selection);
+    act_stop_->setEnabled(has_selection);
+    act_delete_->setEnabled(has_selection);
+
     bool can_delete_file = false;
     for (const int row : selected_rows()) {
         const DownloadItem* item = model_->item_at(row);
@@ -567,7 +578,7 @@ void MainWindow::update_action_states() {
             break;
         }
     }
-    act_delete_file_->setEnabled(can_delete_file);
+    act_delete_file_->setEnabled(has_selection && can_delete_file);
 }
 
 void MainWindow::on_delete_file() {

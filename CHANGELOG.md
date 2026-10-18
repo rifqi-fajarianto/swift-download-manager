@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 — 2026-10-18
+
+Toolbar usability polish.
+
+- All toolbar buttons now have a consistent size.
+- `Resume`, `Stop`, `Delete` and `Delete File` are disabled when no download
+  row is selected. `Delete File` also remains disabled unless a selected,
+  completed download's file exists on disk.
+- The `New URL` button now uses the `link-plus` icon.
+
 ## 0.6.0 — 2026-10-18
 
 Download-item actions: a right-click menu on the table and a `Delete File`

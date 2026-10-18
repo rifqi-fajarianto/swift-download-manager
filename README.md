@@ -27,6 +27,10 @@ sudo apt install cmake ninja-build qt6-base-dev libsqlite3-dev libcurl4-openssl-
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build
+
+untuk menjalankan aplikasi
+
+./build/swiftdm
 ```
 
 ## Testing policy
