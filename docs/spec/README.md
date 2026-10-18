@@ -25,6 +25,7 @@ reverse-engineering evidence before any implementation code. Rules:
 
 ## Status
 
-Milestone 1 in progress: static evidence collected (strings, PE metadata,
-SQLite schema, UI screenshots). Deep RE (Ghidra via REA) pending toolchain
-setup.
+Milestone 2 implemented: engine core (`src/engine`, `src/net`, `src/store`)
+with segmented downloads, resume state, bandwidth limits, retries, category
+routing, INI settings, and a headless CLI (`swiftdm get`). Verified by CLI and
+integration tests (see CHANGELOG.md 0.2.0). GUI (Milestone 3) not started.

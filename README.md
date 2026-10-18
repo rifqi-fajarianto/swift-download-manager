@@ -8,8 +8,8 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
 ## Status
 
 - [x] Milestone 0 — project skeleton, versioning policy, RE toolchain
-- [ ] Milestone 1 — behavioral spec (`docs/spec/`)
-- [ ] Milestone 2 — core engine (segmented HTTP/HTTPS, resume, queue, limits)
+- [x] Milestone 1 — behavioral spec (`docs/spec/`) — first pass complete
+- [x] Milestone 2 — core engine: segmented HTTP/HTTPS, resume, limits, CLI
 - [ ] Milestone 3 — Qt6 GUI
 - [ ] Milestone 4 — verification & packaging
 

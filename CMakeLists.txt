@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -25,15 +25,28 @@ configure_file(
 )
 
 # ---------------------------------------------------------------------------
-# Core library (no external dependencies yet; grows in later milestones)
+# Dependencies
+# ---------------------------------------------------------------------------
+find_package(Threads REQUIRED)
+find_package(CURL REQUIRED)
+
+# ---------------------------------------------------------------------------
+# Core library (engine + network + storage)
 # ---------------------------------------------------------------------------
 add_library(swiftdm_core STATIC
     src/core/log.cpp
+    src/core/util.cpp
+    src/engine/categories.cpp
+    src/engine/download_engine.cpp
+    src/engine/segment_plan.cpp
+    src/net/http.cpp
+    src/store/settings.cpp
 )
 target_include_directories(swiftdm_core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
+target_link_libraries(swiftdm_core PUBLIC CURL::libcurl Threads::Threads)
 
 # ---------------------------------------------------------------------------
 # CLI / application entry point
