@@ -20,7 +20,9 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
    fitur/fungsi UI/UX baru → naikkan PATCH +1 (`+0.0.1`).
    Contoh: `0.4.0` → `0.4.1`.
 3. Setiap perubahan perilaku aplikasi wajib disertai kenaikan versi yang
-   sesuai dan catatan changelog singkat di commit/PR git.
+   sesuai dan catatan changelog singkat di commit/PR.
+
+setelah development dan testing selesai, langsung commit git dengan deskripsi sesuai dengan fitur atau perubahan apa yang telah dilakukan
 
 ## 2. Pengujian oleh Agen AI (WAJIB)
 
