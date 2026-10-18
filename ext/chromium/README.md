@@ -37,8 +37,11 @@ downloader does not retain.
 
 - **The popup says the connection failed.** Start SwiftDM and open its
   **Extensions** toolbar button; it reports whether `127.0.0.1:10007` is
-  listening and the OS error when it is not. Use **Retry connection** in the
-  popup after fixing the app.
+  listening, the OS error when it is not, and the origin of the last rejected
+  handshake. Use **Retry connection** in the popup after fixing the app.
+- **Edge DevTools shows `extensions://...`.** That is Edge's extension-page
+  scheme label; the server accepts `extensions://`, `extension://`, and
+  `chrome-extension://` origins with a valid extension ID.
 - **Port 10007 is already in use.** A previous SwiftDM window may still be
   running in the notification tray. Quit it from the tray (or check with
   `ss -ltnp | grep 10007`), then start SwiftDM again. Closing the window only

@@ -56,11 +56,12 @@ Commands (v1 of our extension protocol):
 Server reply: `{ "v":1, "id":..., "ok": true|false, "error"?: "..." }`.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
-accepts a well-formed Chromium extension origin (`chrome-extension://` plus a
-32-character a-p ID) together with the `swiftdm.v1` subprotocol during the
-handshake; the exact development extension ID is not pinned because reloading
-an unpacked extension from another path can change it. Ordinary web origins are
-rejected and the rejection is logged. The Chromium Manifest V3 extension sends
+accepts a well-formed extension origin (`chrome-extension://`, `extensions://`,
+or `extension://` plus a 32-character a-p ID) together with the `swiftdm.v1`
+subprotocol during the handshake; the exact development extension ID is not
+pinned because reloading an unpacked extension from another path can change it.
+Ordinary web origins are rejected, the rejection is logged, and the reason is
+shown in the Extensions dialog. The Chromium Manifest V3 extension sends
 downloads either from an explicit context-menu/popup action or by intercepting
 HTTP(S) downloads. Cookie permission is optional and requested for the target
 origin; scoped cookie attributes are passed to libcurl so cookies follow

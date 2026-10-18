@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.1 — 2026-10-18
+
+Chromium handoff connection fixes.
+
+- Accept Edge's `extensions://` and `extension://` extension-origin spellings in
+  addition to `chrome-extension://`, so WebSocket handshakes from Edge are not
+  rejected.
+- Show the last rejected handshake reason in the Extensions dialog and the status
+  bar, and include it in the extension's connection error.
+- Retry automatic handoff once after a short delay before restoring the browser
+  download, covering app/service-worker startup races.
+- Fix handoff without cookie permission: the extension now sends an empty cookie
+  array instead of an empty string, which the app had rejected as an invalid
+  download request. The server also tolerates the legacy empty string.
+
 ## 0.9.0 — 2026-10-18
 
 Chromium can now hand off browser downloads to SwiftDM automatically.

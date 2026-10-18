@@ -29,7 +29,8 @@ async function settle(predicate, timeout = 1000) {
   return predicate();
 }
 
-function createEnvironment({ autoIntercept = true, webSocketMode = "ok" } = {}) {
+function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
+                             cookieGranted = true } = {}) {
   const calls = {
     cancel: [],
     erase: [],
@@ -38,6 +39,7 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok" } = {}) 
   };
   let onCreated = null;
   let onMessage = null;
+  let attempts = 0;
 
   class MockWebSocket {
     constructor(url, protocol) {
@@ -45,9 +47,11 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok" } = {}) 
       this.protocol = protocol;
       this.listeners = new Map();
       this.sent = [];
+      this.attempt = ++attempts;
       calls.sockets.push(this);
       setTimeout(() => {
-        if (webSocketMode === "error") {
+        if (webSocketMode === "error" ||
+            (webSocketMode === "fail-once" && this.attempt === 1)) {
           this.emit("error", {});
           return;
         }
@@ -110,8 +114,8 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok" } = {}) 
       },
     },
     permissions: {
-      request: async () => true,
-      contains: async () => true,
+      request: async () => cookieGranted,
+      contains: async () => cookieGranted,
       onAdded: { addListener() {} },
     },
     cookies: {
@@ -199,6 +203,30 @@ async function testFallbackWhenAppIsDown() {
   await settle(() => env.calls.cancel.length > 0 && env.calls.download.length > 0);
   check(env.calls.download[0]?.url === "https://example.com/file.bin",
     "browser download is restarted when SwiftDM is unreachable");
+  check(env.calls.sockets.length === 2,
+    "handoff retries once before restoring the browser download");
+}
+
+async function testTransientConnectionRetry() {
+  const env = createEnvironment({ webSocketMode: "fail-once" });
+  env.onCreated()(downloadItem());
+
+  await settle(() => env.calls.sockets.length === 2 && env.calls.erase.length > 0);
+  check(env.calls.cancel.length === 1, "browser item is canceled only once on retry");
+  check(env.calls.download.length === 0,
+    "no browser fallback when the retry reaches SwiftDM");
+}
+
+async function testNoCookiePermissionSendsEmptyArray() {
+  const env = createEnvironment({ cookieGranted: false });
+  env.onCreated()(downloadItem());
+  await settle(() => env.calls.sockets.length > 0 &&
+                     env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(Array.isArray(sent.data.cookies) && sent.data.cookies.length === 0,
+    "missing cookie permission sends an empty array, not a string");
+  check(env.calls.erase.length > 0,
+    "download without cookie permission still reaches SwiftDM");
 }
 
 async function testDisabledToggle() {
@@ -232,6 +260,8 @@ async function testCrossOriginReferrerIsDropped() {
 (async () => {
   await testSuccessfulHandoff();
   await testFallbackWhenAppIsDown();
+  await testTransientConnectionRetry();
+  await testNoCookiePermissionSendsEmptyArray();
   await testDisabledToggle();
   await testIgnoredItems();
   await testCrossOriginReferrerIsDropped();

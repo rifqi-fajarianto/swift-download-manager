@@ -24,10 +24,12 @@ const QString kSubprotocol = QStringLiteral("swiftdm.v1");
 // Chromium extension IDs are 32 characters from the alphabet a-p. The exact ID
 // can change when an unpacked extension is reloaded from another path or when
 // the manifest key is regenerated, so validate the origin shape rather than one
-// development ID. This still rejects ordinary web pages.
+// development ID. Edge reports its extension pages as extensions:// in DevTools
+// and may use that scheme in the WebSocket Origin header, so accept both Edge
+// and Chromium spellings. This still rejects ordinary web pages.
 bool is_chromium_extension_origin(const QByteArray& origin) {
     static const QRegularExpression pattern(
-        QStringLiteral("^chrome-extension://[a-p]{32}$"));
+        QStringLiteral("^(chrome-extension|extensions|extension)://[a-p]{32}$"));
     return pattern.match(QString::fromLatin1(origin)).hasMatch();
 }
 
@@ -144,11 +146,19 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         const QByteArray request = buffer.left(end);
         buffer.remove(0, end + 4);
         const QList<QByteArray> lines = request.split('\n');
-        if (lines.isEmpty() || lines.first().trimmed() != "GET / HTTP/1.1") {
-            qWarning() << "browser integration: rejected request line"
-                       << (lines.isEmpty() ? QByteArray() : lines.first().trimmed());
+        auto reject = [this, socket](const QString& reason) {
+            handshake_error_ = reason;
+            qWarning() << "browser integration:" << reason;
+            emit handshakeRejected(reason);
             buffers_.remove(socket);
+            socket->write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n"
+                          "Connection: close\r\n\r\n");
             socket->disconnectFromHost();
+        };
+        if (lines.isEmpty() || lines.first().trimmed() != "GET / HTTP/1.1") {
+            reject(QStringLiteral("unsupported request line '%1'").arg(
+                QString::fromLatin1(lines.isEmpty() ? QByteArray()
+                                                    : lines.first().trimmed())));
             return;
         }
         QHash<QByteArray, QByteArray> headers;
@@ -176,12 +186,9 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         if (!is_chromium_extension_origin(origin) || decoded_key.size() != 16 ||
             headers.value("upgrade").toLower() != "websocket" || !connection_upgrade ||
             headers.value("sec-websocket-version") != "13" || !protocol_ok) {
-            qWarning() << "browser integration: rejected handshake; origin='"
-                       << origin.constData() << "' protocol='" << protocols.constData() << "'";
-            buffers_.remove(socket);
-            socket->write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n"
-                          "Connection: close\r\n\r\n");
-            socket->disconnectFromHost();
+            reject(QStringLiteral("rejected handshake: origin='%1' protocol='%2'")
+                       .arg(QString::fromLatin1(origin),
+                            QString::fromLatin1(protocols)));
             return;
         }
         const QByteArray accept = QCryptographicHash::hash(
@@ -195,6 +202,8 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
                               "\r\n\r\n";
         socket->write(response);
         handshaken_[socket] = true;
+        handshake_error_.clear();
+        qInfo() << "browser integration: extension connected; origin=" << origin.constData();
     }
 
     while (handshaken_.value(socket) &&
@@ -306,7 +315,12 @@ QJsonObject BrowserIntegration::handle_message(const QJsonObject& message) {
         const QString referer = data.value(QStringLiteral("referer")).toString();
         const QString user_agent = data.value(QStringLiteral("userAgent")).toString();
         const QString filename = data.value(QStringLiteral("filename")).toString();
-        bool cookies_valid = cookies.isUndefined() || cookies.isArray();
+        // Older extension builds sent an empty string when no cookie permission
+        // was granted; treat that as "no cookies" while rejecting raw Cookie
+        // headers (which would bypass domain scoping).
+        bool cookies_valid =
+            cookies.isUndefined() || cookies.isArray() ||
+            (cookies.isString() && cookies.toString().isEmpty());
         const QUrl download_url(url);
         if (cookies.isArray()) {
             const QJsonArray entries = cookies.toArray();
@@ -365,6 +379,12 @@ QJsonObject BrowserIntegration::handle_message(const QJsonObject& message) {
     } else {
         ok = false;
         error = QStringLiteral("unknown command");
+    }
+
+    if (ok) {
+        qInfo() << "browser integration: command" << command << "accepted";
+    } else {
+        qWarning() << "browser integration: command" << command << "rejected:" << error;
     }
 
     QJsonObject response{{QStringLiteral("v"), 1},

@@ -88,7 +88,7 @@ async function interceptDownload(item) {
   }
 
   try {
-    await sendDownload(item.url, item.referrer ?? "", "", {
+    await sendDownloadWithRetry(item.url, item.referrer ?? "", "", {
       useGrantedCookiePermission: true
     });
     clearActionError();
@@ -101,6 +101,18 @@ async function interceptDownload(item) {
         `SwiftDM unavailable and the browser fallback failed: ${errorText(fallbackError)}`
       ));
     }
+  }
+}
+
+async function sendDownloadWithRetry(...args) {
+  try {
+    return await sendDownload(...args);
+  } catch {
+    // The app may still be starting, or the service worker may have raced the
+    // port becoming available. One short retry avoids needlessly restoring the
+    // browser download.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return sendDownload(...args);
   }
 }
 
@@ -122,7 +134,7 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
     // Continue without cookies rather than failing the whole handoff.
     granted = false;
   }
-  let cookies = "";
+  let cookies = [];
   if (granted) {
     try {
       const siteCookies = await chrome.cookies.getAll({ url: url.href });
@@ -137,7 +149,7 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
           expires: cookie.session ? 0 : Math.floor(cookie.expirationDate ?? 0)
         }));
     } catch {
-      cookies = "";
+      cookies = [];
     }
   }
 
@@ -204,7 +216,7 @@ function sendCommand(cmd, data) {
       }
     });
     socket.addEventListener("error", () => finish(new Error(
-      "Cannot connect to SwiftDM on 127.0.0.1:10007. Check that SwiftDM is running, the port is not used by another app, and the extension was reloaded."
+      "Cannot connect to SwiftDM on 127.0.0.1:10007. Make sure SwiftDM is running and check its Extensions dialog for the listen status or a rejected-handshake reason."
     )), { once: true });
     socket.addEventListener("close", (event) => {
       if (settled) return;

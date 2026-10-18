@@ -184,6 +184,23 @@ int main(int argc, char** argv) {
             QStringLiteral("download-1"));
         check(ok_download.value(QStringLiteral("ok")).toBool(), "valid HTTP download accepted");
         check(downloads_received == 1, "valid download signal is emitted");
+
+        const QJsonObject legacy_cookies = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/file")},
+             {QStringLiteral("cookies"), QString()}},
+            QStringLiteral("download-empty-cookies"));
+        check(legacy_cookies.value(QStringLiteral("ok")).toBool(),
+              "empty legacy cookie string is treated as no cookies");
+        check(downloads_received == 2, "empty-cookie download signal is emitted");
+
+        const QJsonObject raw_cookie = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/file")},
+             {QStringLiteral("cookies"), QStringLiteral("sid=secret")}},
+            QStringLiteral("download-raw-cookie"));
+        check(!raw_cookie.value(QStringLiteral("ok")).toBool(),
+              "unscoped raw cookie string is rejected");
     }
 
     // Reloading an unpacked extension from another path can change its ID. A
@@ -199,6 +216,21 @@ int main(int argc, char** argv) {
               "ping works from a different extension ID");
     }
 
+    // Edge displays extension pages as extensions:// in DevTools and can use
+    // that scheme in the WebSocket Origin header.
+    for (const QByteArray& origin : {QByteArray("extensions://abcdefghijklmnopabcdefghijklmnop"),
+                                     QByteArray("extension://abcdefghijklmnopabcdefghijklmnop")}) {
+        QTcpSocket edge;
+        check(connect_with_origin(edge, server.port(), origin),
+              "Edge extension origin is accepted");
+        if (edge.state() == QAbstractSocket::ConnectedState) {
+            const QJsonObject ping =
+                command(edge, QStringLiteral("ping"), {}, QStringLiteral("edge-ping"));
+            check(ping.value(QStringLiteral("ok")).toBool(),
+                  "ping works from an Edge extension origin");
+        }
+    }
+
     // Each extension command opens a short-lived socket and closes it. Repeat
     // the cycle to catch server-side lifecycle/cleanup regressions.
     for (int i = 0; i < 5; ++i) {
@@ -210,6 +242,10 @@ int main(int argc, char** argv) {
             command(repeated, QStringLiteral("ping"), {}, QStringLiteral("repeat-%1").arg(i));
         check(ping.value(QStringLiteral("ok")).toBool(), "repeated ping succeeds");
     }
+
+    QString rejected_reason;
+    QObject::connect(&server, &swiftdm::ui::BrowserIntegration::handshakeRejected,
+                     &app, [&](const QString& reason) { rejected_reason = reason; });
 
     QTcpSocket malformed;
     malformed.connectToHost(QHostAddress::LocalHost, server.port());
@@ -228,6 +264,10 @@ int main(int argc, char** argv) {
             const QByteArray response = malformed.readAll();
             check(!response.startsWith("HTTP/1.1 101"),
                   "malformed extension origin is rejected");
+            check(rejected_reason.contains(QStringLiteral("not-a-valid-extension-id")),
+                  "rejection reason includes the origin");
+            check(!server.lastHandshakeError().isEmpty(),
+                  "last handshake error is exposed to the UI");
         } else {
             check(false, "malformed extension origin is rejected");
         }

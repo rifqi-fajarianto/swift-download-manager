@@ -20,11 +20,13 @@ class BrowserIntegration : public QObject {
     bool isListening() const { return server_.isListening(); }
     quint16 port() const { return server_.serverPort(); }
     QString lastError() const { return error_; }
+    QString lastHandshakeError() const { return handshake_error_; }
 
   signals:
     void downloadRequested(const QJsonObject& data);
     void showPanelRequested(bool visible);
     void serverError(const QString& error);
+    void handshakeRejected(const QString& reason);
 
   private:
     void accept_connections();
@@ -35,6 +37,7 @@ class BrowserIntegration : public QObject {
 
     QTcpServer server_;
     QString error_;
+    QString handshake_error_;
     QHash<QTcpSocket*, QByteArray> buffers_;
     QHash<QTcpSocket*, bool> handshaken_;
 };

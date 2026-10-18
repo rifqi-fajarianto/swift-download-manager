@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDateTime>
+#include <QDebug>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -90,6 +91,11 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
     connect(browser_integration_, &BrowserIntegration::serverError, this,
             [this](const QString& error) {
                 statusBar()->showMessage(tr("Browser integration unavailable: %1").arg(error));
+            });
+    connect(browser_integration_, &BrowserIntegration::handshakeRejected, this,
+            [this](const QString& reason) {
+                statusBar()->showMessage(
+                    tr("Browser extension connection rejected: %1").arg(reason), 10000);
             });
     build_tray();
 
@@ -338,6 +344,7 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
         options.cookies.push_back(std::move(value));
     }
 
+    qInfo() << "browser integration: adding download" << options.url;
     DownloadItem item;
     item.url = options.url;
     item.file_name = options.filename.isEmpty()
@@ -746,6 +753,10 @@ void MainWindow::on_browsers() {
     QString state;
     if (browser_integration_ && browser_integration_->isListening()) {
         state = tr("Listening on 127.0.0.1:%1").arg(browser_integration_->port());
+        if (!browser_integration_->lastHandshakeError().isEmpty()) {
+            state += tr("\nLast rejected handshake: %1")
+                         .arg(browser_integration_->lastHandshakeError());
+        }
     } else {
         state = tr("The local browser service is unavailable");
         if (browser_integration_ && !browser_integration_->lastError().isEmpty()) {
