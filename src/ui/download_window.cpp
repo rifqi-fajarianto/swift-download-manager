@@ -175,22 +175,29 @@ QWidget* DownloadWindow::build_download_tab() {
 
     auto* buttons = new QHBoxLayout;
     buttons->addStretch(1);
-    resume_button_ = new QPushButton(tr("Resume"), page);
+    action_button_ = new QPushButton(tr("Pause"), page);  // label toggles in refresh()
     cancel_button_ = new QPushButton(tr("Cancel"), page);
-    buttons->addWidget(resume_button_);
+    buttons->addWidget(action_button_);
     buttons->addSpacing(28);
     buttons->addWidget(cancel_button_);
     buttons->addStretch(1);
     layout->addLayout(buttons);
 
-    connect(resume_button_, &QPushButton::clicked, this, [this] {
+    connect(action_button_, &QPushButton::clicked, this, [this] {
         const int row = model_->row_for_id(item_id_);
         DownloadItem* item = model_->item_at(row);
-        if (item && item->task && !item->task->active()) {
+        if (!item || !item->task) return;
+        DownloadTask* task = item->task;
+        if (task->active()) {
+            if (item->state == DownloadItem::State::Downloading) task->pause();
+        } else if (item->state == DownloadItem::State::Paused ||
+                   item->state == DownloadItem::State::Error ||
+                   item->state == DownloadItem::State::Queued) {
             item->state = DownloadItem::State::Downloading;
-            item->last_try = QDateTime::currentDateTime().toString("MMM d HH:mm:ss");
+            item->last_try =
+                QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
             model_->touch_row(row);
-            item->task->start();
+            task->start();
         }
     });
     connect(cancel_button_, &QPushButton::clicked, this, [this] {
@@ -301,10 +308,12 @@ void DownloadWindow::refresh() {
     segments_label_->setText(tr("Segments : %1").arg(snap.segments.size()));
 
     const bool active = task && task->active();
+    const bool running = active && item->state == DownloadItem::State::Downloading;
     const bool can_resume = !active && (item->state == DownloadItem::State::Paused ||
                                         item->state == DownloadItem::State::Error ||
                                         item->state == DownloadItem::State::Queued);
-    resume_button_->setEnabled(can_resume);
+    action_button_->setText(running ? tr("Pause") : tr("Resume"));
+    action_button_->setEnabled(running || can_resume);
     apply_button_->setEnabled(!active);
 
     if (!active && dir_edit_->text().isEmpty()) {

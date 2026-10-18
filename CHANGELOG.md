@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-10-18
+
+The download window now has a Pause/Resume toggle button.
+
+- While a transfer runs, the primary button reads `Pause` and pauses the
+  download (the list shows `Paused ( N% )`); when stopped it reads `Resume`
+  and continues from the partial state.
+- `Cancel` keeps its behavior: pause (if running) and close the window.
+
 ## 0.4.0 — 2026-10-18
 
 Manual downloads now confirm before transferring, and the progress window opens

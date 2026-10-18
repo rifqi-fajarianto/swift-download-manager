@@ -9,7 +9,7 @@ Status as of 0.3.0 (Milestone 3, first GUI increment).
 | Feature | Status | Notes |
 |---|---|---|
 | Segmented HTTP/HTTPS downloads | Replicated | libcurl multi, Range segments |
-| Pause / resume / restart | Replicated | JSON state + probe validation |
+| Pause / resume / restart | Replicated | JSON state + probe validation; Pause/Resume toggle in the download window |
 | Resume after app restart | Replicated via CLI | GUI list is in-session; history reload is v1.1 |
 | Queue & status table | Replicated (in session) | columns per 01-product.md; no persisted queue yet |
 | Categories + category folders | Replicated | tree filter + extension-based routing |

@@ -64,7 +64,7 @@ class DownloadWindow : public QDialog {
     QProgressBar* progress_ = nullptr;
     SegmentBar* segment_bar_ = nullptr;
     QLabel* segments_label_ = nullptr;
-    QPushButton* resume_button_ = nullptr;
+    QPushButton* action_button_ = nullptr;  // Pause while running, Resume when stopped
     QPushButton* cancel_button_ = nullptr;
 
     QLineEdit* dir_edit_ = nullptr;
