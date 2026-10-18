@@ -62,6 +62,7 @@ class DownloadModel : public QAbstractTableModel {
     int row_for_task(const DownloadTask* task) const;
     int row_for_id(int id) const;
     void remove_row(int row);
+    void touch_row(int row);  // emits dataChanged for the whole row
 
     // Slot-ish helpers wired to DownloadTask signals.
     void task_probed(DownloadTask* task);

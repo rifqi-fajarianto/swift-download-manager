@@ -10,7 +10,8 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
 - [x] Milestone 0 — project skeleton, versioning policy, RE toolchain
 - [x] Milestone 1 — behavioral spec (`docs/spec/`) — first pass complete
 - [x] Milestone 2 — core engine: segmented HTTP/HTTPS, resume, limits, CLI
-- [ ] Milestone 3 — Qt6 GUI
+- [x] Milestone 3 — Qt6 GUI (first increment; v1.1 gaps tracked in
+      `docs/spec/06-parity-checklist.md`)
 - [ ] Milestone 4 — verification & packaging
 
 ## Versioning
@@ -39,12 +40,13 @@ checklist provided per milestone — see `AGENTS.md`.
 ```
 cmake/            version.h.in and CMake helpers
 docs/spec/        clean-room behavioral specification + evidence ledger
-src/app/          entry points (CLI, later GUI)
+src/app/          entry points (GUI default, headless `get` CLI)
 src/core/         shared utilities
-src/engine/       download engine (later)
-src/net/          HTTP/curl/proxy layer (later)
-src/store/        SQLite persistence + settings (later)
-src/ui/           Qt6 Widgets GUI (later)
-tests/            CLI/backend tests
+src/engine/       download engine (segmentation, resume, categories)
+src/net/          HTTP/curl layer (probe, segmented transfer, streaming)
+src/store/        settings (INI); SQLite history planned for v1.1
+src/ui/           Qt6 Widgets GUI (main window, download window, dialogs)
+tests/            CLI/backend tests (+ headless icon rendering test)
 binary-original/  analysis-only reference (read-only, not distributed)
+ui-assets/        user-provided toolbar icons (SVG)
 ```

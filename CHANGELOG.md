@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 — 2026-10-18
+
+Major feature: Qt6 Widgets GUI (Milestone 3, first increment).
+
+- Main window: toolbar (New URL / Resume / Stop / Delete / Settings / Browsers /
+  About / Quit), category tree (All Downloads + Video/Audio/Compressed/Document/
+  Application/Misc, Complete, Incomplete), downloads table (`File Name`, `Size`,
+  `Status`, `Bandwidth`, `Remaining Time`, `Last Try`), status bar summary.
+- Downloads run on a worker thread per item (probe + engine); probe updates the
+  resolved file name, size and resumability live; Stop pauses, Resume continues,
+  Delete removes the row and its partial workspace.
+- Download window (double-click a row): Download tab (status, size, downloaded,
+  bandwidth, remaining time, resumable, progress bar, per-segment bar,
+  Resume/Cancel), Options tab (save-to, filename, connections, bandwidth limit,
+  referer — applied on resume), Connections tab (per-segment table).
+- New URL dialog; Settings dialog (General / Proxy-Socks / Passwords
+  placeholder); About, Browsers info, completion and error dialogs.
+- Tray icon with close-to-tray; "Start Application on System Startup" writes an
+  XDG autostart entry (`~/.config/autostart/swiftdm.desktop`).
+- Dark Fusion theme; toolbar icons: the four user-provided SVGs in `ui-assets/`
+  plus project-drawn glyphs in `src/ui/icons/`, tinted at load time.
+- Engine: `ProgressInfo` carries a segment snapshot for the GUI; `DownloadResult`
+  carries the workspace directory (cleanup of removed rows).
+- CLI unchanged; running `swiftdm` without arguments (or with `--gui`) starts
+  the GUI.
+- Tests: new headless `icons` suite (offscreen rasterization of every icon);
+  engine/CLI suites unchanged and passing.
+- Known gaps tracked for v1.1 (see docs/spec/06-parity-checklist.md): SQLite
+  download history restored at startup, properties dialog + per-download log,
+  saved-passwords UI, queue scheduling, server-date → file mtime.
+
 ## 0.2.0 — 2026-10-18
 
 Major feature: core download engine and headless CLI (Milestone 2).

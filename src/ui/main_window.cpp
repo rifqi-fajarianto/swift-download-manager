@@ -1,0 +1,492 @@
+#include "ui/main_window.h"
+
+#include <QAction>
+#include <QApplication>
+#include <QCloseEvent>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileInfo>
+#include <QHeaderView>
+#include <QLabel>
+#include <QMenu>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSplitter>
+#include <QStatusBar>
+#include <QSystemTrayIcon>
+#include <QTableView>
+#include <QToolBar>
+#include <QTreeWidget>
+#include <QUrl>
+
+#include <algorithm>
+#include <functional>
+
+#include "core/util.h"
+#include "engine/categories.h"
+#include "swiftdm/version.h"
+#include "ui/add_download_dialog.h"
+#include "ui/download_model.h"
+#include "ui/download_window.h"
+#include "ui/icons.h"
+#include "ui/settings_dialog.h"
+
+namespace swiftdm::ui {
+
+namespace {
+
+QString now_stamp() {
+    return QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
+}
+
+const char* const kCategoryNames[] = {"Video",      "Audio",  "Compressed",
+                                      "Document",   "Application", "Misc"};
+
+}  // namespace
+
+MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
+    : QMainWindow(parent), settings_(std::move(settings)) {
+    setWindowTitle(QStringLiteral("SwiftDM %1").arg(swiftdm::kVersionString));
+    resize(1020, 580);
+
+    model_ = new DownloadModel(this);
+    proxy_ = new DownloadFilterProxy(this);
+    proxy_->setSourceModel(model_);
+
+    build_actions();
+    build_body();
+    build_tray();
+
+    connect(model_, &QAbstractItemModel::rowsInserted, this,
+            [this] { update_status_bar(); });
+    connect(model_, &QAbstractItemModel::rowsRemoved, this,
+            [this] { update_status_bar(); });
+    connect(model_, &QAbstractItemModel::dataChanged, this,
+            [this] { update_status_bar(); });
+    update_status_bar();
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::build_actions() {
+    act_new_ = new QAction(tinted_icon(QStringLiteral(":/icons/plus.svg"), colors::kActionBlue),
+                           tr("New URL"), this);
+    act_resume_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/resume-start.svg"), colors::kActionBlue),
+                    tr("Resume"), this);
+    act_stop_ = new QAction(tinted_icon(QStringLiteral(":/icons/stop.svg"), colors::kActionBlue),
+                            tr("Stop"), this);
+    act_delete_ = new QAction(tinted_icon(QStringLiteral(":/icons/delete.svg"), colors::kDanger),
+                              tr("Delete"), this);
+    act_settings_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::kNeutral),
+                    tr("Settings"), this);
+    act_browsers_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::kNeutral),
+                    tr("Browsers"), this);
+    act_about_ = new QAction(tinted_icon(QStringLiteral(":/icons/about.svg"), colors::kActionBlue),
+                             tr("About"), this);
+    act_quit_ = new QAction(tinted_icon(QStringLiteral(":/icons/quit.svg"), colors::kDanger),
+                            tr("Quit"), this);
+
+    act_new_->setShortcut(QKeySequence::New);
+    act_delete_->setShortcut(QKeySequence::Delete);
+
+    connect(act_new_, &QAction::triggered, this, &MainWindow::on_new_url);
+    connect(act_resume_, &QAction::triggered, this, &MainWindow::on_resume);
+    connect(act_stop_, &QAction::triggered, this, &MainWindow::on_stop);
+    connect(act_delete_, &QAction::triggered, this, &MainWindow::on_delete);
+    connect(act_settings_, &QAction::triggered, this, &MainWindow::on_settings);
+    connect(act_browsers_, &QAction::triggered, this, &MainWindow::on_browsers);
+    connect(act_about_, &QAction::triggered, this, &MainWindow::on_about);
+    connect(act_quit_, &QAction::triggered, this, &MainWindow::on_quit);
+
+    auto* toolbar = addToolBar(tr("Main"));
+    toolbar->setObjectName(QStringLiteral("main_toolbar"));
+    toolbar->setMovable(false);
+    toolbar->setIconSize(QSize(28, 28));
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    toolbar->addAction(act_new_);
+    toolbar->addAction(act_resume_);
+    toolbar->addAction(act_stop_);
+    toolbar->addAction(act_delete_);
+    auto* spacer = new QWidget(toolbar);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    toolbar->addWidget(spacer);
+    toolbar->addAction(act_settings_);
+    toolbar->addAction(act_browsers_);
+    toolbar->addAction(act_about_);
+    toolbar->addAction(act_quit_);
+}
+
+void MainWindow::build_body() {
+    auto* splitter = new QSplitter(Qt::Horizontal, this);
+
+    tree_ = new QTreeWidget(splitter);
+    tree_->setHeaderHidden(true);
+    tree_->setRootIsDecorated(true);
+    tree_->setMinimumWidth(170);
+    tree_->setUniformRowHeights(true);
+
+    auto* all = new QTreeWidgetItem(tree_, {QStringLiteral("All Downloads")});
+    all->setData(0, Qt::UserRole, QString());
+    for (const char* name : kCategoryNames) {
+        auto* child = new QTreeWidgetItem(all, {QString::fromLatin1(name)});
+        child->setData(0, Qt::UserRole, QString::fromLatin1(name));
+    }
+    all->setExpanded(true);
+
+    struct ViewEntry {
+        const char* label;
+        const char* key;
+    };
+    for (const ViewEntry& entry :
+         {ViewEntry{"Complete", "__complete"}, ViewEntry{"Incomplete", "__incomplete"}}) {
+        auto* item = new QTreeWidgetItem(tree_, {QString::fromLatin1(entry.label)});
+        item->setData(0, Qt::UserRole, QString::fromLatin1(entry.key));
+    }
+    tree_->setCurrentItem(all);
+    connect(tree_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::on_tree_selection);
+
+    table_ = new QTableView(splitter);
+    table_->setModel(proxy_);
+    table_->setSortingEnabled(true);
+    table_->sortByColumn(DownloadModel::ColLastTry, Qt::DescendingOrder);
+    table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table_->setWordWrap(false);
+    table_->verticalHeader()->setVisible(false);
+    table_->verticalHeader()->setDefaultSectionSize(22);
+    table_->horizontalHeader()->setHighlightSections(false);
+    table_->horizontalHeader()->setSectionResizeMode(DownloadModel::ColName,
+                                                     QHeaderView::Stretch);
+    for (const int column : {DownloadModel::ColSize, DownloadModel::ColStatus,
+                             DownloadModel::ColBandwidth, DownloadModel::ColRemaining,
+                             DownloadModel::ColLastTry}) {
+        table_->horizontalHeader()->setSectionResizeMode(column,
+                                                         QHeaderView::ResizeToContents);
+    }
+    connect(table_, &QTableView::doubleClicked, this, &MainWindow::on_row_activated);
+
+    splitter->addWidget(tree_);
+    splitter->addWidget(table_);
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
+    setCentralWidget(splitter);
+
+    status_label_ = new QLabel(this);
+    statusBar()->addWidget(status_label_);
+}
+
+void MainWindow::build_tray() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
+
+    tray_ = new QSystemTrayIcon(application_icon(), this);
+    tray_->setToolTip(QStringLiteral("SwiftDM %1").arg(swiftdm::kVersionString));
+
+    auto* menu = new QMenu(this);
+    menu->addAction(tr("Show Main Window"), this, [this] {
+        showNormal();
+        raise();
+        activateWindow();
+    });
+    menu->addSeparator();
+    menu->addAction(tr("Quit"), this, &MainWindow::on_quit);
+    tray_->setContextMenu(menu);
+
+    connect(tray_, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason reason) {
+                if (reason == QSystemTrayIcon::Trigger ||
+                    reason == QSystemTrayIcon::DoubleClick) {
+                    showNormal();
+                    raise();
+                    activateWindow();
+                }
+            });
+    tray_->show();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (!quitting_ && tray_) {
+        event->ignore();
+        hide();
+        if (!tray_note_shown_) {
+            tray_note_shown_ = true;
+            tray_->showMessage(tr("SwiftDM"),
+                               tr("SwiftDM keeps running in the notification area.\n"
+                                  "Right-click the tray icon to quit."),
+                               QSystemTrayIcon::Information, 4000);
+        }
+        return;
+    }
+    event->accept();
+}
+
+void MainWindow::on_new_url() {
+    AddDownloadDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const QString url = dialog.url();
+    if (url.isEmpty()) return;
+    add_download(url);
+}
+
+void MainWindow::add_download(const QString& url) {
+    DownloadItem item;
+    item.url = url;
+    item.file_name = QString::fromStdString(swiftdm::file_name_from_url(url.toStdString()));
+    item.category =
+        QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
+    item.output_dir = QString::fromStdString(settings_.download_dir);
+    item.last_try = now_stamp();
+    item.state = DownloadItem::State::Downloading;
+    const int row = model_->add_item(item);
+    start_task_at_row(row);
+}
+
+void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options_override) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+
+    // Replace the previous (inactive) task so that current settings apply.
+    if (item->task) {
+        item->task->deleteLater();
+        item->task = nullptr;
+    }
+
+    DownloadTask::Options options;
+    if (options_override) {
+        options = *options_override;
+    } else {
+        options.url = item->url;
+        options.output_dir = item->output_dir;
+        options.connections = 0;   // 0 = settings
+        options.limit_kbps = 0;    // 0 = settings
+    }
+
+    auto* task = new DownloadTask(settings_, options, model_);
+    item->task = task;
+    item->state = DownloadItem::State::Downloading;
+    item->last_try = now_stamp();
+
+    connect(task, &DownloadTask::probed, this, [this, task] {
+        model_->task_probed(task);
+        update_status_bar();
+    });
+    connect(task, &DownloadTask::progressed, this,
+            [this, task] { model_->task_progressed(task); });
+    connect(task, &DownloadTask::finished, this,
+            [this, task](int status, const QString& path, const QString& error) {
+                on_task_finished(task, status, path, error);
+            });
+
+    model_->touch_row(row);
+    task->start();
+    update_status_bar();
+}
+
+void MainWindow::on_task_finished(DownloadTask* task, int status, const QString& path,
+                                  const QString& error) {
+    model_->task_finished(task, status, path, error);
+    const int row = model_->row_for_task(task);
+    if (row >= 0) {
+        const DownloadItem* item = model_->item_at(row);
+        if (status == static_cast<int>(DownloadTask::Status::Completed)) {
+            if (settings_.completion_dialog && item) {
+                show_completion_dialog(item->file_name, path);
+            }
+        } else if (status == static_cast<int>(DownloadTask::Status::Failed) && item) {
+            show_error_dialog(item->url, error);
+        }
+    } else {
+        // The row was removed while the task was running; clean up leftovers.
+        if (!task->workspace_dir().isEmpty()) {
+            QDir(task->workspace_dir()).removeRecursively();
+        }
+        task->deleteLater();
+    }
+    update_status_bar();
+}
+
+void MainWindow::show_completion_dialog(const QString& name, const QString& path) {
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Download Complete"));
+    box.setIcon(QMessageBox::Information);
+    box.setText(QStringLiteral("%1\n%2").arg(name, path));
+    QPushButton* open_folder = box.addButton(tr("Open Folder"), QMessageBox::ActionRole);
+    QPushButton* open_file = box.addButton(tr("Open"), QMessageBox::ActionRole);
+    box.addButton(QMessageBox::Close);
+    box.exec();
+    if (box.clickedButton() == open_folder) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+    } else if (box.clickedButton() == open_file) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    }
+}
+
+void MainWindow::show_error_dialog(const QString& url, const QString& error) {
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Download Error"));
+    box.setIcon(QMessageBox::Critical);
+    box.setText(tr("Error : %1").arg(error));
+    box.setInformativeText(url);
+    box.addButton(QMessageBox::Close);
+    box.exec();
+}
+
+QList<int> MainWindow::selected_rows() const {
+    QList<int> rows;
+    const QModelIndexList indexes = table_->selectionModel()->selectedRows();
+    for (const QModelIndex& index : indexes) {
+        rows.append(proxy_->mapToSource(index).row());
+    }
+    std::sort(rows.begin(), rows.end(), std::greater<int>());
+    return rows;
+}
+
+void MainWindow::on_resume() {
+    const QList<int> rows = selected_rows();
+    for (const int row : rows) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item || !item->task || item->task->active()) continue;
+        const DownloadItem::State state = item->state;
+        if (state != DownloadItem::State::Paused && state != DownloadItem::State::Error &&
+            state != DownloadItem::State::Queued) {
+            continue;
+        }
+        const DownloadTask::Options options = item->task->options();
+        start_task_at_row(row, &options);
+    }
+}
+
+void MainWindow::on_stop() {
+    const QList<int> rows = selected_rows();
+    for (const int row : rows) {
+        DownloadItem* item = model_->item_at(row);
+        if (item && item->task && item->task->active()) item->task->pause();
+    }
+}
+
+void MainWindow::on_delete() {
+    const QList<int> rows = selected_rows();
+    for (const int row : rows) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item) continue;
+        const int id = item->id;
+        DownloadTask* task = item->task;
+        if (task) {
+            if (task->active()) {
+                // Cleanup + deleteLater happen when finished(Canceled) arrives.
+                task->cancel();
+            } else {
+                if (!task->workspace_dir().isEmpty()) {
+                    QDir(task->workspace_dir()).removeRecursively();
+                }
+                task->deleteLater();
+            }
+        }
+        if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
+        windows_.remove(id);
+        model_->remove_row(row);
+    }
+    update_status_bar();
+}
+
+void MainWindow::on_settings() {
+    SettingsDialog dialog(settings_, this);
+    dialog.exec();
+}
+
+void MainWindow::on_browsers() {
+    QMessageBox::information(
+        this, tr("Browsers"),
+        tr("Browser integration (Chrome / Edge / Firefox / Brave / Opera) arrives with\n"
+           "the extension milestone (spec 04-protocols.md, subprotocol neatextension.v1).\n\n"
+           "For now, add links with the \"New URL\" button."));
+}
+
+void MainWindow::on_about() {
+    QMessageBox::about(
+        this, tr("About SwiftDM"),
+        QStringLiteral(
+            "<b>SwiftDM</b> %1<br><br>"
+            "Clean-room Linux download manager (segmented, resumable).<br>"
+            "Reimplemented from observed behavior of the Windows application; "
+            "no original code or assets are used.<br><br>"
+            "No update check, no phone-home.")
+            .arg(swiftdm::kVersionString));
+}
+
+void MainWindow::on_quit() {
+    quitting_ = true;
+    QApplication::quit();
+}
+
+void MainWindow::on_tree_selection() {
+    const QList<QTreeWidgetItem*> items = tree_->selectedItems();
+    const QString key =
+        items.isEmpty() ? QString() : items.first()->data(0, Qt::UserRole).toString();
+    if (key == QStringLiteral("__complete")) {
+        proxy_->set_category(QString());
+        proxy_->set_completion_only(true);
+    } else if (key == QStringLiteral("__incomplete")) {
+        proxy_->set_category(QString());
+        proxy_->set_incomplete_only(true);
+    } else {
+        proxy_->set_category(key);
+        proxy_->set_completion_only(false);
+    }
+}
+
+void MainWindow::on_row_activated(const QModelIndex& index) {
+    if (!index.isValid()) return;
+    const QModelIndex source = proxy_->mapToSource(index);
+    DownloadItem* item = model_->item_at(source.row());
+    if (!item || !item->task) return;
+    const int id = item->id;
+    QPointer<DownloadWindow> window = windows_.value(id);
+    if (!window) {
+        window = new DownloadWindow(model_, id, settings_, this);
+        windows_.insert(id, window);
+        connect(window, &QObject::destroyed, this, [this, id] { windows_.remove(id); });
+    }
+    window->show();
+    window->raise();
+    window->activateWindow();
+}
+
+void MainWindow::update_status_bar() {
+    int active = 0;
+    int paused = 0;
+    int complete = 0;
+    int failed = 0;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item) continue;
+        switch (item->state) {
+            case DownloadItem::State::Downloading:
+            case DownloadItem::State::Queued:
+                ++active;
+                break;
+            case DownloadItem::State::Paused:
+                ++paused;
+                break;
+            case DownloadItem::State::Complete:
+                ++complete;
+                break;
+            case DownloadItem::State::Error:
+                ++failed;
+                break;
+        }
+    }
+    status_label_->setText(
+        tr("%1 downloads — %2 active, %3 paused, %4 complete, %5 error")
+            .arg(model_->rowCount())
+            .arg(active)
+            .arg(paused)
+            .arg(complete)
+            .arg(failed));
+}
+
+}  // namespace swiftdm::ui

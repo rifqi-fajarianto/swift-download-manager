@@ -165,6 +165,11 @@ void DownloadModel::remove_row(int row) {
     endRemoveRows();
 }
 
+void DownloadModel::touch_row(int row) {
+    if (row < 0 || row >= items_.size()) return;
+    emit dataChanged(index(row, 0), index(row, ColumnCount - 1));
+}
+
 void DownloadModel::task_probed(DownloadTask* task) {
     const int row = row_for_task(task);
     if (row < 0) return;

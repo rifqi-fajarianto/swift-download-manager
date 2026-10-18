@@ -8,6 +8,15 @@
 #include "store/settings.h"
 #include "swiftdm/version.h"
 
+#ifdef SWIFTSDM_WITH_GUI
+#include <QApplication>
+#include <QString>
+
+#include "ui/icons.h"
+#include "ui/main_window.h"
+#include "ui/theme.h"
+#endif
+
 namespace {
 
 void print_usage(std::FILE* out) {
@@ -15,6 +24,8 @@ void print_usage(std::FILE* out) {
         "SwiftDM %s — segmented, resumable download manager\n"
         "\n"
         "Usage:\n"
+        "  swiftdm                       Start the GUI\n"
+        "  swiftdm --gui                 Start the GUI\n"
         "  swiftdm get <url> [options]   Download a URL (headless)\n"
         "  swiftdm --version             Print version and exit\n"
         "  swiftdm --help                Print this help and exit\n"
@@ -37,6 +48,28 @@ void print_usage(std::FILE* out) {
         "Exit codes: 0 completed, 1 failed, 2 usage error, 3 paused.\n",
         swiftdm::kVersionString);
 }
+
+#ifdef SWIFTSDM_WITH_GUI
+int run_gui(int argc, char** argv) {
+    QApplication app(argc, argv);
+    QApplication::setApplicationName(QStringLiteral("SwiftDM"));
+    QApplication::setApplicationVersion(QString::fromLatin1(swiftdm::kVersionString));
+    QApplication::setOrganizationName(QStringLiteral("SwiftDM"));
+    QApplication::setWindowIcon(swiftdm::ui::application_icon());
+    swiftdm::ui::apply_dark_theme(app);
+
+    swiftdm::Settings settings;
+    std::string error;
+    swiftdm::load_settings(swiftdm::default_config_path(), settings, &error);
+    if (!error.empty()) {
+        std::fprintf(stderr, "warning: %s\n", error.c_str());
+    }
+
+    swiftdm::ui::MainWindow window(std::move(settings));
+    window.show();
+    return app.exec();
+}
+#endif
 
 bool parse_log_level(const char* value, swiftdm::LogLevel& out) {
     if (std::strcmp(value, "trace") == 0) { out = swiftdm::LogLevel::Trace; return true; }
@@ -194,8 +227,12 @@ int main(int argc, char** argv) {
     swiftdm::log_set_level(swiftdm::LogLevel::Warn);
 
     if (argc <= 1) {
+#ifdef SWIFTSDM_WITH_GUI
+        return run_gui(argc, argv);
+#else
         print_usage(stderr);
         return 2;
+#endif
     }
 
     const std::string command = argv[1];
@@ -207,6 +244,11 @@ int main(int argc, char** argv) {
         print_usage(stdout);
         return 0;
     }
+#ifdef SWIFTSDM_WITH_GUI
+    if (command == "--gui") {
+        return run_gui(argc, argv);
+    }
+#endif
     if (command == "get") {
         return run_get(argc - 2, argv + 2);
     }
