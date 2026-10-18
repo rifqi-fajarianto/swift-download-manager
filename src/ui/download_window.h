@@ -75,6 +75,11 @@ class DownloadWindow : public QDialog {
     QPushButton* apply_button_ = nullptr;
 
     QTableWidget* connections_table_ = nullptr;
+
+    // True once the item was seen in a non-complete state: the window then
+    // closes itself when the download finishes (a window opened on an
+    // already-complete item stays open for inspection).
+    bool seen_incomplete_ = false;
 };
 
 }  // namespace swiftdm::ui

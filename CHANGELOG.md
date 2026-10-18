@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1 — 2026-10-18
+
+The download window closes itself when the transfer finishes, and the
+notification windows are no longer attached to the main window.
+
+- The progress window now closes automatically once a running download reaches
+  `Complete` (the completion notification appears instead); a window opened on
+  an already-complete item still stays open for inspection.
+- `Download Complete` and `Download Error` are now independent top-level
+  windows (no transient parent, non-modal): the window manager cannot group
+  them with the main window, so moving one no longer moves the other. They open
+  centered near the main window and stay usable alongside it.
+
 ## 0.5.0 — 2026-10-18
 
 The download window now has a Pause/Resume toggle button.

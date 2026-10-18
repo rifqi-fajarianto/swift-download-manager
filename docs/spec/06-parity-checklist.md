@@ -20,8 +20,8 @@ Status as of 0.3.0 (Milestone 3, first GUI increment).
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |
 | Custom headers / cookies passthrough | Replicated | CLI `--header`; GUI passthrough later |
 | User-Agent setting + reset | Replicated | default UA string (E24) |
-| Download complete dialog | Replicated | toggle in settings |
-| Error dialog | Replicated | message format `Error : HTTP/1.1 ...` |
+| Download complete dialog | Replicated | toggle in settings; independent top-level window (not attached to the main window) |
+| Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |
 | Tray icon + close-to-tray | Replicated | QSystemTrayIcon; hidden when unavailable |
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) |
 | New URL dialog | Replicated | URL field + Download/Cancel; probes first, then a confirmation window (file name + size) before the transfer starts |

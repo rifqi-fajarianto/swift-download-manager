@@ -1,5 +1,6 @@
 #include "ui/main_window.h"
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -393,29 +394,50 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
 }
 
 void MainWindow::show_completion_dialog(const QString& name, const QString& path) {
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Download Complete"));
-    box.setIcon(QMessageBox::Information);
-    box.setText(QStringLiteral("%1\n%2").arg(name, path));
-    QPushButton* open_folder = box.addButton(tr("Open Folder"), QMessageBox::ActionRole);
-    QPushButton* open_file = box.addButton(tr("Open"), QMessageBox::ActionRole);
-    box.addButton(QMessageBox::Close);
-    box.exec();
-    if (box.clickedButton() == open_folder) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
-    } else if (box.clickedButton() == open_file) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
-    }
+    // Independent top-level window: no parent/transient hint, so the window
+    // manager cannot group it with the main window when it is moved. Non-modal,
+    // so the main window stays usable while the notification is on screen.
+    auto* box = new QMessageBox(nullptr);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->setWindowTitle(tr("Download Complete"));
+    box->setIcon(QMessageBox::Information);
+    box->setText(QStringLiteral("%1\n%2").arg(name, path));
+    QPushButton* open_folder = box->addButton(tr("Open Folder"), QMessageBox::ActionRole);
+    QPushButton* open_file = box->addButton(tr("Open"), QMessageBox::ActionRole);
+    box->addButton(QMessageBox::Close);
+    connect(box, &QMessageBox::buttonClicked, box,
+            [box, open_folder, open_file, path](QAbstractButton* button) {
+                if (button == open_folder) {
+                    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
+                } else if (button == open_file) {
+                    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+                }
+                box->close();
+            });
+    box->adjustSize();
+    box->move(frameGeometry().center() - box->rect().center());
+    box->show();
+    box->raise();
+    box->activateWindow();
 }
 
 void MainWindow::show_error_dialog(const QString& url, const QString& error) {
-    QMessageBox box(this);
-    box.setWindowTitle(tr("Download Error"));
-    box.setIcon(QMessageBox::Critical);
-    box.setText(tr("Error : %1").arg(error));
-    box.setInformativeText(url);
-    box.addButton(QMessageBox::Close);
-    box.exec();
+    // Same rationale as the completion window: an independent top-level window.
+    auto* box = new QMessageBox(nullptr);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->setWindowTitle(tr("Download Error"));
+    box->setIcon(QMessageBox::Critical);
+    box->setText(tr("Error : %1").arg(error));
+    box->setInformativeText(url);
+    box->addButton(QMessageBox::Close);
+    connect(box, &QMessageBox::buttonClicked, box, [box](QAbstractButton*) { box->close(); });
+    box->adjustSize();
+    box->move(frameGeometry().center() - box->rect().center());
+    box->show();
+    box->raise();
+    box->activateWindow();
 }
 
 QList<int> MainWindow::selected_rows() const {

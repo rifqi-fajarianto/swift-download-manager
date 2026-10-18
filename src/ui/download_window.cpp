@@ -285,6 +285,17 @@ void DownloadWindow::refresh() {
         return;
     }
 
+    // Close automatically once the transfer completes while this window is
+    // open; the completion notification is shown separately by the main window.
+    if (item->state == DownloadItem::State::Complete) {
+        if (seen_incomplete_) {
+            close();
+            return;
+        }
+    } else {
+        seen_incomplete_ = true;
+    }
+
     const QString title =
         item->file_name.isEmpty() ? tr("Download") : item->file_name;
     setWindowTitle(QString("%1 - %2").arg(download_status_text(*item), title));
