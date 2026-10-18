@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.3 — 2026-10-18
+
+Fix the `Open Folder` and `Open` buttons in the Download Complete notification.
+
+- The actions were handled through `QMessageBox::buttonClicked` with the dialog
+  as the receiver. The dialog closes and deletes itself on a button click, so
+  the action could be skipped. Each button now connects directly to its action.
+- Check that the folder/file still exists and report a failure instead of
+  silently doing nothing.
+
 ## 0.9.2 — 2026-10-18
 
 Fix the application quitting when a download notification is dismissed.

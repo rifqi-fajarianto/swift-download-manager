@@ -17,12 +17,12 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
+#include <QProcess>
 #include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTableView>
-#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -482,6 +482,7 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
     if (row >= 0) {
         const DownloadItem* item = model_->item_at(row);
         if (status == static_cast<int>(DownloadTask::Status::Completed)) {
+            qInfo() << "download completed:" << path;
             if (settings_.completion_dialog && item) {
                 show_completion_dialog(item->file_name, path);
             }
@@ -511,17 +512,39 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
     QPushButton* open_folder = box->addButton(tr("Open Folder"), QMessageBox::ActionRole);
     QPushButton* open_file = box->addButton(tr("Open"), QMessageBox::ActionRole);
     box->addButton(QMessageBox::Close);
-    connect(box, &QMessageBox::buttonClicked, box,
-            [box, open_folder, open_file, path](QAbstractButton* button) {
-                if (button == open_folder) {
-                    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
-                } else if (button == open_file) {
-                    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
-                }
-                // Close after the button signal has finished; closing inside the
-                // handler can race QMessageBox's own close/delete handling.
-                QTimer::singleShot(0, box, &QWidget::close);
-            });
+    // Connect directly to each button. QMessageBox closes (and with
+    // WA_DeleteOnClose later deletes) itself when a button is clicked, so using
+    // the dialog as the receiver for buttonClicked can skip the action.
+    connect(open_folder, &QPushButton::clicked, this, [this, path] {
+        const QFileInfo file(path);
+        const QString dir = file.absolutePath();
+        if (!QFileInfo(dir).isDir()) {
+            show_error_dialog(dir, tr("The download folder no longer exists."));
+            return;
+        }
+        qInfo() << "completion dialog: opening folder" << dir;
+        QString folder_url = dir;
+        if (!folder_url.endsWith(QLatin1Char('/'))) folder_url += QLatin1Char('/');
+        const bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(folder_url));
+        qInfo() << "completion dialog: openUrl returned" << opened;
+        if (!opened && !QProcess::startDetached(QStringLiteral("xdg-open"), {dir})) {
+            show_error_dialog(dir, tr("Could not open the download folder."));
+        }
+    });
+    connect(open_file, &QPushButton::clicked, this, [this, path] {
+        const QFileInfo file(path);
+        if (!file.exists()) {
+            show_error_dialog(path, tr("The downloaded file no longer exists."));
+            return;
+        }
+        const QString target = file.absoluteFilePath();
+        qInfo() << "completion dialog: opening file" << target;
+        const bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(target));
+        qInfo() << "completion dialog: openUrl returned" << opened;
+        if (!opened && !QProcess::startDetached(QStringLiteral("xdg-open"), {target})) {
+            show_error_dialog(target, tr("Could not open the downloaded file."));
+        }
+    });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());
     box->show();
@@ -539,8 +562,6 @@ void MainWindow::show_error_dialog(const QString& url, const QString& error) {
     box->setText(tr("Error : %1").arg(error));
     box->setInformativeText(url);
     box->addButton(QMessageBox::Close);
-    connect(box, &QMessageBox::buttonClicked, box,
-            [box](QAbstractButton*) { QTimer::singleShot(0, box, &QWidget::close); });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());
     box->show();
