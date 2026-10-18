@@ -1,0 +1,15 @@
+// Generated from cmake/version.h.in — do not edit.
+#pragma once
+
+#define SWIFTSDM_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define SWIFTSDM_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define SWIFTSDM_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+#define SWIFTSDM_VERSION_STRING "@PROJECT_VERSION@"
+
+namespace swiftdm {
+inline constexpr int kVersionMajor = SWIFTSDM_VERSION_MAJOR;
+inline constexpr int kVersionMinor = SWIFTSDM_VERSION_MINOR;
+inline constexpr int kVersionPatch = SWIFTSDM_VERSION_PATCH;
+inline constexpr const char* kVersionString = SWIFTSDM_VERSION_STRING;
+}  // namespace swiftdm

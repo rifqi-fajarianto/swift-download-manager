@@ -1,0 +1,21 @@
+# Build artifacts
+build/
+build-*/
+*.o
+*.a
+*.so
+
+# Generated
+generated/
+compile_commands.json
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# Local test artifacts
+/tmp-test-*/
+*.log
+
+binary-original
