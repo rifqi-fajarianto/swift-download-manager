@@ -31,10 +31,17 @@ int main(int argc, char** argv) {
     int failures = 0;
 
     const QStringList tinted_icons = {
-        QStringLiteral(":/icons/plus.svg"),         QStringLiteral(":/icons/stop.svg"),
-        QStringLiteral(":/icons/resume-start.svg"), QStringLiteral(":/icons/delete.svg"),
-        QStringLiteral(":/icons/settings.svg"),     QStringLiteral(":/icons/browsers.svg"),
-        QStringLiteral(":/icons/about.svg"),        QStringLiteral(":/icons/quit.svg"),
+        QStringLiteral(":/icons/alert.svg"),        QStringLiteral(":/icons/applications.svg"),
+        QStringLiteral(":/icons/complete.svg"),     QStringLiteral(":/icons/compressed.svg"),
+        QStringLiteral(":/icons/delete-file.svg"),  QStringLiteral(":/icons/delete.svg"),
+        QStringLiteral(":/icons/document.svg"),     QStringLiteral(":/icons/folder.svg"),
+        QStringLiteral(":/icons/link-plus.svg"),    QStringLiteral(":/icons/link.svg"),
+        QStringLiteral(":/icons/music.svg"),        QStringLiteral(":/icons/other.svg"),
+        QStringLiteral(":/icons/plus.svg"),         QStringLiteral(":/icons/properties.svg"),
+        QStringLiteral(":/icons/resume-start.svg"), QStringLiteral(":/icons/settings.svg"),
+        QStringLiteral(":/icons/stop.svg"),         QStringLiteral(":/icons/video.svg"),
+        QStringLiteral(":/icons/browsers.svg"),     QStringLiteral(":/icons/about.svg"),
+        QStringLiteral(":/icons/quit.svg"),
     };
     for (const QString& resource : tinted_icons) {
         const QIcon icon = swiftdm::ui::tinted_icon(resource, Qt::white);

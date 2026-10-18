@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 — 2026-10-18
+
+GUI polish: the SVG set in `ui-assets/` is now used throughout.
+
+- Category tree icons: All Downloads (`folder`), Video, Audio (`music`),
+  Compressed, Document, Application, Misc (`other`), Complete, Incomplete
+  (`alert`) — all tinted to the toolbar accent color.
+- Settings toolbar button now uses `ui-assets/settings.svg`; the project-drawn
+  gear was removed.
+- Download window shows the URL with the `link.svg` icon.
+- All 22 bundled SVGs are embedded via `qt_add_resources` and rasterized by
+  the headless `icons` test.
+
 ## 0.3.0 — 2026-10-18
 
 Major feature: Qt6 Widgets GUI (Milestone 3, first increment).

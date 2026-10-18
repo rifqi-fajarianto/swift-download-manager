@@ -26,21 +26,12 @@ if(SWIFTSDM_BUILD_UI)
     qt_add_resources(test_icons "test_icons_app"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/ui-assets"
-        FILES
-            "${CMAKE_SOURCE_DIR}/ui-assets/plus.svg"
-            "${CMAKE_SOURCE_DIR}/ui-assets/stop.svg"
-            "${CMAKE_SOURCE_DIR}/ui-assets/resume-start.svg"
-            "${CMAKE_SOURCE_DIR}/ui-assets/delete.svg"
+        FILES ${SWIFTSDM_ASSET_ICONS}
     )
     qt_add_resources(test_icons "test_icons_ui"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/src/ui/icons"
-        FILES
-            "${CMAKE_SOURCE_DIR}/src/ui/icons/settings.svg"
-            "${CMAKE_SOURCE_DIR}/src/ui/icons/browsers.svg"
-            "${CMAKE_SOURCE_DIR}/src/ui/icons/about.svg"
-            "${CMAKE_SOURCE_DIR}/src/ui/icons/quit.svg"
-            "${CMAKE_SOURCE_DIR}/src/ui/icons/app.svg"
+        FILES ${SWIFTSDM_UI_ICONS}
     )
     add_test(NAME icons COMMAND test_icons)
     set_tests_properties(icons PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

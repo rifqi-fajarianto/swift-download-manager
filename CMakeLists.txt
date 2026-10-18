@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.3.0
+    VERSION 0.3.1
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -32,6 +32,34 @@ find_package(Threads REQUIRED)
 find_package(CURL REQUIRED)
 if(SWIFTSDM_BUILD_UI)
     find_package(Qt6 REQUIRED COMPONENTS Widgets)
+
+    # Icon assets, shared by the app and the headless icons test.
+    set(SWIFTSDM_ASSET_ICONS
+        "${CMAKE_SOURCE_DIR}/ui-assets/alert.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/applications.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/complete.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/compressed.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/delete-file.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/delete.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/document.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/folder.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/link-plus.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/link.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/music.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/other.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/plus.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/properties.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/resume-start.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/settings.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/stop.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/video.svg"
+    )
+    set(SWIFTSDM_UI_ICONS
+        "${CMAKE_SOURCE_DIR}/src/ui/icons/browsers.svg"
+        "${CMAKE_SOURCE_DIR}/src/ui/icons/about.svg"
+        "${CMAKE_SOURCE_DIR}/src/ui/icons/quit.svg"
+        "${CMAKE_SOURCE_DIR}/src/ui/icons/app.svg"
+    )
 endif()
 
 # ---------------------------------------------------------------------------
@@ -63,27 +91,17 @@ target_link_libraries(swiftdm PRIVATE swiftdm_core)
 if(SWIFTSDM_BUILD_UI)
     set_target_properties(swiftdm PROPERTIES AUTOMOC ON)
 
-    # Toolbar/app icons: the four action icons live in ui-assets/ (user-provided
-    # Tabler-style SVGs); the remaining glyphs are drawn for this project in
-    # src/ui/icons/.
+    # Toolbar/category icons: SVGs in ui-assets/ (provided for this project) plus
+    # glyphs drawn for this project in src/ui/icons/.
     qt_add_resources(swiftdm "app_icons"
         PREFIX "/icons"
-        BASE "ui-assets"
-        FILES
-            ui-assets/plus.svg
-            ui-assets/stop.svg
-            ui-assets/resume-start.svg
-            ui-assets/delete.svg
+        BASE "${CMAKE_SOURCE_DIR}/ui-assets"
+        FILES ${SWIFTSDM_ASSET_ICONS}
     )
     qt_add_resources(swiftdm "ui_icons"
         PREFIX "/icons"
-        BASE "src/ui/icons"
-        FILES
-            src/ui/icons/settings.svg
-            src/ui/icons/browsers.svg
-            src/ui/icons/about.svg
-            src/ui/icons/quit.svg
-            src/ui/icons/app.svg
+        BASE "${CMAKE_SOURCE_DIR}/src/ui/icons"
+        FILES ${SWIFTSDM_UI_ICONS}
     )
 
     target_sources(swiftdm PRIVATE

@@ -21,6 +21,7 @@
 #include "core/util.h"
 #include "ui/download_model.h"
 #include "ui/download_task.h"
+#include "ui/icons.h"
 
 namespace swiftdm::ui {
 
@@ -128,7 +129,14 @@ QWidget* DownloadWindow::build_download_tab() {
     url_label_->setOpenExternalLinks(true);
     url_label_->setTextInteractionFlags(Qt::TextBrowserInteraction);
     url_label_->setWordWrap(false);
-    layout->addWidget(url_label_);
+    auto* url_row = new QHBoxLayout;
+    auto* link_icon = new QLabel(page);
+    link_icon->setPixmap(
+        tinted_icon(QStringLiteral(":/icons/link.svg"), colors::kActionBlue).pixmap(16, 16));
+    link_icon->setFixedSize(16, 16);
+    url_row->addWidget(link_icon);
+    url_row->addWidget(url_label_, 1);
+    layout->addLayout(url_row);
     layout->addSpacing(4);
 
     auto* grid = new QGridLayout;

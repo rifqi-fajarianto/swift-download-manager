@@ -40,8 +40,17 @@ QString now_stamp() {
     return QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
 }
 
-const char* const kCategoryNames[] = {"Video",      "Audio",  "Compressed",
-                                      "Document",   "Application", "Misc"};
+struct CategoryEntry {
+    const char* label;
+    const char* icon;
+};
+
+const CategoryEntry kCategories[] = {
+    {"Video", ":/icons/video.svg"},           {"Audio", ":/icons/music.svg"},
+    {"Compressed", ":/icons/compressed.svg"}, {"Document", ":/icons/document.svg"},
+    {"Application", ":/icons/applications.svg"},
+    {"Misc", ":/icons/other.svg"},
+};
 
 }  // namespace
 
@@ -131,20 +140,25 @@ void MainWindow::build_body() {
 
     auto* all = new QTreeWidgetItem(tree_, {QStringLiteral("All Downloads")});
     all->setData(0, Qt::UserRole, QString());
-    for (const char* name : kCategoryNames) {
-        auto* child = new QTreeWidgetItem(all, {QString::fromLatin1(name)});
-        child->setData(0, Qt::UserRole, QString::fromLatin1(name));
+    all->setIcon(0, tinted_icon(QStringLiteral(":/icons/folder.svg"), colors::kActionBlue));
+    for (const CategoryEntry& entry : kCategories) {
+        auto* child = new QTreeWidgetItem(all, {QString::fromLatin1(entry.label)});
+        child->setData(0, Qt::UserRole, QString::fromLatin1(entry.label));
+        child->setIcon(0, tinted_icon(QString::fromLatin1(entry.icon), colors::kActionBlue));
     }
     all->setExpanded(true);
 
     struct ViewEntry {
         const char* label;
         const char* key;
+        const char* icon;
     };
     for (const ViewEntry& entry :
-         {ViewEntry{"Complete", "__complete"}, ViewEntry{"Incomplete", "__incomplete"}}) {
+         {ViewEntry{"Complete", "__complete", ":/icons/complete.svg"},
+          ViewEntry{"Incomplete", "__incomplete", ":/icons/alert.svg"}}) {
         auto* item = new QTreeWidgetItem(tree_, {QString::fromLatin1(entry.label)});
         item->setData(0, Qt::UserRole, QString::fromLatin1(entry.key));
+        item->setIcon(0, tinted_icon(QString::fromLatin1(entry.icon), colors::kActionBlue));
     }
     tree_->setCurrentItem(all);
     connect(tree_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::on_tree_selection);
