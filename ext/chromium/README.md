@@ -69,6 +69,11 @@ downloader does not retain.
 ## Current scope and limitations
 
 - HTTP and HTTPS links/pages; automatic interception is enabled by default.
+- Every handoff goes through SwiftDM's Download Confirmation window (0.18.0):
+  the app probes the URL without touching the list or database, then the user
+  picks Download Now, Cancel (nothing is stored) or Add to queue (placeholder).
+  If the main window is hidden, SwiftDM shows it so the confirmation is
+  visible.
 - The toolbar icon mirrors that switch: colored while automatic handoff is on,
   grayscale while it is off (the popup and the worker both apply it, so it also
   survives a worker restart). The PNGs in `icons/` are rendered from
@@ -99,7 +104,7 @@ downloader does not retain.
   access is already declared in the manifest.
 - Browser page URL and title are shown in download Properties and persisted in
   SwiftDM's SQLite history along with POST bodies and forwarded headers; the
-  history list is not restored into the GUI yet.
+  history list is restored at startup.
 - Detected HLS playlists are sent as ordinary URLs: SwiftDM fetches the
   playlist and its segments itself. Encrypted (`EXT-X-KEY`) playlists are
   refused by the app with a clear error.

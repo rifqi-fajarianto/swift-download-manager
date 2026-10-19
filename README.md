@@ -14,6 +14,9 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
       `docs/spec/06-parity-checklist.md`)
 - [x] Chromium integration — development preview (`ext/chromium/`)
 - [x] Milestone 4 — packaging: CMake install rules + `.deb` (CPack)
+- [x] 0.17.0 — restore the download history at startup
+- [x] 0.18.0 — confirm every download before it starts (category/location,
+      Download Now / Cancel)
 
 ## Versioning
 

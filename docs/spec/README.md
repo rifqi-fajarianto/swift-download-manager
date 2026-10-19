@@ -26,12 +26,15 @@ reverse-engineering evidence before any implementation code. Rules:
 
 ## Status
 
-Milestones 2 and 3 implemented: engine core (`src/engine`, `src/net`,
-`src/store`) with segmented downloads, resume state, bandwidth limits, retries,
-category routing and INI settings; headless CLI (`swiftdm get`); and the Qt6
-Widgets GUI (`src/ui`) with main window, per-download worker tasks, download
-window (segment bar + connections table), settings dialog, tray icon and
-completion/error dialogs. Verified by CLI, integration tests and a headless
-icon-rendering test (see CHANGELOG.md 0.2.0 / 0.3.0). Remaining v1 gaps
-(history persistence, properties/log, passwords UI, queueing) are tracked in
-`06-parity-checklist.md`.
+Everything through milestone 4 is implemented: engine core (`src/engine`,
+`src/net`, `src/store`) with segmented downloads, resume state, bandwidth
+limits, retries, category routing and INI settings; headless CLI
+(`swiftdm get`); the Qt6 Widgets GUI (`src/ui`) with main window, per-download
+worker tasks, download window (segment bar + connections table), settings
+dialog, tray icon and completion/error dialogs; CMake install rules and a
+`.deb` package. The download list is restored from SQLite at startup (0.17.0),
+and every transfer — manual or browser-sent — is confirmed before it starts,
+with category and location overrides (0.18.0). Verified by CLI, integration
+tests and a headless icon-rendering test (see CHANGELOG.md). Remaining gaps
+(per-download log file and editable URL, passwords UI, queue scheduling,
+Firefox extension) are tracked in `06-parity-checklist.md`.

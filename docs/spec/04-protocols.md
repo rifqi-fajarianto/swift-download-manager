@@ -100,7 +100,9 @@ is optional, and only a user gesture may ask for it: the popup's "Send browser
 cookies" switch requests it for the current site, the context-menu action for
 its target origin, and later automatic handoffs reuse the grant. Scoped cookie
 attributes are passed to libcurl so cookies follow domain/path/secure rules
-across redirects.
+across redirects. `addDownload` does not start a transfer directly: the app
+probes the URL and shows the Download Confirmation window (raising the main
+window when hidden) before the transfer starts (0.18.0).
 The server rejects unsafe URLs, malformed messages, oversized frames, bodies or
 headers over the caps above, and cookies scoped to a different host. Firefox
 support and a production extension-store ID pin remain future work. The original
