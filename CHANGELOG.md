@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.1 — 2026-10-19
+
+Fix the download progress window growing with the URL length.
+
+- The per-download window had no fixed default size: the rich-text URL label
+  reported its full text width as the layout minimum, so a long URL forced the
+  window wider. It now uses a fixed default size (560×420, minimum 420×300)
+  regardless of the URL, file name, or active tab.
+- The URL line elides in the middle to fit the window and keeps the complete
+  URL in its tooltip (and in the link target). Resizing the window re-elides.
+- The confirm-download prompt and the download-error notification had the same
+  problem: an unbroken URL cannot wrap, so it widened those windows too. The
+  confirm prompt elides the URL (and a very long file name) with the full text
+  in the tooltip; the error notification shows an elided URL with the complete
+  URL behind **Show Details…**.
+
 ## 0.11.0 — 2026-10-19
 
 Extra protocols and adaptive media: FTP, HLS, and paired video/audio handoff.

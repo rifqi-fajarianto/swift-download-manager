@@ -38,6 +38,9 @@ Layout (from `main-window.png`):
    resolves the filename/size, and adds it to the table (status Downloading).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
+   - Fixed default size (560×420, minimum 420×300): the window never grows with
+     the URL length. The URL line is elided in the middle and keeps the full
+     URL in its tooltip and link.
    - Tabs: `Download`, `Options`, `Connections`.
    - Download tab: URL, Status, File Size, Downloaded (bytes + %), Bandwidth,
      Remaining Time, Resumable (Yes/No), main progress bar, segment progress

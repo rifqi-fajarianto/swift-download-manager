@@ -49,11 +49,18 @@ class DownloadWindow : public QDialog {
     QWidget* build_connections_tab();
     void refresh();
     void refresh_connections();
+    // Shows the URL as an elided link so its length can never widen the
+    // window; the full URL stays in the href and the tooltip.
+    void update_url_label();
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override;
 
     DownloadModel* model_ = nullptr;
     int item_id_ = 0;
     swiftdm::Settings settings_;
 
+    QString url_text_;
     QLabel* url_label_ = nullptr;
     QLabel* status_label_ = nullptr;
     QLabel* size_label_ = nullptr;

@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QJsonArray>
@@ -649,7 +650,10 @@ void MainWindow::show_error_dialog(const QString& url, const QString& error) {
     box->setWindowTitle(tr("Download Error"));
     box->setIcon(QMessageBox::Critical);
     box->setText(tr("Error : %1").arg(error));
-    box->setInformativeText(url);
+    // A long URL must not widen the notification: show an elided form and keep
+    // the complete URL behind "Show Details…".
+    box->setInformativeText(QFontMetrics(box->font()).elidedText(url, Qt::ElideMiddle, 480));
+    box->setDetailedText(url);
     box->addButton(QMessageBox::Close);
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());

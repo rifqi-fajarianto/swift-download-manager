@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QFileDialog>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -11,6 +12,8 @@
 #include <QPainter>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -26,6 +29,16 @@
 namespace swiftdm::ui {
 
 namespace {
+
+// Fixed default size for the progress window: independent of the URL length,
+// the file name, or the current tab (docs/spec/01-product.md §3.2).
+constexpr int kDefaultWindowWidth = 560;
+constexpr int kDefaultWindowHeight = 420;
+constexpr int kMinWindowWidth = 420;
+constexpr int kMinWindowHeight = 300;
+constexpr int kMinUrlLabelWidth = 120;
+// Dialog chrome around the link row (window/tab margins, icon, spacings).
+constexpr int kUrlLabelChrome = 80;
 
 QString format_bytes_q(quint64 bytes) {
     return QString::fromStdString(swiftdm::format_bytes(bytes, 3));
@@ -104,7 +117,8 @@ DownloadWindow::DownloadWindow(DownloadModel* model, int item_id,
       item_id_(item_id),
       settings_(std::move(settings)) {
     setAttribute(Qt::WA_DeleteOnClose);
-    resize(560, 420);
+    setMinimumSize(kMinWindowWidth, kMinWindowHeight);
+    resize(kDefaultWindowWidth, kDefaultWindowHeight);
 
     auto* tabs = new QTabWidget(this);
     tabs->addTab(build_download_tab(), tr("Download"));
@@ -129,6 +143,10 @@ QWidget* DownloadWindow::build_download_tab() {
     url_label_->setOpenExternalLinks(true);
     url_label_->setTextInteractionFlags(Qt::TextBrowserInteraction);
     url_label_->setWordWrap(false);
+    // A long URL must not drive the window width: the label ignores its own
+    // size hint horizontally and update_url_label() elides the shown text.
+    url_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    url_label_->setMinimumWidth(0);
     auto* url_row = new QHBoxLayout;
     auto* link_icon = new QLabel(page);
     link_icon->setPixmap(
@@ -299,7 +317,8 @@ void DownloadWindow::refresh() {
     const QString title =
         item->file_name.isEmpty() ? tr("Download") : item->file_name;
     setWindowTitle(QString("%1 - %2").arg(download_status_text(*item), title));
-    url_label_->setText(QString("<a href=\"%1\">%1</a>").arg(item->url.toHtmlEscaped()));
+    url_text_ = item->url;
+    update_url_label();
     status_label_->setText(download_status_text(*item));
     size_label_->setText(item->size > 0 ? format_bytes_q(item->size) : tr("Unknown"));
     downloaded_label_->setText(
@@ -339,6 +358,27 @@ void DownloadWindow::refresh() {
         referer_edit_->setText(task ? task->options().referer : QString());
     }
     refresh_connections();
+}
+
+void DownloadWindow::update_url_label() {
+    if (url_text_.isEmpty()) {
+        url_label_->clear();
+        url_label_->setToolTip(QString());
+        return;
+    }
+    const QFontMetrics metrics(url_label_->font());
+    // Derived from the dialog width so the first elide already fits the default
+    // window (the label itself has no meaningful width before the first show).
+    const int available = std::max(kMinUrlLabelWidth, width() - kUrlLabelChrome);
+    const QString display = metrics.elidedText(url_text_, Qt::ElideMiddle, available);
+    url_label_->setText(QStringLiteral("<a href=\"%1\">%2</a>")
+                            .arg(url_text_.toHtmlEscaped(), display.toHtmlEscaped()));
+    url_label_->setToolTip(url_text_);
+}
+
+void DownloadWindow::resizeEvent(QResizeEvent* event) {
+    QDialog::resizeEvent(event);
+    update_url_label();
 }
 
 void DownloadWindow::refresh_connections() {
