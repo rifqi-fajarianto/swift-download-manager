@@ -32,7 +32,9 @@ Layout (from `main-window.png`):
 - **History restore**: at startup the table is rebuilt from SQLite with every
   row (Complete, Paused, Error). Rows left `Downloading`/`Queued` by a previous
   quit are shown as `Paused` and never resume by themselves; the user presses
-  Resume. Deleting a row removes it from the database permanently.
+  Resume. Deleting a row removes it from the database permanently and deletes
+  its temp workspace (the partial `.part` file and `segments.json`); see
+  `02-data-model.md` §2.
 - Window title: application name + version.
 
 ## 3. Core user flows

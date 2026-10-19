@@ -113,6 +113,28 @@ preserving the old layout.
 - Final placement: file is moved/created in `folderpath`; with category
   folders enabled, a per-category subfolder is used
   (e.g. `~/Downloads/Video/`).
+- Temp workspace lifecycle (SwiftDM): `make_workspace()` creates
+  `<temp_dir>/download-<hash(url + filename)>/` holding `<filename>.part` and
+  `segments.json`; the default `temp_dir` is `~/.local/share/swiftdm/tmp`
+  (`TempDirectory` setting). The workspace lives only as long as the download
+  item:
+  - **Kept** on pause, failure or cancel while the row exists — that is the
+    resume data. Quitting the app (or a crash) keeps it too; the row restores
+    as `Paused` and the path comes from `temppath`
+    (`find_existing_workspace()` falls back to matching `segments.json`'s URL
+    for older rows without it).
+  - **Removed** on completion: the part file is moved to the final name and
+    the whole workspace directory is deleted (`remove_all(ws.dir)`) in every
+    transfer path (single stream, segmented, streaming, FTP, HLS).
+  - **Removed** when the user deletes the list row
+    (`MainWindow::remove_row_with_cleanup`): the SQLite row is deleted as
+    well, and the workspace is deleted immediately for an inactive task or
+    once the worker acknowledges the cancel of a running one. Restored rows
+    re-seed their workspace, so Delete cleans them too.
+  - A cancelled confirmation dialog creates no workspace (probe only).
+  - Known race: deleting a running item and quitting before its
+    `finished(Canceled)` signal is processed leaves one `download-*`
+    directory behind, because neither cleanup path runs.
 
 SwiftDM design decision (documented divergence): our state file is
 `segments.json` (schema below) — the original's binary `segments.bin` layout is

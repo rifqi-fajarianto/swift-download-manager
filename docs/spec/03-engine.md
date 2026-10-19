@@ -49,6 +49,11 @@ are our own choices where the original is UNKNOWN (E23).
   override (E8, E22).
 - Destination: `folderpath` + `filename`, with per-category subfolders when
   `CategoryFolders` is enabled (E8/E19).
+- Temp workspace lifecycle: one directory per download
+  (`download-<hash>/` with `<filename>.part` and `segments.json`) is kept for
+  resume while the item exists (pause, failure, quit) and removed on
+  completion or when the user deletes the list row; layout and cleanup paths
+  are in `02-data-model.md` §2.
 
 ## 4. Rate limiting
 
