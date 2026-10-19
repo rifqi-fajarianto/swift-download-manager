@@ -33,6 +33,7 @@ CREATE TABLE "downloads" (
     "urla"            TEXT,
     "postdata"        TEXT,
     "folderpath"      TEXT,
+    "folderexact"     NUMERIC, -- 1: folderpath is the exact destination (0: base + category)
     "temppath"        TEXT,
     "groupid"         TEXT,   -- adaptive pair token (video + audio handoff)
     "done"            NUMERIC, -- bytes already written (restore/resume progress)
@@ -72,6 +73,7 @@ Field semantics:
 | `urla` | original/alternate URL (used by resume when server file changed) |
 | `postdata` | POST body |
 | `folderpath` | destination directory for this download |
+| `folderexact` | 1 when `folderpath` already is the exact destination (the confirmation dialog resolves the category folder itself); 0/NULL for older rows where the category subfolder is appended on restore. Added by SwiftDM 0.18.0 (additive `ALTER TABLE`). |
 | `temppath` | temporary directory for this download |
 | `groupid` | adaptive pair token shared by the video and audio halves of a browser handoff (empty otherwise) |
 | `done` | bytes already written; added by SwiftDM 0.17.0 (additive `ALTER TABLE`) for progress restore. Older rows read as 0 and fall back to `segments.json`. |
@@ -92,6 +94,12 @@ Completed rows store the actual saved basename, so a file saved as
 `name (1).ext` is found again. If the file is gone, the row shows
 `Complete (file missing)`, a startup summary lists it, and right-click Open File
 explains that the file was deleted or moved (with Open File Location).
+
+Since 0.18.0 the confirmation dialog resolves the save folder (category folder
+by default, custom override possible) before a row exists, and `folderpath`
+stores that exact folder (`folderexact = 1`). Rows written by earlier releases
+keep `folderexact = 0`; on restore the category subfolder is appended for them,
+preserving the old layout.
 
 - Partial content lives under the *temp path* (`%APPDATA%\Roaming\NeatDM\` on
   Windows; SwiftDM: `~/.local/share/swiftdm/tmp/<id>/`).

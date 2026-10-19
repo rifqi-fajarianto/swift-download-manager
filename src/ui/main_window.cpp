@@ -108,6 +108,9 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     record.folder_path = item.dest_path.isEmpty()
                              ? item.output_dir.toStdString()
                              : QFileInfo(item.dest_path).absolutePath().toStdString();
+    // The list now stores the exact folder: the confirmation dialog resolves
+    // the category subfolder before the item exists.
+    record.folder_exact = true;
     // The saved name can differ from the requested one ("name (1).ext"), so a
     // completed download stores the name the file actually has on disk.
     if (item.is_complete() && !item.dest_path.isEmpty()) {
@@ -352,6 +355,9 @@ void MainWindow::restore_history() {
             }
             // Restored rows are never started automatically; the user resumes.
             const DownloadTask::Options options = options_from_record(record);
+            // Rows written before `folderexact` stored the base folder; the
+            // rebuilt options carry the exact folder (category included).
+            item.output_dir = options.output_dir;
             auto* task = new DownloadTask(settings_, options, model_);
             task->restore_progress(item.done, item.size, record.resumable);
             task->set_workspace_dir(item.temp_path);
@@ -382,19 +388,19 @@ DownloadTask::Options MainWindow::options_from_record(
     const swiftdm::HistoryStore::Record& record) const {
     DownloadTask::Options options;
     options.url = QString::fromStdString(record.url);
-    options.output_dir = QString::fromStdString(record.folder_path);
-    // folder_path is the folder the file was saved to (category subfolder
-    // included). The engine appends the category folder again, so hand it the
-    // base directory instead.
-    if (settings_.category_folders && !record.category.empty()) {
+    QString folder = QString::fromStdString(record.folder_path);
+    if (folder.isEmpty()) folder = QString::fromStdString(settings_.download_dir);
+    // Rows written before the `folderexact` column stored the base folder
+    // only; their category subfolder still has to be appended on restore.
+    if (!record.folder_exact && settings_.category_folders && !record.category.empty()) {
         const QString suffix = QLatin1Char('/') + QString::fromStdString(record.category);
-        if (options.output_dir.endsWith(suffix)) {
-            options.output_dir.chop(suffix.size());
-        }
+        if (!folder.endsWith(suffix)) folder += suffix;
     }
-    if (options.output_dir.isEmpty()) {
-        options.output_dir = QString::fromStdString(settings_.download_dir);
-    }
+    options.output_dir = QDir::cleanPath(folder);
+    // The rebuilt folder already includes the category: the engine must not
+    // append it a second time.
+    options.apply_category_folder = false;
+    options.category = QString::fromStdString(record.category);
     options.filename = QString::fromStdString(record.filename);
     options.user_agent = QString::fromStdString(record.user_agent);
     options.connections = record.connections;
@@ -600,20 +606,17 @@ void MainWindow::on_new_url() {
 }
 
 void MainWindow::add_download(const QString& url) {
+    DownloadTask::Options options;
+    options.url = url;
+    options.output_dir = QString::fromStdString(settings_.download_dir);
+
     DownloadItem item;
     item.url = url;
     item.file_name = QString::fromStdString(swiftdm::file_name_from_url(url.toStdString()));
     item.category =
         QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
-    item.output_dir = QString::fromStdString(settings_.download_dir);
-    item.last_try = now_stamp();
-    item.last_try_epoch = swiftdm::unix_now();
-    item.state = DownloadItem::State::Probing;
-    const int row = model_->add_item(item);
-    if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
-        added->history_id = history_.insert(history_record_for(*added, nullptr));
-    }
-    start_probe_at_row(row);
+    item.output_dir = options.output_dir;
+    probe_and_confirm(std::move(options), std::move(item));
 }
 
 void MainWindow::add_browser_download(const QJsonObject& data) {
@@ -671,7 +674,7 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
         options.cookies.push_back(std::move(value));
     }
 
-    qInfo() << "browser integration: adding download" << options.url;
+    qInfo() << "browser integration: confirming download" << options.url;
     DownloadItem item;
     item.url = options.url;
     item.file_name = options.filename.isEmpty()
@@ -681,19 +684,88 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     item.category = QString::fromStdString(
         swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = options.output_dir;
-    item.last_try = now_stamp();
-    item.last_try_epoch = swiftdm::unix_now();
-    item.state = DownloadItem::State::Queued;
     item.page_url = data.value(QStringLiteral("pageUrl")).toString();
     item.page_title = data.value(QStringLiteral("pageTitle")).toString();
     // Adaptive video+audio handoffs share a token (validated by the protocol
     // layer) so both rows can be recognized as one pair.
     item.group = data.value(QStringLiteral("group")).toString();
+    probe_and_confirm(std::move(options), std::move(item));
+}
+
+void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem item) {
+    item.url = options.url;
+    DownloadTask::Options probe_options = options;
+    // The confirmation shows the name the server provides. Extension-provided
+    // names stay as a fallback for servers without Content-Disposition.
+    probe_options.filename.clear();
+
+    auto* probe = new DownloadTask(settings_, probe_options, this);
+    connect(probe, &DownloadTask::probe_completed, this,
+            [this, probe, options, item](bool ok, const QString& error) {
+                const QString probed_name = probe->resolved_filename();
+                const quint64 probed_size = probe->resolved_size();
+                const bool resumable = probe->resumable();
+                probe->deleteLater();
+                if (!ok) {
+                    if (!error.isEmpty()) show_error_dialog(options.url, error, item.page_url);
+                    return;
+                }
+
+                QString name = QString::fromStdString(
+                    swiftdm::sanitize_filename(probed_name.toStdString()));
+                if (name.isEmpty()) {
+                    name = QString::fromStdString(
+                        swiftdm::sanitize_filename(item.file_name.toStdString()));
+                }
+                if (name.isEmpty()) name = QStringLiteral("download.bin");
+
+                DownloadItem draft = item;
+                draft.url = options.url;
+                draft.file_name = name;
+                draft.category = QString::fromStdString(
+                    swiftdm::category_folder_for(name.toStdString()));
+                draft.size = probed_size;
+                draft.resumable = resumable;
+                draft.output_dir = QString::fromStdString(settings_.download_dir);
+                draft.last_try = now_stamp();
+                draft.last_try_epoch = swiftdm::unix_now();
+                draft.state = DownloadItem::State::Queued;
+
+                // A browser handoff can arrive while the app sits in the
+                // notification area; the confirmation must still be visible.
+                if (isHidden()) {
+                    showNormal();
+                    raise();
+                    activateWindow();
+                }
+                ConfirmDownloadDialog dialog(name, probed_size, options.url,
+                                             QString::fromStdString(settings_.download_dir),
+                                             settings_.category_folders, this);
+                if (dialog.exec() != QDialog::Accepted) {
+                    // Cancel: no list row and no database entry was created.
+                    return;
+                }
+
+                draft.category = dialog.category();
+                draft.output_dir = dialog.location();
+                DownloadTask::Options start_options = options;
+                start_options.filename = name;
+                start_options.category = draft.category;
+                start_options.apply_category_folder = false;
+                start_options.output_dir = draft.output_dir;
+                start_confirmed_download(std::move(draft), std::move(start_options));
+            });
+    probe->start_probe();
+}
+
+void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options) {
     const int row = model_->add_item(item);
-    if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
+    DownloadItem* added = model_->item_at(row);
+    if (!added) return;
+    if (history_.is_open()) {
         added->history_id = history_.insert(history_record_for(*added, &options));
     }
-    const int id = model_->item_at(row)->id;
+    const int id = added->id;
     start_task_at_row(row, &options);
     open_download_window(id);
 }
@@ -714,16 +786,19 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     } else {
         options.url = item->url;
         options.output_dir = item->output_dir;
+        options.category = item->category;
         options.connections = 0;   // 0 = settings
         options.limit_kbps = 0;    // 0 = settings
     }
-    // The Options tab shows the final folder (category included), while the
-    // engine appends the category subfolder itself. Strip it once so resuming
-    // does not create "Video/Video".
-    if (settings_.category_folders && !item->category.isEmpty()) {
-        const QString suffix = QLatin1Char('/') + item->category;
-        if (options.output_dir.endsWith(suffix)) options.output_dir.chop(suffix.size());
+    if (options.output_dir.isEmpty()) {
+        options.output_dir = QString::fromStdString(settings_.download_dir);
+        if (settings_.category_folders && !options.category.isEmpty()) {
+            options.output_dir += QLatin1Char('/') + options.category;
+        }
     }
+    // The GUI always resolves the folder (category included) before the task
+    // starts, so the engine must not append a category subfolder again.
+    options.apply_category_folder = false;
 
     auto* task = new DownloadTask(settings_, options, model_);
     item->task = task;
@@ -768,84 +843,6 @@ void MainWindow::persist_progress(DownloadTask* task) {
     if (now - last < 5000) return;
     last_progress_save_ms_.insert(item->history_id, now);
     history_.update_progress(item->history_id, item->done, item->size);
-}
-
-void MainWindow::start_probe_at_row(int row) {
-    DownloadItem* item = model_->item_at(row);
-    if (!item) return;
-
-    if (item->task) {
-        item->task->deleteLater();
-        item->task = nullptr;
-    }
-
-    DownloadTask::Options options;
-    options.url = item->url;
-    options.output_dir = item->output_dir;
-
-    auto* task = new DownloadTask(settings_, options, model_);
-    item->task = task;
-    item->state = DownloadItem::State::Probing;
-    item->last_try = now_stamp();
-    item->last_try_epoch = swiftdm::unix_now();
-
-    connect(task, &DownloadTask::probed, this, [this, task] {
-        model_->task_probed(task);
-        update_status_bar();
-    });
-    connect(task, &DownloadTask::probe_completed, this,
-            [this, task](bool ok, const QString& error) { on_probe_completed(task, ok, error); });
-
-    model_->touch_row(row);
-    task->start_probe();
-    update_status_bar();
-}
-
-void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& error) {
-    const int row = model_->row_for_task(task);
-    if (row < 0) {
-        // The row was removed while the probe was still running.
-        task->deleteLater();
-        return;
-    }
-    DownloadItem* item = model_->item_at(row);
-    if (!ok) {
-        if (error.isEmpty()) return;  // canceled probe; the row is already handled
-        item->state = DownloadItem::State::Error;
-        item->error = error;
-        if (item->history_id > 0 && history_.is_open()) {
-            history_.update(item->history_id, history_record_for(*item, &task->options()));
-        }
-        model_->touch_row(row);
-        show_error_dialog(item->url, error, item->page_url);
-        update_status_bar();
-        return;
-    }
-
-    // Confirmation step: show the resolved file name and size first.
-    if (item->history_id > 0 && history_.is_open()) {
-        history_.update(item->history_id, history_record_for(*item, &task->options()));
-    }
-    const QString name = item->file_name;
-    const quint64 size = item->size;
-    const QString url = item->url;
-    const int id = item->id;
-    const DownloadTask::Options options = task->options();
-
-    ConfirmDownloadDialog dialog(name, size, url, this);
-    if (dialog.exec() != QDialog::Accepted) {
-        if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
-        windows_.remove(id);
-        if (item->history_id > 0 && history_.is_open()) {
-            history_.remove(item->history_id);
-        }
-        model_->remove_row(row);
-        task->deleteLater();
-        update_status_bar();
-        return;
-    }
-    start_task_at_row(row, &options);
-    open_download_window(id);
 }
 
 void MainWindow::on_task_finished(DownloadTask* task, int status, const QString& path,
@@ -1365,10 +1362,15 @@ void MainWindow::open_download_window(int id) {
             if (!item || !item->task) return;
             const DownloadTask::Options& options = item->task->options();
             item->output_dir = options.output_dir;
+            if (!options.category.isEmpty()) {
+                item->category = options.category;
+            }
             if (!options.filename.isEmpty()) {
                 item->file_name = options.filename;
+            }
+            if (item->category.isEmpty()) {
                 item->category = QString::fromStdString(
-                    swiftdm::category_folder_for(options.filename.toStdString()));
+                    swiftdm::category_folder_for(item->file_name.toStdString()));
             }
             if (item->history_id > 0 && history_.is_open()) {
                 history_.update(item->history_id, history_record_for(*item, &options));

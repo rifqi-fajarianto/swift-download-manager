@@ -23,6 +23,10 @@ class DownloadTask : public QObject {
         QString url;
         QString output_dir;  // empty = settings default
         QString filename;    // empty = from server/URL
+        QString category;    // metadata for the history/category tree
+        // True appends the extension-derived category folder (legacy). The GUI
+        // uses an exact output_dir chosen in the confirmation dialog.
+        bool apply_category_folder = true;
         QString referer;
         std::vector<swiftdm::HttpCookie> cookies;
         QString user_agent;

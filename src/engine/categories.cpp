@@ -14,6 +14,19 @@ bool in(const std::set<std::string>& set, const std::string& value) {
 
 }  // namespace
 
+const std::vector<std::string>& category_names() {
+    static const std::vector<std::string> kNames = {
+        "Video", "Audio", "Compressed", "Document", "Application", "Misc"};
+    return kNames;
+}
+
+bool is_category_name(std::string_view name) {
+    for (const std::string& known : category_names()) {
+        if (name == known) return true;
+    }
+    return false;
+}
+
 std::string category_folder_for(const std::string& filename) {
     const std::string ext = extension_of(filename);
     if (ext.empty()) return "Misc";

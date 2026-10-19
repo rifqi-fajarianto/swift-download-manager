@@ -14,6 +14,10 @@ struct DownloadRequest {
     std::string url;
     std::string output_dir;        // empty = settings.download_dir
     std::string filename;          // empty = from Content-Disposition / URL
+    // True appends the extension-derived category folder under output_dir
+    // (legacy behavior). The GUI passes the exact folder chosen in the
+    // confirmation dialog and clears this flag.
+    bool apply_category_folder = true;
     int connections = 0;           // 0 = settings.max_connections
     int bandwidth_limit_kbps = 0;  // 0 = settings.bandwidth_limit_kbps (itself 0 = unlimited)
     bool resume = true;

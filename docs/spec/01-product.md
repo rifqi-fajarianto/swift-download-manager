@@ -38,8 +38,13 @@ Layout (from `main-window.png`):
 ## 3. Core user flows
 
 1. **New download (manual)**: `New URL` toolbar button opens a small dialog
-   with a URL field and `Download`/`Cancel`. On accept, the app probes the URL,
-   resolves the filename/size, and adds it to the table (status Downloading).
+   with a URL field and `Download`/`Cancel`. On accept, the app probes the URL
+   (no list row, no database entry), then shows the *Download Confirmation*
+   window: full URL, server-resolved file name and size, a `Category` dropdown
+   (file-type default, user overridable) and `Location` (category folder by
+   default, user overridable). `Download Now` adds the item and starts the
+   transfer; `Cancel` leaves no trace; `Add to queue` is a placeholder until
+   queue scheduling exists (0.18.0).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
    - Fixed default size (560×420, minimum 420×300): the window never grows with

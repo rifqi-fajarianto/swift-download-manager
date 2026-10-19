@@ -167,6 +167,7 @@ void DownloadTask::run() {
     request.url = options_.url.toStdString();
     request.output_dir = options_.output_dir.toStdString();
     request.filename = options_.filename.toStdString();
+    request.apply_category_folder = options_.apply_category_folder;
     request.referer = options_.referer.toStdString();
     request.cookies = options_.cookies;
     request.user_agent = options_.user_agent.toStdString();

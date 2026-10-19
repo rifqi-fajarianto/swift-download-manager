@@ -46,6 +46,8 @@ int main() {
     record.group_id = "pair-1f2e3d4c";
     record.file_size = 1048576;
     record.done = 262144;
+    record.folder_path = "/home/user/Downloads/Compressed";
+    record.folder_exact = true;
     record.temp_path = "/tmp/swiftdm/download-abc";
     record.post_data = "q=1";
     record.headers = {"x-api-key: secret"};
@@ -64,6 +66,8 @@ int main() {
     check(loaded.first_try > 0 && loaded.last_try > 0, "timestamps are filled in");
     check(loaded.done == record.done, "progress round-trips");
     check(loaded.temp_path == record.temp_path, "temp path round-trips");
+    check(loaded.folder_path == record.folder_path && loaded.folder_exact,
+          "exact destination folder round-trips");
 
     check(store.update_progress(id, 524288, 0, &error), "progress update succeeds");
     check(store.fetch(id, &loaded, &error) && loaded.done == 524288 &&
@@ -153,10 +157,13 @@ int main() {
     check(legacy_store.open(legacy_path, &error), "an older database opens and is migrated");
     check(legacy_store.fetch(1, &loaded, &error) && loaded.done == 5000,
           "completed legacy rows get their progress backfilled");
+    check(loaded.folder_exact == false,
+          "legacy rows keep the base-folder semantics after migration");
     const int64_t legacy_id = legacy_store.insert(record, &error);
     check(legacy_id > 0, "the migrated database accepts new rows");
     check(legacy_store.fetch(legacy_id, &loaded, &error) &&
-              loaded.group_id == record.group_id && loaded.done == record.done,
+              loaded.group_id == record.group_id && loaded.done == record.done &&
+              loaded.folder_exact,
           "the appended columns round-trip after migration");
 
     fs::remove_all(dir, ec);

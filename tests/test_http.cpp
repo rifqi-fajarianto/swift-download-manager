@@ -455,7 +455,41 @@ void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer&
     CHECK(file_matches(result.path, 300000));
 }
 
+void test_exact_folder_override(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    settings.category_folders = true;
+    settings.max_connections = 2;
+    DownloadEngine engine(settings);
+
+    // The confirmation dialog computes the category folder itself and passes
+    // the exact folder; the engine must not append the extension-derived one.
+    DownloadRequest exact;
+    exact.url = server.base_url() + "/file/65536";
+    exact.output_dir = dir + "/exact";
+    exact.apply_category_folder = false;
+    const auto exact_result = engine.run(exact);
+    CHECK(exact_result.status == DownloadResult::Status::Completed);
+    CHECK(exact_result.path.find("/exact/sample-65536.bin") != std::string::npos);
+    CHECK(exact_result.path.find("/Application/") == std::string::npos);
+    CHECK(file_matches(exact_result.path, 65536));
+
+    // Legacy callers (CLI, old rows) keep the appended category folder.
+    DownloadRequest legacy;
+    legacy.url = server.base_url() + "/file/65536";
+    legacy.output_dir = dir + "/legacy";
+    const auto legacy_result = engine.run(legacy);
+    CHECK(legacy_result.status == DownloadResult::Status::Completed);
+    CHECK(legacy_result.path.find("/legacy/Application/sample-65536.bin") !=
+          std::string::npos);
+}
+
 void test_categories() {
+    const std::vector<std::string>& names = category_names();
+    CHECK_EQ(names.size(), size_t(6));
+    CHECK_EQ(names.front(), std::string("Video"));
+    CHECK_EQ(names.back(), std::string("Misc"));
+    CHECK(is_category_name("Misc"));
+    CHECK(!is_category_name("misc"));
     CHECK_EQ(category_folder_for("movie.mkv"), std::string("Video"));
     CHECK_EQ(category_folder_for("song.mp3"), std::string("Audio"));
     CHECK_EQ(category_folder_for("archive.zip"), std::string("Compressed"));
@@ -495,6 +529,7 @@ int main() {
     test_browser_cookie_scope(dir + "/browser-cookie", server);
     test_download_segmented(dir + "/segmented", server);
     test_download_single_connection(dir + "/single", server);
+    test_exact_folder_override(dir + "/exact-folder", server);
     test_resume_after_pause(dir + "/resume", server);
     test_redirect(dir + "/redirect", server);
     test_forbidden(dir + "/forbidden", server);

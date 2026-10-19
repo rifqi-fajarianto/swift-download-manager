@@ -264,6 +264,9 @@ QWidget* DownloadWindow::build_options_tab() {
         if (!task || task->active()) return;
         DownloadTask::Options options = task->options();
         options.output_dir = dir_edit_->text().trimmed();
+        // The field shows the exact folder for this download; keep the engine
+        // from appending a category subfolder again.
+        options.apply_category_folder = false;
         options.filename = name_edit_->text().trimmed();
         options.connections = connections_spin_->value();
         options.limit_kbps = limit_spin_->value();
@@ -346,10 +349,11 @@ void DownloadWindow::refresh() {
 
     if (!active && dir_edit_->text().isEmpty()) {
         QString dir = item->output_dir;
-        if (dir.isEmpty()) dir = QString::fromStdString(settings_.download_dir);
-        if (settings_.category_folders && !item->category.isEmpty() &&
-            !dir.endsWith(QLatin1Char('/') + item->category)) {
-            dir += "/" + item->category;
+        if (dir.isEmpty()) {
+            dir = QString::fromStdString(settings_.download_dir);
+            if (settings_.category_folders && !item->category.isEmpty()) {
+                dir += QLatin1Char('/') + item->category;
+            }
         }
         dir_edit_->setText(dir);
         name_edit_->setText(item->file_name);

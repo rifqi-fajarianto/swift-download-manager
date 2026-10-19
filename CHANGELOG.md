@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.0 — 2026-10-19
+
+One confirmation window before every transfer.
+
+- Manual "New URL" and browser handoff both probe the URL first without
+  touching the list or the database, then show a Download Confirmation window
+  with the full URL, the server-provided file name and size, a Category
+  dropdown (extension-based default, e.g. Video, overridable) and a Location
+  field (category folder by default, overridable with Browse).
+- Buttons: **Download Now** inserts the row and starts the transfer;
+  **Cancel** leaves nothing behind (no list row, no history entry); **Add to
+  queue** is a visible placeholder until queue scheduling is implemented.
+- The chosen folder is saved exactly (new `folderexact` history column), so a
+  category/folder override survives a restart. Rows written before this
+  release keep their base folder plus appended category folder.
+- `DownloadRequest.apply_category_folder` lets the GUI pass a folder that
+  already includes the category; CLI and legacy callers are unchanged.
+- Backend tests cover the category list, the exact-folder override, and the
+  history migration.
+
 ## 0.17.0 — 2026-10-19
 
 The download list survives restarts.

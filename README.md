@@ -46,7 +46,7 @@ Install as a Debian package (recommended) or with CMake:
 
 ```
 cd build && cpack
-sudo apt install ./swiftdm_0.16.0_amd64.deb
+sudo apt install ./swiftdm_0.18.0_amd64.deb
 
 # or, without a package:
 sudo cmake --install build --prefix /usr/local

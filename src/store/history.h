@@ -28,6 +28,11 @@ class HistoryStore {
         std::string mime_type;
         std::string error_text;
         std::string folder_path;
+        // True when folder_path already is the exact destination folder (the
+        // confirmation dialog computes the category subfolder itself). False
+        // for rows written before this column existed: folder_path is then the
+        // base folder and the category subfolder is appended on restore.
+        bool folder_exact = false;
         std::string temp_path;
         std::string post_data;
         std::vector<std::string> headers;  // "Name: value" lines

@@ -58,9 +58,11 @@ class MainWindow : public QMainWindow {
     void update_status_bar();
     void add_download(const QString& url);
     void add_browser_download(const QJsonObject& data);
+    // Probes the URL (no list row, no database entry) and shows the download
+    // confirmation dialog. Only Download Now inserts the item and starts it.
+    void probe_and_confirm(DownloadTask::Options options, DownloadItem item);
+    void start_confirmed_download(DownloadItem item, DownloadTask::Options options);
     void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr);
-    void start_probe_at_row(int row);
-    void on_probe_completed(DownloadTask* task, bool ok, const QString& error);
     void open_download_window(int id);
     void on_task_finished(DownloadTask* task, int status, const QString& path,
                           const QString& error);

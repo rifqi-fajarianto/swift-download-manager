@@ -405,7 +405,7 @@ DownloadResult DownloadEngine::run(
 
     std::string out_dir =
         request.output_dir.empty() ? settings_.download_dir : request.output_dir;
-    if (settings_.category_folders) {
+    if (settings_.category_folders && request.apply_category_folder) {
         out_dir = (std::filesystem::path(out_dir) / category_folder_for(filename)).string();
     }
 
