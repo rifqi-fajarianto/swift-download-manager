@@ -24,6 +24,7 @@
 #include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTableView>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -34,6 +35,7 @@
 
 #include "core/util.h"
 #include "engine/categories.h"
+#include "engine/segment_plan.h"
 #include "swiftdm/version.h"
 #include "ui/add_download_dialog.h"
 #include "ui/browser_integration.h"
@@ -50,6 +52,15 @@ namespace {
 
 QString now_stamp() {
     return QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
+}
+
+QString stamp_from_unix(int64_t seconds) {
+    if (seconds <= 0) return {};
+    return QDateTime::fromSecsSinceEpoch(seconds).toString(QStringLiteral("MMM d HH:mm:ss"));
+}
+
+qint64 now_ms() {
+    return QDateTime::currentMSecsSinceEpoch();
 }
 
 struct CategoryEntry {
@@ -90,10 +101,19 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     record.group_id = item.group.toStdString();
     record.error_text = item.error.toStdString();
     record.file_size = item.size;
+    record.done = item.done;
     record.resumable = item.resumable;
+    record.temp_path = item.temp_path.toStdString();
+    record.last_try = item.last_try_epoch;
     record.folder_path = item.dest_path.isEmpty()
                              ? item.output_dir.toStdString()
                              : QFileInfo(item.dest_path).absolutePath().toStdString();
+    // The saved name can differ from the requested one ("name (1).ext"), so a
+    // completed download stores the name the file actually has on disk.
+    if (item.is_complete() && !item.dest_path.isEmpty()) {
+        const QString saved_name = QFileInfo(item.dest_path).fileName();
+        if (!saved_name.isEmpty()) record.filename = saved_name.toStdString();
+    }
     if (options) {
         record.user_agent = options->user_agent.toStdString();
         record.connections = options->connections;
@@ -106,6 +126,40 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
         }
     }
     return record;
+}
+
+// History "Downloading" rows are stale after a restart: no transfer runs.
+DownloadItem::State state_from_record(const swiftdm::HistoryStore::Record& record) {
+    if (record.status == "Complete") return DownloadItem::State::Complete;
+    if (record.status == "Paused") return DownloadItem::State::Paused;
+    if (record.status == "Error") return DownloadItem::State::Error;
+    return DownloadItem::State::Paused;
+}
+
+// Older rows have no temppath column value. The workspace directory name is a
+// hash of the effective URL and filename, so it can only be found by looking at
+// the candidates. Match the URL recorded inside segments.json only: guessing
+// from a same-named .part file could point Delete at another download.
+QString find_existing_workspace(const swiftdm::Settings& settings,
+                                const swiftdm::HistoryStore::Record& record) {
+    if (record.url.empty()) return {};
+    std::error_code ec;
+    const std::filesystem::path root(settings.temp_dir);
+    if (!std::filesystem::is_directory(root, ec)) return {};
+    for (std::filesystem::directory_iterator it(root, ec), end; !ec && it != end;
+         it.increment(ec)) {
+        std::error_code type_ec;
+        if (!it->is_directory(type_ec)) continue;
+        const std::string name = it->path().filename().string();
+        if (!swiftdm::starts_with(name, "download-")) continue;
+        swiftdm::TransferState state;
+        if (swiftdm::load_transfer_state((it->path() / "segments.json").string(), state,
+                                         nullptr) &&
+            state.url == record.url) {
+            return QString::fromStdString(it->path().string());
+        }
+    }
+    return {};
 }
 
 }  // namespace
@@ -157,10 +211,206 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
             [this] { update_status_bar(); });
     connect(model_, &QAbstractItemModel::dataChanged, this,
             [this] { update_status_bar(); });
+    restore_history();
     update_status_bar();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Pause every running transfer and wait for its worker so segments.json is
+    // written before the process goes away; the list then restores as Paused.
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item || !item->task) continue;
+        const bool was_active = item->task->active();
+        item->task->pause_and_wait();
+        if (was_active && (item->state == DownloadItem::State::Downloading ||
+                           item->state == DownloadItem::State::Probing)) {
+            item->state = DownloadItem::State::Paused;
+        }
+        if (!item->task->workspace_dir().isEmpty()) {
+            item->temp_path = item->task->workspace_dir();
+        }
+        // The worker's snapshot has the final byte count written by the engine
+        // (the last progressed() signal may still be queued). Completed rows
+        // already carry the full size, so do not lower their done count.
+        const DownloadTask::Snapshot snapshot = item->task->snapshot();
+        if (!item->is_complete() && snapshot.done > 0) {
+            item->done = snapshot.done;
+            if (snapshot.total > 0) item->size = snapshot.total;
+            item->percent = item->size > 0
+                                ? swiftdm::percent_of(item->done, item->size)
+                                : 0;
+        }
+        if (item->history_id > 0 && history_.is_open()) {
+            history_.update(item->history_id, history_record_for(*item, &item->task->options()));
+        }
+    }
+}
+
+void MainWindow::restore_history() {
+    if (!history_.is_open()) return;
+    std::vector<swiftdm::HistoryStore::Entry> entries;
+    std::string error;
+    if (!history_.load_all(&entries, &error)) {
+        qWarning() << "history: cannot restore list:" << QString::fromStdString(error);
+        return;
+    }
+
+    QStringList missing_files;
+    for (swiftdm::HistoryStore::Entry& entry : entries) {
+        swiftdm::HistoryStore::Record& record = entry.record;
+        // "Canceled" was a removal request in older builds; do not resurrect it.
+        if (record.status == "Canceled") {
+            history_.remove(entry.id);
+            continue;
+        }
+        DownloadItem item;
+        item.history_id = entry.id;
+        item.url = QString::fromStdString(record.url);
+        item.file_name = QString::fromStdString(record.filename);
+        if (item.file_name.isEmpty()) {
+            item.file_name =
+                QString::fromStdString(swiftdm::file_name_from_url(record.url));
+        }
+        item.category = QString::fromStdString(record.category);
+        if (item.category.isEmpty()) {
+            item.category = QString::fromStdString(
+                swiftdm::category_folder_for(item.file_name.toStdString()));
+            // Keep the row (and the options rebuilt from it) consistent with
+            // the category derived from the file name.
+            record.category = item.category.toStdString();
+        }
+        item.output_dir = QString::fromStdString(record.folder_path);
+        if (item.output_dir.isEmpty()) {
+            item.output_dir = QString::fromStdString(settings_.download_dir);
+            if (settings_.category_folders && !record.category.empty()) {
+                item.output_dir += QLatin1Char('/') + QString::fromStdString(record.category);
+            }
+        }
+        item.size = record.file_size;
+        item.done = record.done;
+        item.percent = record.file_size > 0
+                           ? swiftdm::percent_of(record.done, record.file_size)
+                           : 0;
+        item.state = state_from_record(record);
+        item.last_try_epoch = record.last_try;
+        item.last_try = stamp_from_unix(record.last_try);
+        item.added = stamp_from_unix(record.first_try);
+        item.error = QString::fromStdString(record.error_text);
+        item.page_url = QString::fromStdString(record.page_url);
+        item.page_title = QString::fromStdString(record.page_title);
+        item.group = QString::fromStdString(record.group_id);
+        item.resumable = record.resumable;
+        item.temp_path = QString::fromStdString(record.temp_path);
+
+        if (item.state == DownloadItem::State::Complete) {
+            item.done = item.size > 0 ? item.size : item.done;
+            item.percent = 100;
+            // The row stores the requested name; the file may have been saved
+            // with a unique suffix, so resolve it against the folder.
+            std::string folder = record.folder_path;
+            if (folder.empty()) {
+                folder = settings_.download_dir;
+                if (settings_.category_folders && !record.category.empty()) {
+                    folder += "/" + record.category;
+                }
+            }
+            const std::string resolved = swiftdm::resolve_existing_file(
+                folder, item.file_name.toStdString(), record.last_try);
+            item.dest_path = QString::fromStdString(resolved);
+            item.file_missing = resolved.empty();
+            if (item.file_missing) {
+                item.dest_path =
+                    QDir(QString::fromStdString(folder)).filePath(item.file_name);
+                missing_files << item.dest_path;
+            } else {
+                item.file_name = QFileInfo(item.dest_path).fileName();
+                if (item.size == 0) {
+                    item.size = static_cast<quint64>(QFileInfo(item.dest_path).size());
+                    item.done = item.size;
+                }
+            }
+        } else {
+            // Keep the temp workspace for the Properties dialog and resume.
+            if (item.temp_path.isEmpty()) {
+                item.temp_path = find_existing_workspace(settings_, record);
+            }
+            // The segments file knows how much data is really on disk (the DB
+            // checkpoint can be a few seconds behind after a hard kill).
+            if (!item.temp_path.isEmpty()) {
+                swiftdm::TransferState state;
+                const std::string state_path =
+                    QDir(item.temp_path)
+                        .filePath(QStringLiteral("segments.json"))
+                        .toStdString();
+                if (swiftdm::load_transfer_state(state_path, state, nullptr) &&
+                    state.file_size > 0) {
+                    item.done = state.done_bytes();
+                    item.size = state.file_size;
+                    item.percent = swiftdm::percent_of(item.done, item.size);
+                }
+            }
+            // Restored rows are never started automatically; the user resumes.
+            const DownloadTask::Options options = options_from_record(record);
+            auto* task = new DownloadTask(settings_, options, model_);
+            task->restore_progress(item.done, item.size, record.resumable);
+            task->set_workspace_dir(item.temp_path);
+            item.task = task;
+            wire_task(task);
+            if (item.state == DownloadItem::State::Paused && record.status != "Paused") {
+                // A row left "Downloading"/"Queued" by a quit or crash. Write the
+                // full row so lasttry (sort order) stays unchanged.
+                record.status = "Paused";
+                record.done = item.done;
+                record.file_size = item.size;
+                history_.update(entry.id, record);
+            }
+        }
+        model_->add_item(item);
+    }
+    if (!missing_files.isEmpty()) {
+        // One summary instead of a dialog per file.
+        QTimer::singleShot(0, this, [this, missing_files] {
+            show_missing_files_dialog(missing_files);
+        });
+    }
+    qInfo() << "history: restored" << model_->rowCount() << "row(s),"
+            << missing_files.size() << "missing file(s)";
+}
+
+DownloadTask::Options MainWindow::options_from_record(
+    const swiftdm::HistoryStore::Record& record) const {
+    DownloadTask::Options options;
+    options.url = QString::fromStdString(record.url);
+    options.output_dir = QString::fromStdString(record.folder_path);
+    // folder_path is the folder the file was saved to (category subfolder
+    // included). The engine appends the category folder again, so hand it the
+    // base directory instead.
+    if (settings_.category_folders && !record.category.empty()) {
+        const QString suffix = QLatin1Char('/') + QString::fromStdString(record.category);
+        if (options.output_dir.endsWith(suffix)) {
+            options.output_dir.chop(suffix.size());
+        }
+    }
+    if (options.output_dir.isEmpty()) {
+        options.output_dir = QString::fromStdString(settings_.download_dir);
+    }
+    options.filename = QString::fromStdString(record.filename);
+    options.user_agent = QString::fromStdString(record.user_agent);
+    options.connections = record.connections;
+    options.limit_kbps = record.bandwidth_limit_kbps;
+    options.post_data = QByteArray(record.post_data.data(),
+                                   static_cast<int>(record.post_data.size()));
+    for (const std::string& line : record.headers) {
+        const size_t colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        swiftdm::HttpHeader header;
+        header.name = swiftdm::trim(line.substr(0, colon));
+        header.value = swiftdm::trim(line.substr(colon + 1));
+        if (!header.name.empty()) options.headers.push_back(std::move(header));
+    }
+    return options;
+}
 
 void MainWindow::build_actions() {
     act_new_ = new QAction(tinted_icon(QStringLiteral(":/icons/link-plus.svg"), colors::kActionBlue),
@@ -261,6 +511,7 @@ void MainWindow::build_body() {
     table_ = new QTableView(splitter);
     table_->setModel(proxy_);
     table_->setSortingEnabled(true);
+    proxy_->setSortRole(Qt::UserRole);  // Last Try sorts by epoch, not text
     table_->sortByColumn(DownloadModel::ColLastTry, Qt::DescendingOrder);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -356,6 +607,7 @@ void MainWindow::add_download(const QString& url) {
         QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = QString::fromStdString(settings_.download_dir);
     item.last_try = now_stamp();
+    item.last_try_epoch = swiftdm::unix_now();
     item.state = DownloadItem::State::Probing;
     const int row = model_->add_item(item);
     if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
@@ -430,6 +682,7 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
         swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = options.output_dir;
     item.last_try = now_stamp();
+    item.last_try_epoch = swiftdm::unix_now();
     item.state = DownloadItem::State::Queued;
     item.page_url = data.value(QStringLiteral("pageUrl")).toString();
     item.page_title = data.value(QStringLiteral("pageTitle")).toString();
@@ -464,29 +717,57 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
         options.connections = 0;   // 0 = settings
         options.limit_kbps = 0;    // 0 = settings
     }
+    // The Options tab shows the final folder (category included), while the
+    // engine appends the category subfolder itself. Strip it once so resuming
+    // does not create "Video/Video".
+    if (settings_.category_folders && !item->category.isEmpty()) {
+        const QString suffix = QLatin1Char('/') + item->category;
+        if (options.output_dir.endsWith(suffix)) options.output_dir.chop(suffix.size());
+    }
 
     auto* task = new DownloadTask(settings_, options, model_);
     item->task = task;
     item->state = DownloadItem::State::Downloading;
+    item->file_missing = false;
     item->last_try = now_stamp();
+    item->last_try_epoch = swiftdm::unix_now();
     if (item->history_id > 0 && history_.is_open()) {
         history_.update(item->history_id, history_record_for(*item, &options));
     }
-
-    connect(task, &DownloadTask::probed, this, [this, task] {
-        model_->task_probed(task);
-        update_status_bar();
-    });
-    connect(task, &DownloadTask::progressed, this,
-            [this, task] { model_->task_progressed(task); });
-    connect(task, &DownloadTask::finished, this,
-            [this, task](int status, const QString& path, const QString& error) {
-                on_task_finished(task, status, path, error);
-            });
+    wire_task(task);
 
     model_->touch_row(row);
     task->start();
     update_status_bar();
+}
+
+void MainWindow::wire_task(DownloadTask* task) {
+    connect(task, &DownloadTask::probed, this, [this, task] {
+        model_->task_probed(task);
+        update_status_bar();
+    });
+    connect(task, &DownloadTask::progressed, this, [this, task] {
+        model_->task_progressed(task);
+        persist_progress(task);
+    });
+    connect(task, &DownloadTask::finished, this,
+            [this, task](int status, const QString& path, const QString& error) {
+                on_task_finished(task, status, path, error);
+            });
+}
+
+void MainWindow::persist_progress(DownloadTask* task) {
+    const int row = model_->row_for_task(task);
+    if (row < 0) return;
+    DownloadItem* item = model_->item_at(row);
+    if (!item || item->history_id <= 0 || !history_.is_open()) return;
+    // The engine reports several times per second; the DB only needs a
+    // checkpoint every few seconds (a hard kill loses at most this window).
+    const qint64 now = now_ms();
+    const qint64 last = last_progress_save_ms_.value(item->history_id, 0);
+    if (now - last < 5000) return;
+    last_progress_save_ms_.insert(item->history_id, now);
+    history_.update_progress(item->history_id, item->done, item->size);
 }
 
 void MainWindow::start_probe_at_row(int row) {
@@ -506,6 +787,7 @@ void MainWindow::start_probe_at_row(int row) {
     item->task = task;
     item->state = DownloadItem::State::Probing;
     item->last_try = now_stamp();
+    item->last_try_epoch = swiftdm::unix_now();
 
     connect(task, &DownloadTask::probed, this, [this, task] {
         model_->task_probed(task);
@@ -531,6 +813,9 @@ void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& 
         if (error.isEmpty()) return;  // canceled probe; the row is already handled
         item->state = DownloadItem::State::Error;
         item->error = error;
+        if (item->history_id > 0 && history_.is_open()) {
+            history_.update(item->history_id, history_record_for(*item, &task->options()));
+        }
         model_->touch_row(row);
         show_error_dialog(item->url, error, item->page_url);
         update_status_bar();
@@ -539,7 +824,7 @@ void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& 
 
     // Confirmation step: show the resolved file name and size first.
     if (item->history_id > 0 && history_.is_open()) {
-        history_.update(item->history_id, history_record_for(*item, nullptr));
+        history_.update(item->history_id, history_record_for(*item, &task->options()));
     }
     const QString name = item->file_name;
     const quint64 size = item->size;
@@ -551,6 +836,9 @@ void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& 
     if (dialog.exec() != QDialog::Accepted) {
         if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
         windows_.remove(id);
+        if (item->history_id > 0 && history_.is_open()) {
+            history_.remove(item->history_id);
+        }
         model_->remove_row(row);
         task->deleteLater();
         update_status_bar();
@@ -566,7 +854,16 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
     const int row = model_->row_for_task(task);
     if (row >= 0) {
         DownloadItem* item = model_->item_at(row);
+        if (item) {
+            item->last_try_epoch = swiftdm::unix_now();
+            if (!task->workspace_dir().isEmpty()) item->temp_path = task->workspace_dir();
+            if (status == static_cast<int>(DownloadTask::Status::Completed)) {
+                item->file_missing = path.isEmpty() || !QFileInfo::exists(path);
+                item->temp_path.clear();
+            }
+        }
         if (item && item->history_id > 0 && history_.is_open()) {
+            last_progress_save_ms_.remove(item->history_id);
             history_.update(item->history_id,
                             history_record_for(*item, item->task ? &item->task->options()
                                                                  : nullptr));
@@ -704,8 +1001,15 @@ void MainWindow::on_context_menu(const QPoint& pos) {
             index, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     }
 
+    // The file can disappear while the app is running; re-check before the menu
+    // decides whether Open File is available.
+    refresh_missing_state(row);
+    item = model_->item_at(row);
+    if (!item) return;
+
     const QFileInfo file(item->dest_path);
     const bool file_ok = item->is_complete() && !item->dest_path.isEmpty() && file.exists();
+    const bool complete_row = item->is_complete();
     const QString dir = item->dest_path.isEmpty() ? item->output_dir : file.absolutePath();
     const bool dir_ok = !dir.isEmpty() && QFileInfo(dir).isDir();
 
@@ -718,8 +1022,13 @@ void MainWindow::on_context_menu(const QPoint& pos) {
     menu.addSeparator();
     QAction* properties = menu.addAction(
         tinted_icon(QStringLiteral(":/icons/properties.svg"), colors::kNeutral), tr("Properties"));
-    open_file->setEnabled(file_ok);
+    // A completed row stays actionable even when the file is gone: the action
+    // then explains that the file was deleted or moved.
+    open_file->setEnabled(complete_row && !item->dest_path.isEmpty());
     open_folder->setEnabled(dir_ok);
+    if (complete_row && !file_ok) {
+        open_file->setToolTip(tr("The file has been deleted or moved"));
+    }
 
     QAction* chosen = menu.exec(table_->viewport()->mapToGlobal(pos));
     if (chosen == open_file) {
@@ -731,11 +1040,71 @@ void MainWindow::on_context_menu(const QPoint& pos) {
     }
 }
 
+void MainWindow::refresh_missing_state(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item || !item->is_complete() || item->dest_path.isEmpty()) return;
+    const bool missing = !QFileInfo::exists(item->dest_path);
+    if (missing == item->file_missing) return;
+    item->file_missing = missing;
+    model_->touch_row(row);
+}
+
+void MainWindow::show_missing_files_dialog(const QStringList& paths) {
+    // One summary for the whole restore instead of a dialog per file.
+    auto* box = new QMessageBox(nullptr);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->setWindowTitle(tr("Downloaded Files Missing"));
+    box->setIcon(QMessageBox::Warning);
+    box->setText(tr("Some completed downloads are no longer on disk. "
+                    "They were deleted or moved:"));
+    QStringList shown = paths.mid(0, 10);
+    QString details = shown.join(QLatin1Char('\n'));
+    if (paths.size() > shown.size()) {
+        details += tr("\n... and %1 more").arg(paths.size() - shown.size());
+    }
+    box->setInformativeText(details);
+    box->addButton(QMessageBox::Close);
+    box->adjustSize();
+    box->move(frameGeometry().center() - box->rect().center());
+    box->show();
+    box->raise();
+    box->activateWindow();
+}
+
+void MainWindow::show_missing_file_dialog(const DownloadItem& item) {
+    auto* box = new QMessageBox(nullptr);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->setWindowTitle(tr("File Not Found"));
+    box->setIcon(QMessageBox::Warning);
+    box->setText(missing_file_warning(item.dest_path));
+    const QString dir = QFileInfo(item.dest_path).absolutePath();
+    if (!dir.isEmpty() && QFileInfo(dir).isDir()) {
+        QPushButton* open_folder =
+            box->addButton(tr("Open File Location"), QMessageBox::ActionRole);
+        connect(open_folder, &QPushButton::clicked, this,
+                [dir] { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
+    }
+    box->addButton(QMessageBox::Close);
+    box->adjustSize();
+    box->move(frameGeometry().center() - box->rect().center());
+    box->show();
+    box->raise();
+    box->activateWindow();
+}
+
 void MainWindow::open_file_for_row(int row) {
-    const DownloadItem* item = model_->item_at(row);
+    DownloadItem* item = model_->item_at(row);
     if (!item || item->dest_path.isEmpty()) return;
     if (!QFileInfo::exists(item->dest_path)) {
-        show_error_dialog(item->url, tr("File not found:\n%1").arg(item->dest_path));
+        // The row may have been Complete when the list was restored but the
+        // file is gone now: explain instead of silently doing nothing.
+        if (item->is_complete()) {
+            item->file_missing = true;
+            model_->touch_row(row);
+        }
+        show_missing_file_dialog(*item);
         return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(item->dest_path));
@@ -746,7 +1115,20 @@ void MainWindow::open_folder_for_row(int row) {
     if (!item) return;
     const QString dir =
         item->dest_path.isEmpty() ? item->output_dir : QFileInfo(item->dest_path).absolutePath();
-    if (dir.isEmpty() || !QFileInfo(dir).isDir()) return;
+    if (dir.isEmpty()) return;
+    if (!QFileInfo(dir).isDir()) {
+        auto* box = new QMessageBox(nullptr);
+        box->setAttribute(Qt::WA_DeleteOnClose);
+        box->setWindowModality(Qt::NonModal);
+        box->setWindowTitle(tr("Folder Not Found"));
+        box->setIcon(QMessageBox::Warning);
+        box->setText(tr("The folder has been deleted or moved:\n%1").arg(dir));
+        box->addButton(QMessageBox::Close);
+        box->adjustSize();
+        box->move(frameGeometry().center() - box->rect().center());
+        box->show();
+        return;
+    }
     QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
@@ -761,6 +1143,10 @@ void MainWindow::remove_row_with_cleanup(int row) {
     DownloadItem* item = model_->item_at(row);
     if (!item) return;
     const int id = item->id;
+    if (item->history_id > 0 && history_.is_open()) {
+        history_.remove(item->history_id);
+        last_progress_save_ms_.remove(item->history_id);
+    }
     DownloadTask* task = item->task;
     if (task) {
         if (task->active()) {
@@ -952,7 +1338,14 @@ void MainWindow::on_row_activated(const QModelIndex& index) {
     if (!index.isValid()) return;
     const QModelIndex source = proxy_->mapToSource(index);
     DownloadItem* item = model_->item_at(source.row());
-    if (!item || !item->task) return;
+    if (!item) return;
+    // The file may have disappeared since the row was restored; update the
+    // status before the window shows it.
+    refresh_missing_state(source.row());
+    item = model_->item_at(source.row());
+    if (!item) return;
+    // Completed rows restored from history have no task, but the window still
+    // shows their properties and the missing-file state.
     open_download_window(item->id);
 }
 
@@ -962,6 +1355,31 @@ void MainWindow::open_download_window(int id) {
         window = new DownloadWindow(model_, id, settings_, this);
         windows_.insert(id, window);
         connect(window, &QObject::destroyed, this, [this, id] { windows_.remove(id); });
+        connect(window, &DownloadWindow::resumeRequested, this, [this](int item_id) {
+            const int row = model_->row_for_id(item_id);
+            if (row < 0) return;
+            DownloadItem* item = model_->item_at(row);
+            if (!item || !item->task) return;
+            const DownloadTask::Options options = item->task->options();
+            start_task_at_row(row, &options);
+        });
+        connect(window, &DownloadWindow::optionsApplied, this, [this](int item_id) {
+            const int row = model_->row_for_id(item_id);
+            if (row < 0) return;
+            DownloadItem* item = model_->item_at(row);
+            if (!item || !item->task) return;
+            const DownloadTask::Options& options = item->task->options();
+            item->output_dir = options.output_dir;
+            if (!options.filename.isEmpty()) {
+                item->file_name = options.filename;
+                item->category = QString::fromStdString(
+                    swiftdm::category_folder_for(options.filename.toStdString()));
+            }
+            if (item->history_id > 0 && history_.is_open()) {
+                history_.update(item->history_id, history_record_for(*item, &options));
+            }
+            model_->touch_row(row);
+        });
     }
     window->show();
     window->raise();

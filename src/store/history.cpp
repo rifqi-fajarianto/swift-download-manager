@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS "downloads" (
     "folderpath"      TEXT,
     "temppath"        TEXT,
     "groupid"         TEXT,
+    "done"            NUMERIC,
     PRIMARY KEY("id")
 );
 CREATE TABLE IF NOT EXISTS headers (id NUMERIC, header TEXT);
@@ -54,6 +55,38 @@ std::string column_text(sqlite3_stmt* stmt, int index) {
     const unsigned char* text = sqlite3_column_text(stmt, index);
     if (!text) return {};
     return reinterpret_cast<const char*>(text);
+}
+
+// Column order shared by fetch() and load_all().
+const char* kRecordColumns =
+    "url, method, filename, filesize, category, status, bandwidthlimit, connections,"
+    " lasttry, firsttry, useragent, resumable, pageurl, pagetitle, mimetype, errortext,"
+    " postdata, folderpath, temppath, groupid, done";
+
+HistoryStore::Record read_record(sqlite3_stmt* stmt, int base = 0) {
+    HistoryStore::Record record;
+    record.url = column_text(stmt, base + 0);
+    record.method = column_text(stmt, base + 1);
+    record.filename = column_text(stmt, base + 2);
+    record.file_size = static_cast<uint64_t>(sqlite3_column_int64(stmt, base + 3));
+    record.category = column_text(stmt, base + 4);
+    record.status = column_text(stmt, base + 5);
+    record.bandwidth_limit_kbps = static_cast<int>(sqlite3_column_int64(stmt, base + 6));
+    record.connections = static_cast<int>(sqlite3_column_int64(stmt, base + 7));
+    record.last_try = sqlite3_column_int64(stmt, base + 8);
+    record.first_try = sqlite3_column_int64(stmt, base + 9);
+    record.user_agent = column_text(stmt, base + 10);
+    record.resumable = sqlite3_column_int64(stmt, base + 11) != 0;
+    record.page_url = column_text(stmt, base + 12);
+    record.page_title = column_text(stmt, base + 13);
+    record.mime_type = column_text(stmt, base + 14);
+    record.error_text = column_text(stmt, base + 15);
+    record.post_data = column_text(stmt, base + 16);
+    record.folder_path = column_text(stmt, base + 17);
+    record.temp_path = column_text(stmt, base + 18);
+    record.group_id = column_text(stmt, base + 19);
+    record.done = static_cast<uint64_t>(sqlite3_column_int64(stmt, base + 20));
+    return record;
 }
 
 }  // namespace
@@ -127,11 +160,20 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
     // Columns appended after the first release.
     for (const auto& column : {std::pair<const char*, const char*>("folderpath", "TEXT"),
                                std::pair<const char*, const char*>("temppath", "TEXT"),
-                               std::pair<const char*, const char*>("groupid", "TEXT")}) {
+                               std::pair<const char*, const char*>("groupid", "TEXT"),
+                               std::pair<const char*, const char*>("done", "NUMERIC")}) {
         if (!ensure_column(column.first, column.second, error)) {
             close();
             return false;
         }
+    }
+    // Backfill the progress column for completed rows written before 0.17.0.
+    // Running it on every open is harmless: it only touches NULL values.
+    if (!exec("UPDATE downloads SET done = filesize"
+              " WHERE done IS NULL AND status = 'Complete' AND filesize > 0",
+              error)) {
+        close();
+        return false;
     }
     return true;
 }
@@ -151,9 +193,9 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     static const char* sql =
         "INSERT INTO downloads (url, method, filename, ltype, filesize, category, status,"
         " bandwidthlimit, connections, lasttry, firsttry, useragent, resumable, pageurl,"
-        " pagetitle, mimetype, errortext, postdata, folderpath, temppath, groupid)"
+        " pagetitle, mimetype, errortext, postdata, folderpath, temppath, groupid, done)"
         " VALUES (?1,?2,?3,'',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,"
-        "?20)";
+        "?20,?21)";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -180,6 +222,7 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     bind_text(stmt, 18, record.folder_path);
     bind_text(stmt, 19, record.temp_path);
     bind_text(stmt, 20, record.group_id);
+    bind_int64(stmt, 21, static_cast<int64_t>(record.done));
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -200,7 +243,7 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
         "UPDATE downloads SET url=?1, method=?2, filename=?3, filesize=?4, category=?5,"
         " status=?6, bandwidthlimit=?7, connections=?8, lasttry=?9, useragent=?10,"
         " resumable=?11, pageurl=?12, pagetitle=?13, mimetype=?14, errortext=?15,"
-        " postdata=?16, folderpath=?17, temppath=?18, groupid=?19 WHERE id=?20";
+        " postdata=?16, folderpath=?17, temppath=?18, groupid=?19, done=?20 WHERE id=?21";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -226,7 +269,8 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
     bind_text(stmt, 17, record.folder_path);
     bind_text(stmt, 18, record.temp_path);
     bind_text(stmt, 19, record.group_id);
-    bind_int64(stmt, 20, id);
+    bind_int64(stmt, 20, static_cast<int64_t>(record.done));
+    bind_int64(stmt, 21, id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -263,18 +307,42 @@ bool HistoryStore::update_status(int64_t id, const std::string& status,
     return true;
 }
 
+bool HistoryStore::update_progress(int64_t id, uint64_t done, uint64_t file_size,
+                                   std::string* error) {
+    if (!db_) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_,
+                           "UPDATE downloads SET done=?1,"
+                           " filesize=CASE WHEN ?2>0 THEN ?2 ELSE filesize END"
+                           " WHERE id=?3",
+                           -1, &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bind_int64(stmt, 1, static_cast<int64_t>(done));
+    bind_int64(stmt, 2, static_cast<int64_t>(file_size));
+    bind_int64(stmt, 3, id);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    return true;
+}
+
 bool HistoryStore::fetch(int64_t id, Record* out, std::string* error) const {
     if (!db_ || !out) {
         set_error(error, "history store is not open");
         return false;
     }
     sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db_,
-                           "SELECT url, method, filename, filesize, category, status,"
-                           " bandwidthlimit, connections, lasttry, firsttry, useragent,"
-                           " resumable, pageurl, pagetitle, mimetype, errortext, postdata,"
-                           " folderpath, temppath, groupid FROM downloads WHERE id=?1",
-                           -1, &stmt, nullptr) != SQLITE_OK) {
+    const std::string sql = std::string("SELECT ") + kRecordColumns +
+                            " FROM downloads WHERE id=?1";
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
         return false;
     }
@@ -285,38 +353,72 @@ bool HistoryStore::fetch(int64_t id, Record* out, std::string* error) const {
         set_error(error, rc == SQLITE_DONE ? "download not found" : sqlite3_errmsg(db_));
         return false;
     }
-    *out = Record{};
-    out->url = column_text(stmt, 0);
-    out->method = column_text(stmt, 1);
-    out->filename = column_text(stmt, 2);
-    out->file_size = static_cast<uint64_t>(sqlite3_column_int64(stmt, 3));
-    out->category = column_text(stmt, 4);
-    out->status = column_text(stmt, 5);
-    out->bandwidth_limit_kbps = static_cast<int>(sqlite3_column_int64(stmt, 6));
-    out->connections = static_cast<int>(sqlite3_column_int64(stmt, 7));
-    out->last_try = sqlite3_column_int64(stmt, 8);
-    out->first_try = sqlite3_column_int64(stmt, 9);
-    out->user_agent = column_text(stmt, 10);
-    out->resumable = sqlite3_column_int64(stmt, 11) != 0;
-    out->page_url = column_text(stmt, 12);
-    out->page_title = column_text(stmt, 13);
-    out->mime_type = column_text(stmt, 14);
-    out->error_text = column_text(stmt, 15);
-    out->post_data = column_text(stmt, 16);
-    out->folder_path = column_text(stmt, 17);
-    out->temp_path = column_text(stmt, 18);
-    out->group_id = column_text(stmt, 19);
+    *out = read_record(stmt);
     sqlite3_finalize(stmt);
 
-    if (sqlite3_prepare_v2(db_, "SELECT header FROM headers WHERE id=?1 ORDER BY rowid", -1,
-                           &stmt, nullptr) != SQLITE_OK) {
+    if (!read_headers(id, out, error)) return false;
+    return true;
+}
+
+bool HistoryStore::load_all(std::vector<Entry>* out, std::string* error) const {
+    if (!db_ || !out) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    out->clear();
+    sqlite3_stmt* stmt = nullptr;
+    const std::string sql = std::string("SELECT id, ") + kRecordColumns +
+                            " FROM downloads ORDER BY lasttry DESC, id DESC";
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
         return false;
     }
-    bind_int64(stmt, 1, id);
-    while (sqlite3_step(stmt) == SQLITE_ROW) out->headers.push_back(column_text(stmt, 0));
+    int rc = SQLITE_ROW;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        Entry entry;
+        entry.id = sqlite3_column_int64(stmt, 0);
+        entry.record = read_record(stmt, 1);
+        out->push_back(std::move(entry));
+    }
     sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        out->clear();
+        return false;
+    }
+    for (Entry& entry : *out) {
+        if (!read_headers(entry.id, &entry.record, error)) {
+            out->clear();
+            return false;
+        }
+    }
     return true;
+}
+
+bool HistoryStore::remove(int64_t id, std::string* error) {
+    if (!db_) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    if (!exec("BEGIN IMMEDIATE", error)) return false;
+    for (const char* sql : {"DELETE FROM headers WHERE id=?1",
+                            "DELETE FROM downloads WHERE id=?1"}) {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            set_error(error, sqlite3_errmsg(db_));
+            exec("ROLLBACK", nullptr);
+            return false;
+        }
+        bind_int64(stmt, 1, id);
+        const int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            set_error(error, sqlite3_errmsg(db_));
+            exec("ROLLBACK", nullptr);
+            return false;
+        }
+    }
+    return exec("COMMIT", error);
 }
 
 int64_t HistoryStore::count(std::string* error) const {
@@ -335,6 +437,19 @@ int64_t HistoryStore::count(std::string* error) const {
     else set_error(error, sqlite3_errmsg(db_));
     sqlite3_finalize(stmt);
     return total;
+}
+
+bool HistoryStore::read_headers(int64_t id, Record* out, std::string* error) const {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT header FROM headers WHERE id=?1 ORDER BY rowid", -1,
+                           &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bind_int64(stmt, 1, id);
+    while (sqlite3_step(stmt) == SQLITE_ROW) out->headers.push_back(column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+    return true;
 }
 
 bool HistoryStore::write_headers(int64_t id, const std::vector<std::string>& headers,

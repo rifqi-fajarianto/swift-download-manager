@@ -25,14 +25,18 @@ struct DownloadItem {
     double speed_bps = 0.0;
     qint64 remaining_sec = -1;
     QString last_try;
+    qint64 last_try_epoch = 0;  // unix seconds, used for sorting
     QString added;  // filled in by DownloadModel::add_item
     QString error;
     QString dest_path;
+    QString temp_path;   // workspace kept for resume (restored from history)
     QString page_url;    // browser page that initiated the download
     QString page_title;  // title of that page
     QString group;       // adaptive pair token (video + audio), empty otherwise
     qint64 history_id = 0;  // row id in the SQLite history (0 = not stored)
     bool resumable = false;
+    // Complete download whose file is no longer at dest_path (deleted/moved).
+    bool file_missing = false;
     DownloadTask* task = nullptr;
 
     bool is_complete() const { return state == State::Complete; }
@@ -40,6 +44,9 @@ struct DownloadItem {
 
 // Status text shown in the table and download window ("Paused ( 54% )" etc.).
 QString download_status_text(const DownloadItem& item);
+
+// Warning shown when a completed download's file is gone from disk.
+QString missing_file_warning(const QString& path);
 
 // Status text color used in the table and the properties window.
 QColor download_status_color(const DownloadItem& item);

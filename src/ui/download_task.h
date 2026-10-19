@@ -61,6 +61,14 @@ class DownloadTask : public QObject {
     void start_probe();  // probe only; used by the manual-add confirmation
     void pause();   // request pause; partial state is kept for resume
     void cancel();  // abort; state file is kept until the row is removed
+    // Requests a pause (when running) and waits for the worker thread. Used on
+    // application shutdown so segments.json is written before the process ends.
+    void pause_and_wait();
+    // Seeds the snapshot for a task restored from history (not running).
+    void restore_progress(quint64 done, quint64 total, bool resumable);
+    // Seeds the workspace directory for a task restored from history, so the
+    // Properties dialog and Delete cleanup know the temp folder.
+    void set_workspace_dir(const QString& dir);
 
   signals:
     void probed(const QString& filename, quint64 size, bool resumable);

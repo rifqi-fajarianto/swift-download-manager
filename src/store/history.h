@@ -11,8 +11,8 @@ namespace swiftdm {
 // SQLite-backed download history (schema in docs/spec/02-data-model.md).
 //
 // Rows are written when a download is added and updated while it runs, so the
-// browser-sent page URL/title survive a restart. Restoring the list into the
-// GUI at startup is a separate step and is not implemented yet.
+// browser-sent page URL/title survive a restart. MainWindow::restore_history()
+// loads them back into the table at startup.
 class HistoryStore {
   public:
     struct Record {
@@ -40,6 +40,12 @@ class HistoryStore {
         int64_t last_try = 0;
     };
 
+    // One stored row; `id` is the database primary key.
+    struct Entry {
+        int64_t id = 0;
+        Record record;
+    };
+
     HistoryStore() = default;
     ~HistoryStore();
     HistoryStore(const HistoryStore&) = delete;
@@ -56,13 +62,21 @@ class HistoryStore {
     bool update(int64_t id, const Record& record, std::string* error = nullptr);
     bool update_status(int64_t id, const std::string& status, const std::string& error_text,
                        std::string* error = nullptr);
+    // Lightweight progress write used while a transfer runs (keeps lasttry).
+    bool update_progress(int64_t id, uint64_t done, uint64_t file_size,
+                         std::string* error = nullptr);
     bool fetch(int64_t id, Record* out, std::string* error = nullptr) const;
+    // Loads every row (newest first) with its headers, for list restore.
+    bool load_all(std::vector<Entry>* out, std::string* error = nullptr) const;
+    // Deletes a row and its headers permanently.
+    bool remove(int64_t id, std::string* error = nullptr);
     int64_t count(std::string* error = nullptr) const;
 
   private:
     bool exec(const char* sql, std::string* error) const;
     bool ensure_schema(std::string* error);
     bool ensure_column(const char* name, const char* type, std::string* error);
+    bool read_headers(int64_t id, Record* out, std::string* error) const;
     bool write_headers(int64_t id, const std::vector<std::string>& headers,
                        std::string* error);
     void set_error(std::string* error, const std::string& message) const;

@@ -29,6 +29,10 @@ Layout (from `main-window.png`):
   original's version of this menu also carries `Resume`, `Stop`, `Redownload`,
   `Show Window` and `Delete` (E25) — here those stay on the toolbar and in the
   per-download window.
+- **History restore**: at startup the table is rebuilt from SQLite with every
+  row (Complete, Paused, Error). Rows left `Downloading`/`Queued` by a previous
+  quit are shown as `Paused` and never resume by themselves; the user presses
+  Resume. Deleting a row removes it from the database permanently.
 - Window title: application name + version.
 
 ## 3. Core user flows
@@ -47,8 +51,12 @@ Layout (from `main-window.png`):
      bar (segments shown as colored slices), segmented count label
      (`Segments : N`), `Resume`/`Cancel` buttons.
 3. **Item actions** (right-click a download row):
-   - `Open File` — opens the downloaded file with the default handler; enabled
-     only when the download is complete and the file still exists on disk.
+   - `Open File` — opens the downloaded file with the default handler. It is
+     available for every completed row; when the file was deleted or moved it
+     shows a warning ("The file has been deleted or moved") with `Open File
+     Location` instead of failing silently. A completed row whose file is
+     missing is labelled `Complete (file missing)` in amber, and one summary
+     dialog lists missing files after a restart.
    - `Open File Location` — opens the containing folder in the file manager.
    - `Properties` — read-only *Download Properties* window (see below).
 4. **Delete File** (toolbar): deletes the downloaded file of the selected

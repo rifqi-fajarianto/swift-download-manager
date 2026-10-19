@@ -35,6 +35,7 @@ CREATE TABLE "downloads" (
     "folderpath"      TEXT,
     "temppath"        TEXT,
     "groupid"         TEXT,   -- adaptive pair token (video + audio handoff)
+    "done"            NUMERIC, -- bytes already written (restore/resume progress)
     PRIMARY KEY("id")
 );
 CREATE TABLE headers (id NUMERIC, header TEXT);      -- extra request headers per download
@@ -73,12 +74,24 @@ Field semantics:
 | `folderpath` | destination directory for this download |
 | `temppath` | temporary directory for this download |
 | `groupid` | adaptive pair token shared by the video and audio halves of a browser handoff (empty otherwise) |
+| `done` | bytes already written; added by SwiftDM 0.17.0 (additive `ALTER TABLE`) for progress restore. Older rows read as 0 and fall back to `segments.json`. |
 
 ## 2. On-disk download state (behavioral)
 
-The SQLite `downloads` row is now written by SwiftDM as downloads are added and
+The SQLite `downloads` row is written by SwiftDM as downloads are added and
 updated (`HistoryStore`), including `pageurl`/`pagetitle`, method, POST body, and
-extra header rows. Restoring the list into the GUI at startup is still planned.
+extra header rows. `MainWindow::restore_history()` reloads every row at startup
+(newest first) and rebuilds the list: `Complete` stays complete, `Paused`/`Error`
+stay inactive with a Resume action, and stale `Downloading`/`Queued` rows are
+normalized to `Paused` (nothing starts automatically). Progress is checkpointed
+every ~5 s and on exit; a paused row also reads `segments.json` so a hard kill
+loses at most the last engine checkpoint. Rows deleted by the user are removed
+from `downloads` and `headers`.
+
+Completed rows store the actual saved basename, so a file saved as
+`name (1).ext` is found again. If the file is gone, the row shows
+`Complete (file missing)`, a startup summary lists it, and right-click Open File
+explains that the file was deleted or moved (with Open File Location).
 
 - Partial content lives under the *temp path* (`%APPDATA%\Roaming\NeatDM\` on
   Windows; SwiftDM: `~/.local/share/swiftdm/tmp/<id>/`).

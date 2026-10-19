@@ -1,6 +1,5 @@
 #include "ui/download_window.h"
 
-#include <QDateTime>
 #include <QFileDialog>
 #include <QFontMetrics>
 #include <QFormLayout>
@@ -211,11 +210,9 @@ QWidget* DownloadWindow::build_download_tab() {
         } else if (item->state == DownloadItem::State::Paused ||
                    item->state == DownloadItem::State::Error ||
                    item->state == DownloadItem::State::Queued) {
-            item->state = DownloadItem::State::Downloading;
-            item->last_try =
-                QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
-            model_->touch_row(row);
-            task->start();
+            // The main window rebuilds the task so the SQLite history row is
+            // updated (status, last try) as well.
+            emit resumeRequested(item_id_);
         }
     });
     connect(cancel_button_, &QPushButton::clicked, this, [this] {
@@ -272,6 +269,7 @@ QWidget* DownloadWindow::build_options_tab() {
         options.limit_kbps = limit_spin_->value();
         options.referer = referer_edit_->text().trimmed();
         task->set_options(options);
+        emit optionsApplied(item_id_);
     });
     return page;
 }
@@ -344,11 +342,13 @@ void DownloadWindow::refresh() {
                                         item->state == DownloadItem::State::Queued);
     action_button_->setText(running ? tr("Pause") : tr("Resume"));
     action_button_->setEnabled(running || can_resume);
-    apply_button_->setEnabled(!active);
+    apply_button_->setEnabled(!active && task != nullptr);
 
     if (!active && dir_edit_->text().isEmpty()) {
-        QString dir = QString::fromStdString(settings_.download_dir);
-        if (settings_.category_folders && !item->category.isEmpty()) {
+        QString dir = item->output_dir;
+        if (dir.isEmpty()) dir = QString::fromStdString(settings_.download_dir);
+        if (settings_.category_folders && !item->category.isEmpty() &&
+            !dir.endsWith(QLatin1Char('/') + item->category)) {
             dir += "/" + item->category;
         }
         dir_edit_->setText(dir);

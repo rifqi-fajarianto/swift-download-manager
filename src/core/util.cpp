@@ -1,6 +1,7 @@
 #include "core/util.h"
 
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -141,6 +142,62 @@ bool ensure_directory(const std::string& path, std::string* error) {
         return false;
     }
     return true;
+}
+
+namespace {
+
+int64_t file_time_to_unix(std::filesystem::file_time_type time) {
+    const auto system_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        time - std::filesystem::file_time_type::clock::now() +
+        std::chrono::system_clock::now());
+    return static_cast<int64_t>(std::chrono::system_clock::to_time_t(system_time));
+}
+
+bool is_unique_suffix(const std::string& name, const std::string& stem,
+                      const std::string& ext) {
+    if (!starts_with(name, stem + " (")) return false;
+    const size_t open = stem.size() + 2;
+    const size_t close = name.find(')', open);
+    if (close == std::string::npos) return false;
+    if (close == open) return false;
+    for (size_t i = open; i < close; ++i) {
+        if (name[i] < '0' || name[i] > '9') return false;
+    }
+    return name.substr(close + 1) == ext;
+}
+
+}  // namespace
+
+std::string resolve_existing_file(const std::string& dir, const std::string& filename,
+                                  int64_t near_unix) {
+    if (dir.empty() || filename.empty()) return {};
+    std::error_code ec;
+    const std::filesystem::path exact = std::filesystem::path(dir) / filename;
+    if (std::filesystem::is_regular_file(exact, ec)) return exact.string();
+
+    const std::filesystem::path base(filename);
+    const std::string stem = base.stem().string();
+    const std::string ext = base.extension().string();
+    if (stem.empty()) return {};
+
+    std::string best;
+    int64_t best_distance = 0;
+    for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end;
+         it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const std::string name = it->path().filename().string();
+        if (!is_unique_suffix(name, stem, ext)) continue;
+        const int64_t written = file_time_to_unix(
+            std::filesystem::last_write_time(it->path(), ec));
+        if (ec) continue;
+        const int64_t distance =
+            near_unix > 0 ? std::llabs(written - near_unix) : 0;
+        if (best.empty() || distance < best_distance) {
+            best = it->path().string();
+            best_distance = distance;
+        }
+    }
+    return best;
 }
 
 std::string sanitize_filename(std::string_view name) {

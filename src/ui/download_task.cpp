@@ -1,5 +1,6 @@
 #include "ui/download_task.h"
 
+#include "core/util.h"
 #include "engine/download_engine.h"
 #include "net/http.h"
 
@@ -115,6 +116,26 @@ void DownloadTask::run_probe() {
 
 void DownloadTask::pause() {
     if (active()) pause_requested_ = true;
+}
+
+void DownloadTask::pause_and_wait() {
+    if (active()) pause_requested_ = true;
+    if (thread_.joinable()) thread_.join();
+}
+
+void DownloadTask::restore_progress(quint64 done, quint64 total, bool resumable) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.done = done;
+    snapshot_.total = total;
+    snapshot_.percent = total > 0 ? swiftdm::percent_of(done, total) : 0;
+    resolved_filename_ = options_.filename;
+    resolved_size_ = total;
+    resumable_ = resumable;
+}
+
+void DownloadTask::set_workspace_dir(const QString& dir) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    workspace_dir_ = dir;
 }
 
 void DownloadTask::cancel() {

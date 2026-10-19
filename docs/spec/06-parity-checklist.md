@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.9.3.
+Status as of 0.17.0.
 
 ## v1 — core engine + GUI
 
@@ -10,8 +10,8 @@ Status as of 0.9.3.
 |---|---|---|
 | Segmented HTTP/HTTPS downloads | Replicated | libcurl multi, Range segments |
 | Pause / resume / restart | Replicated | JSON state + probe validation; Pause/Resume toggle in the download window |
-| Resume after app restart | Replicated via CLI | GUI list is in-session; history reload is v1.1 |
-| Queue & status table | Replicated (in session) | columns per 01-product.md; no persisted queue yet |
+| Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished rows stay Paused until the user resumes |
+| Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts (queue scheduling is v1.1) |
 | Categories + category folders | Replicated | tree filter + extension-based routing |
 | Per-download bandwidth limit | Replicated | token bucket |
 | Speed + remaining time display | Replicated | 250 ms engine progress → 1 Hz effective UI refresh |
@@ -41,7 +41,7 @@ Status as of 0.9.3.
 
 | Feature | Status |
 |---|---|
-| SQLite download history (`downloads` table) + restore list at startup | Partial | Rows (incl. `pageurl`/`pagetitle`, POST data, headers) are written and updated via `src/store/history.cpp`; restoring the list into the GUI at startup is still planned |
+| SQLite download history (`downloads` table) + restore list at startup | Implemented | Rows (incl. `pageurl`/`pagetitle`, POST data, headers, `done`) are written/updated via `src/store/history.cpp`; `MainWindow::restore_history()` rebuilds Complete/Paused/Error rows at startup, and deletes remove rows from `downloads`+`headers`. Missing completed files are flagged (0.17.0) |
 | Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
@@ -57,7 +57,7 @@ Status as of 0.9.3.
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
 | Firefox extension | Planned |
-| Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); list restore at startup is still planned (v1.1) |
+| Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); restored at startup since 0.17.0 |
 
 Open gaps identified by the original-extension comparison
 (`07-chromium-extension-reference.md` §6, decision log in §10): POST/body and

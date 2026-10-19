@@ -16,7 +16,7 @@ QColor download_status_color(const DownloadItem& item) {
         case DownloadItem::State::Paused:
             return QColor(0x5a, 0xa9, 0xe6);
         case DownloadItem::State::Complete:
-            return QColor(0x7e, 0xc8, 0x7e);
+            return item.file_missing ? QColor(0xe0, 0xa8, 0x5a) : QColor(0x7e, 0xc8, 0x7e);
         case DownloadItem::State::Error:
             return QColor(0xe0, 0x5a, 0x5a);
         case DownloadItem::State::Queued:
@@ -46,11 +46,16 @@ QString download_status_text(const DownloadItem& item) {
         case DownloadItem::State::Paused:
             return QObject::tr("Paused ( %1% )").arg(item.percent);
         case DownloadItem::State::Complete:
-            return QObject::tr("Complete");
+            return item.file_missing ? QObject::tr("Complete (file missing)")
+                                     : QObject::tr("Complete");
         case DownloadItem::State::Error:
             return QObject::tr("Error ( %1% )").arg(item.percent);
     }
     return QString();
+}
+
+QString missing_file_warning(const QString& path) {
+    return QObject::tr("The file has been deleted or moved:\n%1").arg(path);
 }
 
 DownloadModel::DownloadModel(QObject* parent) : QAbstractTableModel(parent) {}
@@ -104,9 +109,19 @@ QVariant DownloadModel::data(const QModelIndex& index, int role) const {
 
     if (role == Qt::ToolTipRole) {
         QString tip = item.url;
-        if (!item.error.isEmpty()) tip += "\n" + QObject::tr("Error: ") + item.error;
-        if (!item.dest_path.isEmpty()) tip += "\n" + item.dest_path;
+        if (item.file_missing) {
+            tip += QLatin1Char('\n') + missing_file_warning(item.dest_path);
+        }
+        if (!item.error.isEmpty()) tip += QObject::tr("\nError: ") + item.error;
+        if (!item.dest_path.isEmpty()) tip += QLatin1Char('\n') + item.dest_path;
         return tip;
+    }
+
+    // Sorting key: Last Try sorts chronologically, not alphabetically by the
+    // localized "MMM d HH:mm:ss" text (DownloadFilterProxy uses this role).
+    if (role == Qt::UserRole) {
+        if (index.column() == ColLastTry) return item.last_try_epoch;
+        return data(index, Qt::DisplayRole);
     }
 
     return QVariant();

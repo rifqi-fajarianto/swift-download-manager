@@ -38,6 +38,14 @@ std::string xdg_config_home();                // $XDG_CONFIG_HOME or ~/.config
 std::string xdg_data_home();                  // $XDG_DATA_HOME or ~/.local/share
 bool ensure_directory(const std::string& path, std::string* error = nullptr);
 
+// Returns the path of an existing file for a completed download. The exact
+// `dir/filename` wins; when it is gone, "name (N).ext" siblings are tried and
+// the one whose modification time is closest to `near_unix` is chosen (that
+// covers downloads saved with a unique suffix before the final name was
+// persisted). Returns an empty string when no file matches.
+std::string resolve_existing_file(const std::string& dir, const std::string& filename,
+                                  int64_t near_unix = 0);
+
 // File name utilities.
 std::string sanitize_filename(std::string_view name);
 std::string file_name_from_url(std::string_view url);

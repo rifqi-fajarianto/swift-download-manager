@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.17.0 — 2026-10-19
+
+The download list survives restarts.
+
+- The main window restores the SQLite history at startup: completed, paused,
+  and failed downloads appear again with their last known progress. Rows that
+  were still `Downloading`/`Queued` when the app quit become Paused; nothing
+  resumes automatically, the user presses Resume.
+- Deleting a row (Delete, Delete File, or cancelling the add confirmation)
+  removes it from `downloads` and `headers`, so removed entries never come
+  back.
+- A completed download whose file is gone from disk is marked
+  `Complete (file missing)` (amber, with a tooltip) and right-click **Open
+  File** explains that the file was deleted or moved, with **Open File
+  Location**. One summary dialog lists the missing files after startup.
+  Missing files are resolved against the folder by exact name and then by
+  `name (N).ext` (closest modification time to the last attempt), so downloads
+  saved with a unique suffix are still found.
+- Completed rows now store the actual saved basename, so a file saved as
+  `name (1).ext` reopens correctly after a restart.
+- Progress is checkpointed to SQLite about every five seconds and on exit;
+  paused/error rows restore their byte count from `segments.json` when the DB
+  checkpoint is older. `HistoryStore` gained `load_all`, `remove`,
+  `update_progress`, and a `done` column (additive migration).
+- Last Try sorting uses the stored epoch instead of the display string, so the
+  order stays correct across months. The Download window's Resume and Apply
+  actions now go through the main window, keeping the history row in sync.
+- Backend tests cover the new store API, the legacy-schema migration, and the
+  missing-file resolver.
+
 ## 0.16.0 — 2026-10-19
 
 Installable build: CMake install rules and a `.deb` package.

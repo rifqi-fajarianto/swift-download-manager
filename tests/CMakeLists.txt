@@ -16,6 +16,10 @@ add_executable(test_history test_history.cpp)
 target_link_libraries(test_history PRIVATE swiftdm_core)
 add_test(NAME history COMMAND test_history)
 
+add_executable(test_restore test_restore.cpp)
+target_link_libraries(test_restore PRIVATE swiftdm_core)
+add_test(NAME restore COMMAND test_restore)
+
 add_executable(test_media test_media.cpp)
 target_link_libraries(test_media PRIVATE swiftdm_core)
 add_test(NAME media COMMAND test_media)

@@ -74,7 +74,8 @@ PropertiesDialog::PropertiesDialog(const DownloadItem& item, const DownloadTask*
             [dir] { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
     form->addRow(tr("Saved To :"), saved);
 
-    auto* temp_edit = new QLineEdit(task ? task->workspace_dir() : QString(), this);
+    auto* temp_edit = new QLineEdit(
+        task && !task->workspace_dir().isEmpty() ? task->workspace_dir() : item.temp_path, this);
     temp_edit->setReadOnly(true);
     form->addRow(tr("Temp Path :"), temp_edit);
 

@@ -43,6 +43,14 @@ class DownloadWindow : public QDialog {
     DownloadWindow(DownloadModel* model, int item_id, swiftdm::Settings settings,
                    QWidget* parent = nullptr);
 
+  signals:
+    // Resume was requested in this window; the main window restarts the task
+    // so the history row is updated too.
+    void resumeRequested(int item_id);
+    // The Options tab changed the destination/name; the main window updates the
+    // item and its history row.
+    void optionsApplied(int item_id);
+
   private:
     QWidget* build_download_tab();
     QWidget* build_options_tab();

@@ -8,6 +8,7 @@
 
 #include "store/history.h"
 #include "store/settings.h"
+#include "ui/download_model.h"
 #include "ui/download_task.h"
 
 class QAction;
@@ -66,6 +67,19 @@ class MainWindow : public QMainWindow {
     void show_completion_dialog(const QString& name, const QString& path);
     void show_error_dialog(const QString& url, const QString& error,
                            const QString& page_url = QString());
+    // Restores the download list from the SQLite history at startup.
+    void restore_history();
+    // Rebuilds the task options of a restored row (no transfer is started).
+    DownloadTask::Options options_from_record(const swiftdm::HistoryStore::Record& record) const;
+    // Connects a task's signals to the model/main window (used for new and
+    // restored tasks; restored tasks are wired but never started).
+    void wire_task(DownloadTask* task);
+    // Throttled progress write for the running task (history survives a crash).
+    void persist_progress(DownloadTask* task);
+    // Re-checks whether a completed item's file is still on disk.
+    void refresh_missing_state(int row);
+    void show_missing_files_dialog(const QStringList& paths);
+    void show_missing_file_dialog(const DownloadItem& item);
     void open_file_for_row(int row);
     void open_folder_for_row(int row);
     void show_properties_for_row(int row);
@@ -95,6 +109,7 @@ class MainWindow : public QMainWindow {
     QAction* act_quit_ = nullptr;
 
     QHash<int, QPointer<DownloadWindow>> windows_;
+    QHash<qint64, qint64> last_progress_save_ms_;  // history id -> last DB write
     bool quitting_ = false;
     bool tray_note_shown_ = false;
 };

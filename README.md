@@ -72,7 +72,7 @@ src/app/          entry points (GUI default, headless `get` CLI)
 src/core/         shared utilities
 src/engine/       download engine (segmentation, resume, categories)
 src/net/          HTTP/curl layer (probe, segmented transfer, streaming)
-src/store/        settings (INI); SQLite history planned for v1.1
+src/store/        settings (INI) + SQLite history (downloads/headers)
 src/ui/           Qt6 Widgets GUI (main window, download window, dialogs)
 ext/chromium/     Chromium Manifest V3 development extension
 tests/            CLI/backend tests (+ headless icon rendering test)
