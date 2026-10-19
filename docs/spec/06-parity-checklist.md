@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.8.0.
+Status as of 0.9.3.
 
 ## v1 — core engine + GUI
 
@@ -57,6 +57,13 @@ Status as of 0.8.0.
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Firefox extension | Planned |
 | Browser-sent page metadata | Partial | `pageUrl` and title sent by the extension; download history does not yet persist these fields |
+
+Open gaps identified by the original-extension comparison
+(`07-chromium-extension-reference.md` §6, decision pending): POST/body and
+custom-header handoff (C1), an app→extension status channel (C2), a quick
+bypass (C3), an in-page media panel with media detection/HLS/site extractors
+(C4–C9), size enrichment (C10), FTP handoff (C11), persisted page metadata
+(C12), and store packaging (C14). None of these are committed to a milestone.
 
 ## v3 — extra protocols and media
 

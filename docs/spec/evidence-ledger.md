@@ -34,11 +34,27 @@ tooling (strings/PE parsing), not REA output.
 | E24 | Default User-Agent string `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36` | REA `search_strings` "Mozilla/5.0" @ `0x565138` |
 | E25 | Main-window item context menu: `Resume`, `Stop`, `Redownload`, `Show Window`, separator, `Open Folder`, `Open`, `Delete`, separator, `Properties`; built in the main-window constructor, shown on the list's `NM_RCLICK` (-5) at the click point; `NM_DBLCLK` (-3) opens the per-download window | REA `procedure_pseudo_code` FUN_00504490 (menu build + `AppendMenuW` sites), FUN_00505240 (NM_RCLICK dispatch; `TrackPopupMenu` call 0x50535b), xrefs 0x504bcd / 0x504c20 / 0x504c5c / 0x504c91 |
 | E26 | Tray icon: `NOTIFYICONDATAW` with callback message `0x40f`; tray menu holds `NeatDownloadManager Main Window` plus dynamically added download entries; left/right button up (`0x202`/`0x205`) shows the menu when it has more than 2 items, left double-click (`0x203`) restores the main window | REA `procedure_pseudo_code` FUN_00504490 (`Shell_NotifyIconW`, tray menu at object+0xc4), FUN_00506960 (callback handler) |
+| E27 | Original Chromium extension package: MV3 v1.9.91, Edge-store `update_url`, fixed `key`, permissions `webRequest`/`webNavigation`/`cookies`/`contextMenus`/`storage`/`downloads`, `<all_urls>`, content script in all frames at `document_start`, action without popup | `binary-original/original-chromium-extension/1.9.91_0/manifest.json` (read-only bundle) |
+| E28 | Original worker wiring: seven observed webRequest resource types on http/https/ftp; one link+image context menu; toolbar click toggles the catcher (badge `Off`, on by default); storage key `ShowMediaPanel` | `bg.js:1,12-14` |
+| E29 | Original browser-copy cancellation: `downloads.onCreated` cancels+erases only when the item's `url`/`finalUrl` equals the URL just handed off; bypass/catcher-off leaves downloads alone; no browser fallback when the app is unreachable | `bg.js:15,36`; failure alert `ct.js:33` |
+| E30 | Original wire format: numeric fields `1:`–`11:`, raw `Origin:`/`Referer:`/`Cookie:`/`x-*` lines, `__0NeatPostData9__:<body>`, `Content-Length: 0` for an empty POST, 118,784-byte cap, socket `ws://127.0.0.1:10007/download`, subprotocol `neatextension.v1` | `bg.js:16-19` |
+| E31 | App sends `waiting`, `WinVersion1424`, and `ShowPanelChrome/Fox/Edge=0/1` on client setup; per-browser panel flags live in app settings | REA ev_5d3eb5a31b4a0a63df4d6dd5382cd9a5796796eb47421f81217ccea25b68779a (FUN_004e17d0); string ev_245728890bae2f1607d3cbf9a8f48bd83420480b845f5067b5943f14f01e9cb2 (`ShowPanelEdge`), ev_f57d9cc2eaea92a898377c3b80a33a79d4babc5eb36bb2e70bd8f1fb8034fa35 (`ShowPanelChrome`) |
+| E32 | App sends `nowaiting` when its active-download count reaches zero | REA ev_c153187a2bc76a973b4157e52d755bef0dcd63e34e1277e0b4dfc07e9dbdd496 (FUN_005079e0) |
+| E33 | App answers extension pings with pong | REA ev_931b105b810ba6e29ac21e058eda94c17e8eb4ad0539629c2f7386d3ff2a6edd (FUN_004e1c80) |
+| E34 | App parses the extension text message; recognised literals include `normal`, `BandWidthLimit`, `Content-Length: `, `User-Agent:`, `Referer: `, `__0NeatPostData9__:` | REA ev_b866878c76d45c39fdf4922e9bec223b5754e12aab90fb5c4b4e19ab13ffb4c1 (FUN_00509d70); string ev_00ff4ccb76293c1140f9ffdc85e47ca54ecc70727469f6d2b66425e0b870cd69 |
+| E35 | No origin pinning found in the app: no `chrome-extension://` or `Origin:` string, and the handshake builder (FUN_004e0eb0) emits the RFC6455 response without an origin check | REA ev_cd46393fdf47aed81eeffc848999cdd540ba1010a129f4cc67ed91f351a21dee (absent), ev_d68e42911f7306f1c7b95b5bb34aceb186ba8f76fdbc75539f1d845e1ea620a4 (absent), ev_377f49673eca95ad20452100cff86dbfba24514f2d4edd00ae7bf8fea26f8476 (FUN_004e0eb0); bounded negative — a string search cannot rule out a computed check |
+| E36 | Original classifier constants: media/web extension lists, TS/video lists, octet-stream MIME list, exclusions (`manifest`, `favicon.ico`, `pem.msg`, `.wasm`, `.json`), size gates (200 KiB media, 1 MiB ASF, 300 KiB TXT/JS XHR), MIME→extension table (~100 entries) | `bg.js:1-7,29-37` |
+| E37 | Original content script: all-frame content script; long-lived `runtime.connect({name:"neat"})` port; draggable in-page media panel; YouTube/Vimeo/Facebook extractors; HLS list building in the worker; VTT/SRT labels; Delete-key bypass | `ct.js:1-35`; `bg.js:20-28,41-43` |
 
 ## Notes
 
 - Evidence for E4–E5, E9, E15–E17, E19–E21 comes from strings/PE parsing of the
   shipped binary; string presence is an observation about the artifact, not
   proof of a specific runtime path.
+- E27–E37 are static observations of the shipped Chromium extension bundle
+  (`binary-original/`, read-only) plus a fresh REA session on the same
+  `NeatDM.exe` digest as E1–E26. Neither the application nor a browser was
+  executed for these rows; `bg.js`/`ct.js` are minified, so line numbers point
+  to statement groups.
 - "UNKNOWN" rows must not be guessed in implementation; they get a documented
   design decision in the spec instead.

@@ -68,6 +68,10 @@ origin; scoped cookie attributes are passed to libcurl so cookies follow
 domain/path/secure rules across redirects. The server rejects unsafe URLs,
 malformed messages, oversized frames, and cookies scoped to a different host.
 Firefox support and a production extension-store ID pin remain future work.
+The original `neatextension.v1` protocol and the behavioral comparison with the
+shipped NeatDownloadManager extension are documented in
+`07-chromium-extension-reference.md` (reference only; candidates there are not
+committed to the roadmap).
 
 ## 4. Log/error formats
 

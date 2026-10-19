@@ -21,6 +21,7 @@ reverse-engineering evidence before any implementation code. Rules:
 | `04-protocols.md` | HTTP behaviors, proxy/SOCKS, auth, extension WebSocket protocol |
 | `05-settings.md` | Settings keys, defaults, config file layout on Linux |
 | `06-parity-checklist.md` | What is replicated vs intentionally dropped vs deferred |
+| `07-chromium-extension-reference.md` | Original Chromium-extension behavior, protocol, differences, candidate work items |
 | `evidence-ledger.md` | Evidence IDs and raw observations backing every claim |
 
 ## Status
