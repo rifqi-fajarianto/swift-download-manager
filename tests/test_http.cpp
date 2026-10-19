@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -9,6 +10,7 @@
 #include "engine/segment_plan.h"
 #include "http_test_server.h"
 #include "net/http.h"
+#include "net/interstitial.h"
 #include "test_util.h"
 
 using namespace swiftdm;
@@ -277,6 +279,165 @@ void test_html_error_detail(testutil::TestHttpServer& server) {
     CHECK(plain_probe.error.find("var a = 1") == std::string::npos);
 }
 
+// ---------------------------------------------------------------------------
+// Download interstitials (Google Drive), docs/spec/04-protocols.md §5
+// ---------------------------------------------------------------------------
+
+void test_drive_link_helpers() {
+    CHECK_EQ(google_drive_file_id("https://drive.google.com/file/d/1AbC-def_123/view?usp=sharing"),
+             std::string("1AbC-def_123"));
+    CHECK_EQ(google_drive_file_id("https://drive.google.com/uc?export=download&id=1AbCdef123"),
+             std::string("1AbCdef123"));
+    CHECK_EQ(google_drive_file_id("https://drive.google.com/open?id=1AbCdef123"),
+             std::string("1AbCdef123"));
+    CHECK_EQ(google_drive_file_id("https://drive.google.com/drive/u/1/file/d/1AbCdef123/view"),
+             std::string("1AbCdef123"));
+    CHECK_EQ(google_drive_file_id(
+                 "https://drive.usercontent.google.com/download?id=1AbCdef123&export=download"),
+             std::string("1AbCdef123"));
+    // Other hosts are left alone, even when the path looks the same.
+    CHECK_EQ(google_drive_file_id("https://example.com/file/d/1AbCdef123/view"), std::string());
+    CHECK(!is_google_drive_host("https://example.com/file/d/1AbCdef123/view"));
+    CHECK(is_google_docs_host("https://docs.google.com/document/d/1AbCdef123/edit"));
+
+    CHECK_EQ(google_drive_folder_id("https://drive.google.com/drive/folders/1Folder_9?usp=sharing"),
+             std::string("1Folder_9"));
+    CHECK_EQ(google_drive_folder_id("https://drive.google.com/drive/u/0/folders/1Folder_9"),
+             std::string("1Folder_9"));
+    CHECK_EQ(google_drive_folder_id("https://drive.google.com/file/d/1AbCdef123/view"),
+             std::string());
+
+    CHECK_EQ(google_drive_download_url("1AbCdef123"),
+             std::string("https://drive.usercontent.google.com/download?id=1AbCdef123"
+                         "&export=download"));
+    CHECK_EQ(google_drive_download_url("bad id!"), std::string());
+    CHECK_EQ(keep_drive_handoff_params(google_drive_download_url("1AbCdef123"),
+                                       "https://drive.google.com/file/d/1AbCdef123/view"
+                                       "?usp=sharing&authuser=2&resourcekey=0-Ab_c-d"),
+             std::string("https://drive.usercontent.google.com/download?id=1AbCdef123"
+                         "&export=download&authuser=2&resourcekey=0-Ab_c-d"));
+    // A browser's own download URL already carries the confirmation flag and a
+    // session uuid: the flag is kept, the uuid is not (it changes per page).
+    CHECK_EQ(keep_drive_handoff_params(google_drive_download_url("1AbCdef123"),
+                                       "https://drive.usercontent.google.com/download"
+                                       "?id=1AbCdef123&export=download&authuser=0"
+                                       "&confirm=t&uuid=6aa864b8-8504-4290-aa3b-x"),
+             std::string("https://drive.usercontent.google.com/download?id=1AbCdef123"
+                         "&export=download&authuser=0&confirm=t"));
+    CHECK_EQ(keep_drive_handoff_params("https://host/x?authuser=5",
+                                       "https://drive.google.com/x?authuser=2"),
+             std::string("https://host/x?authuser=5"));
+    CHECK_EQ(url_query_param("https://drive.google.com/uc?id=1AbC&authuser=3", "authuser"),
+             std::string("3"));
+    CHECK_EQ(url_query_param("https://drive.google.com/uc?id=1AbC", "authuser"), std::string());
+
+    // Pages that never are the file: reported instead of saved.
+    CHECK_EQ(page_error_reason("https://drive.google.com/file/d/1AbCdef123/view",
+                               "https://drive.google.com/file/d/1AbCdef123/view"),
+             std::string(kDrivePageError));
+    CHECK_EQ(page_error_reason("https://docs.google.com/document/d/1AbCdef123/edit",
+                               "https://docs.google.com/document/d/1AbCdef123/edit"),
+             std::string(kDocsEditorError));
+    CHECK(page_error_reason("https://example.com/download/page", "").empty());
+
+    const std::string signin_html =
+        "<html><head><title>Google Drive: Sign-in</title></head><body>"
+        "<form action=\"https://accounts.google.com/v3/signin/identifier\">"
+        "<input id=\"identifierId\"/></form></body></html>";
+    CHECK_EQ(signin_error_reason("https://accounts.google.com/v3/signin/identifier", ""),
+             std::string(kSignInError));
+    CHECK_EQ(signin_error_reason("http://127.0.0.1:1/x", signin_html), std::string(kSignInError));
+    CHECK(signin_error_reason("http://127.0.0.1:1/x", "<html><body>hello</body></html>").empty());
+}
+
+void test_drive_folder_link_probe() {
+    // No request is made: a folder link has no file behind it.
+    HttpOptions opts;
+    opts.url = "https://drive.google.com/drive/folders/1AbCdef123?usp=sharing";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK_EQ(probe.error, std::string(kDriveFolderError));
+}
+
+void test_download_confirmation_url() {
+    const std::string page =
+        "<html><head><title>Google Drive - Virus scan warning</title></head><body>"
+        "<form id=\"download-form\" action=\"https://drive.usercontent.google.com/download\" "
+        "method=\"get\"><input type=\"submit\" value=\"Download anyway\"/>"
+        "<input type=\"hidden\" name=\"id\" value=\"1AbCdef123\"/>"
+        "<input type=\"hidden\" name=\"export\" value=\"download\"/>"
+        "<input type=\"hidden\" name=\"confirm\" value=\"t\"/>"
+        "<input type=\"hidden\" name=\"uuid\" value=\"aaaa-bbbb\"/></form></body></html>";
+    CHECK_EQ(download_confirmation_url(page),
+             std::string("https://drive.usercontent.google.com/download?id=1AbCdef123"
+                         "&export=download&confirm=t"));
+    // A form without a confirmation field is an ordinary page, not a notice.
+    CHECK_EQ(download_confirmation_url("<html><body><form action=\"/x\">"
+                                       "<input type=\"hidden\" name=\"id\" value=\"1\"/>"
+                                       "</form></body></html>"),
+             std::string());
+    CHECK_EQ(download_confirmation_url("<html><body>no form here</body></html>"),
+             std::string());
+}
+
+void test_drive_interstitial_probe(testutil::TestHttpServer& server) {
+    HttpOptions opts;
+    opts.url = server.base_url() + "/drive-page/262144";
+    opts.user_agent = "SwiftDM-Test/1.0";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(probe.ok);
+    CHECK_EQ(probe.content_length, uint64_t(262144));
+    CHECK(probe.accept_ranges);
+    CHECK_EQ(probe.filename_hint, std::string("sample-262144.bin"));
+    CHECK(probe.mime_type.find("html") == std::string::npos);
+    CHECK(probe.download_url.find("confirm=t") != std::string::npos);
+    CHECK(probe.download_url.find("uuid=") == std::string::npos);  // stable across runs
+    CHECK_EQ(probe.effective_url, probe.download_url);
+}
+
+void test_drive_interstitial_download(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/drive-page/1048576";
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(result.path.find("sample-1048576.bin") != std::string::npos);
+    CHECK(file_matches(result.path, 1048576));
+    CHECK(dir_empty(settings.temp_dir));
+}
+
+void test_drive_page_unresolved(testutil::TestHttpServer& server) {
+    HttpOptions opts;
+    opts.url = server.base_url() + "/drive-loop/65536";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK(probe.error.find("confirmation page") != std::string::npos);
+}
+
+void test_signin_page(testutil::TestHttpServer& server) {
+    HttpOptions opts;
+    opts.url = server.base_url() + "/signin";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK_EQ(probe.error, std::string(kSignInError));
+}
+
+// A plain HTML page from an ordinary host is still downloadable as a file.
+void test_plain_page_download(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/page";
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(result.path.find("/page") != std::string::npos);
+    std::ifstream in(result.path, std::ios::binary);
+    const std::string text((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    CHECK(text.find("<title>Plain page</title>") != std::string::npos);
+}
+
 void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -343,6 +504,14 @@ int main() {
     test_single_connection_fallback(dir + "/fallback", server);
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
+    test_drive_link_helpers();
+    test_drive_folder_link_probe();
+    test_download_confirmation_url();
+    test_drive_interstitial_probe(server);
+    test_drive_interstitial_download(dir + "/drive", server);
+    test_drive_page_unresolved(server);
+    test_signin_page(server);
+    test_plain_page_download(dir + "/page", server);
     test_categories();
     test_unique_path(dir);
 

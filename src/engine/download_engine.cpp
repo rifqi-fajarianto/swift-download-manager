@@ -395,6 +395,9 @@ DownloadResult DownloadEngine::run(
         result.error = probe.error.empty() ? "probe failed" : probe.error;
         return result;
     }
+    // A resolved link (Drive viewer links and virus-scan notices) names the URL
+    // that actually serves the file; every transfer below must use it.
+    if (!probe.download_url.empty()) options.url = probe.download_url;
 
     std::string filename = request.filename.empty() ? pick_filename(probe, request.url)
                                                     : sanitize_filename(request.filename);

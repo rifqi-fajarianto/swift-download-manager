@@ -37,6 +37,10 @@ struct ProbeResult {
     std::string mime_type;
     std::string etag;
     std::string last_modified;
+    // URL the transfer has to use when it differs from the requested one
+    // (a resolved download interstitial, or a normalised site link). Empty
+    // means "the requested URL is already correct".
+    std::string download_url;
     std::string error;            // "HTTP/1.1 403 Forbidden" or network error
 };
 
@@ -70,6 +74,12 @@ bool is_ftp_url(const std::string& url);
 // Probes a URL: HEAD first, falling back to GET Range: 0-0 (or POST when
 // post_data is set). FTP URLs use a NOBODY (SIZE) probe instead. Fills
 // size/range support/validators/filename hint.
+//
+// Known download interstitials are resolved first (docs/spec/04-protocols.md
+// §5): Google Drive file/viewer links are rewritten to the direct download URL
+// and the site's virus-scan notice is confirmed automatically, so the result
+// describes the file rather than the page. Links that never lead to a file
+// (Drive folder listings, sign-in walls, Docs editor pages) fail with a reason.
 ProbeResult probe_url(const HttpOptions& options);
 
 // Fetches a small resource into memory (HLS playlists). Fails when the body

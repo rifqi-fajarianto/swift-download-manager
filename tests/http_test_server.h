@@ -10,6 +10,11 @@
 //   GET/HEAD /segments-forbidden/N  200 probe, ranged GETs answer 403 JSON
 //   GET/HEAD /stream-forbidden      200 chunked probe, streamed GET answers 403 JSON
 //   GET/HEAD /limit-connections/N   200 probe, parallel ranges answer 403 JSON
+//   GET/HEAD /drive-page/N          Google Drive virus-scan notice; with
+//                                   confirm=t the same route serves /file/N
+//   GET/HEAD /drive-loop/N          virus-scan notice that never resolves
+//   GET/HEAD /signin                Google sign-in page (private-file wall)
+//   GET/HEAD /page                  plain HTML page (no file download)
 //   GET/HEAD /html-error            403 HTML page with a <title>
 //   GET/HEAD /html-error-plain      403 HTML page without a <title>
 //   GET/HEAD /hls/master.m3u8       HLS master playlist (variant-1/-2)
@@ -128,7 +133,7 @@ class TestHttpServer {
             socklen_t len = sizeof(peer);
             const int fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &len);
             if (fd < 0) break;
-            std::thread([fd] { handle_conn(fd); }).detach();
+            std::thread([this, fd] { handle_conn(fd, port_); }).detach();
         }
     }
 
@@ -156,7 +161,7 @@ class TestHttpServer {
                "Connection: close\r\n";
     }
 
-    static void handle_conn(int fd) {
+    static void handle_conn(int fd, uint16_t port) {
         std::string request;
         char buf[8192];
         while (request.find("\r\n\r\n") == std::string::npos && request.size() < 65536) {
@@ -272,6 +277,12 @@ class TestHttpServer {
         } else if (path.rfind("/limit-connections/", 0) == 0) {
             serve_limited_connections(fd, method, range,
                                       path.substr(std::string("/limit-connections/").size()));
+        } else if (path.rfind("/drive-page/", 0) == 0 || path.rfind("/drive-loop/", 0) == 0) {
+            serve_drive_page(fd, method, port, path, query, range);
+        } else if (path == "/signin") {
+            serve_signin_page(fd);
+        } else if (path == "/page") {
+            serve_plain_page(fd);
         } else if (path == "/stream-forbidden") {
             // Unknown-size probe succeeds (chunked), the streamed GET is refused.
             if (method == "HEAD") {
@@ -323,6 +334,61 @@ class TestHttpServer {
         if (total > 0 && end >= total) end = total - 1;
         if (start > end) return false;
         return true;
+    }
+
+    // Google Drive's virus-scan notice: a 200 text/html page whose form carries
+    // the confirmation token. With confirm=t the route serves the real file.
+    // /drive-loop/ keeps answering with the page, so the "cannot be resolved"
+    // path is testable as well.
+    static void serve_drive_page(int fd, const std::string& method, uint16_t port,
+                                 const std::string& path, const std::string& query,
+                                 const std::string& range) {
+        const bool loop = path.rfind("/drive-loop/", 0) == 0;
+        const std::string prefix = loop ? "/drive-loop/" : "/drive-page/";
+        const std::string size_text = path.substr(prefix.size());
+        if (!loop && query.find("confirm=t") != std::string::npos) {
+            serve_file(fd, method, size_text, range, false);
+            return;
+        }
+        const std::string action = "http://127.0.0.1:" + std::to_string(port) + path;
+        const std::string body =
+            "<!DOCTYPE html><html><head><title>Google Drive - Virus scan warning</title>"
+            "</head><body><p>Google Drive can't scan this file for viruses.</p>"
+            "<form id=\"download-form\" action=\"" +
+            action +
+            "\" method=\"get\">"
+            "<input type=\"submit\" id=\"uc-download-link\" value=\"Download anyway\"/>"
+            "<input type=\"hidden\" name=\"id\" value=\"test-file-id\"/>"
+            "<input type=\"hidden\" name=\"export\" value=\"download\"/>"
+            "<input type=\"hidden\" name=\"confirm\" value=\"t\"/>"
+            "<input type=\"hidden\" name=\"uuid\" value=\"0f0f0f0f-1111-2222-3333-444444444444\"/>"
+            "</form></body></html>";
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                     "Content-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+    }
+
+    // Where a private Drive file redirects: Google's sign-in page.
+    static void serve_signin_page(int fd) {
+        const std::string body =
+            "<!DOCTYPE html><html><head><title>Google Drive: Sign-in</title></head><body>"
+            "<form action=\"https://accounts.google.com/v3/signin/identifier\" method=\"post\">"
+            "<input type=\"email\" id=\"identifierId\" name=\"identifier\"/>"
+            "<input type=\"submit\" value=\"Sign in\"/></form>"
+            "<p>Use your Google Account (ServiceLogin).</p></body></html>";
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                     "Content-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+    }
+
+    // An ordinary HTML page from a host that is not a known download
+    // interstitial; the page is still downloadable as a file.
+    static void serve_plain_page(int fd) {
+        const std::string body =
+            "<html><head><title>Plain page</title></head><body>hello</body></html>";
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                     "Content-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
     }
 
     static void serve_file(int fd, const std::string& method, const std::string& size_text,

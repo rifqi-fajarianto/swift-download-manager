@@ -78,6 +78,10 @@ are our own choices where the original is UNKNOWN (E23).
   `403 max_concurrent_downloads`) therefore still complete instead of failing.
   CAPTCHA-gated refusals are not bypassed: the user must clear them on the
   host's page (the error dialog offers `Open Page in Browser`).
+- **[design: 0.13.0]** the probe resolves known download interstitials first
+  (04-protocols.md §5): `ProbeResult::download_url` then names the URL the
+  transfers must use, while filename, size, validators, segmentation and resume
+  state all describe the real file.
 - HTTP specifics supported: chunked transfer decoding, redirect following
   (limit **[design: 15]**), HTTP proxy CONNECT tunneling, SOCKS4/SOCKS5
   (E15), cookies, custom headers per download (`headers` table), Basic/Digest

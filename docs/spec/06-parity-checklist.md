@@ -94,6 +94,23 @@ does not circumvent that gate:
 | `Open Page in Browser` in the error dialog | Implemented | offered when the download came from a browser page, so the user can clear the host's CAPTCHA and retry |
 | CAPTCHA solving / hotlink circumvention | Dropped | out of scope: the host asks for a human step, the app points at the page |
 
+## v3.2 — links that are pages, not files (0.13.0)
+
+Google Drive answered different link shapes in different ways: sometimes the
+file arrived, sometimes a 2 KB HTML page was stored under a name taken from the
+URL (`download`, `view`, or a Drive folder id).
+
+| Behavior | Status |
+|---|---|
+| Viewer/file links (`/file/d/<id>[/view]`, `/open?id=`, `/uc?id=`, `/drive/u/<n>/…`) | Implemented | normalised to `drive.usercontent.google.com/download?id=<id>&export=download`, keeping `authuser`/`resourcekey`/`confirm` (`uuid` dropped) |
+| Virus-scan notice above Google's scan limit | Implemented | `confirm=t` submitted transparently, exactly one step; `uuid` dropped so the URL stays deterministic |
+| Transfers follow the resolved URL | Implemented | `ProbeResult::download_url`; resume state keeps matching because the resolved URL is stable across runs and link shapes |
+| Drive folder links | Implemented | refused before any request, with the reason |
+| Sign-in walls (private or removed files, `accounts.google.com`) | Implemented | refused with the reason instead of saving a page; also covers the browser's own `confirm=t` URLs fetched without the account session |
+| Google Docs editor links | Implemented | refused with guidance (`File > Download` / export link) |
+| Plain HTML pages from other hosts | Unchanged | still downloadable; only a page carrying the confirmation form is auto-submitted |
+| CAPTCHA / account-only gates | Not bypassed | same policy as v3.1: the user clears them on the host's page |
+
 ## Verification notes
 
 - Automated verification is CLI/backend only (AGENTS.md): unit tests, a local

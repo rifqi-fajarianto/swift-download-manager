@@ -116,3 +116,43 @@ tracked in its decision log.
   `300` bytes on a UTF-8 boundary. Refused bodies are never written into the
   partial file.
 - Per-download log file with `.LogFile.txt` extension (E5/E14 notes).
+
+## 5. Download interstitials (0.13.0)
+
+Some hosts answer a file link with an HTML page instead of the file. Google
+Drive is the case this section covers (verified against the live service):
+
+- `drive.google.com/file/d/<id>/view` (also `/open?id=`, `/uc?id=`,
+  `/download?id=`, `/drive/u/<n>/…`) serves the Drive web app; Drive's own
+  download URL is
+  `https://drive.usercontent.google.com/download?id=<id>&export=download`, so
+  viewer links are rewritten to it before probing, keeping the link's handoff
+  parameters: `authuser` (account), `resourcekey` (security-updated links need
+  the key) and `confirm` (a browser's own download URL carries it, which then
+  resolves in one step). The session `uuid` is dropped.
+- Files above Google's virus-scan limit answer that URL with `200 text/html` —
+  "Google Drive can't scan this file for viruses." — whose form carries
+  `id`/`export`/`confirm=t`/`uuid` hidden fields. The probe submits that form
+  transparently (exactly one step, so a looping site cannot recurse) and probes
+  the resulting URL, so name, size and range support describe the real file.
+  `uuid` is dropped: Drive ignores its value (verified with an arbitrary token)
+  and leaving it out keeps the resolved URL deterministic, which is what keeps a
+  resumed partial file matching. Before this step the 2.4 KB page was stored as
+  the download under a URL-derived name (`download`, `view`, or the Drive id for
+  folder links).
+- Links that never lead to a file fail with a reason instead of a saved page:
+  folder listings (`/drive/folders/<id>`; no request is made), Google Docs
+  editor pages, and sign-in walls (`accounts.google.com`, where a private or
+  removed file redirects — Drive answers the browser's own `confirm=t` URL the
+  same way when it is fetched without the account's session). The message names
+  both ways out: share the file as "Anyone with the link", or let the browser
+  hand the download over (the extension passes the browser session on).
+- Other hosts are unaffected: a page is only treated as a confirmation notice
+  when it carries the form above, and the body is read with a `256 KiB` cap.
+  Only Drive/Docs pages are refused without such a form, because Drive serves
+  every file with `Content-Disposition` — an HTML response without it is never
+  the file itself. A plain HTML document from an ordinary host is still
+  downloadable as a file.
+- The resolved URL is used for the transfer (`ProbeResult::download_url`,
+  03-engine.md §5); the probe result otherwise flows through the pipeline
+  unchanged.

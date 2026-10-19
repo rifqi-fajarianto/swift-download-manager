@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.13.0 — 2026-10-19
+
+Google Drive links end up in the file that was asked for, not in a page.
+
+- Viewer and file links (`drive.google.com/file/d/<id>/view`, `/open?id=`,
+  `/uc?id=`, `/drive/u/<n>/…`) are normalised to Drive's direct download URL
+  (`drive.usercontent.google.com/download?id=<id>&export=download`), keeping the
+  link's `authuser`/`resourcekey`/`confirm` handoff parameters.
+- Drive's virus-scan notice ("Google Drive can't scan this file for viruses",
+  shown for files above Google's scan limit) is confirmed transparently, so
+  those files download with their real name and size instead of a 2 KB HTML
+  page saved as `download`, `view`, or the Drive id.
+- Transfers now use the URL the probe resolved (`ProbeResult::download_url`).
+  The resolved URL is deterministic, so pause/resume keeps matching the partial
+  file, also when the same file is retried through a different link shape.
+- Links that never lead to a file fail with an explanation instead of saving a
+  page: Drive folder links, Google Docs editor pages, and sign-in walls
+  (private or removed files, including the browser's own `confirm=t` URLs
+  fetched without the account session). The message names both ways out:
+  share as "Anyone with the link", or hand the download over from the browser.
+- Ordinary HTML pages from other hosts remain downloadable; a page is only
+  auto-submitted when it carries a download-confirmation form.
+
+Verified by build + CLI/backend suite (`test_http` gained a virus-scan notice
+route, a notice that never resolves, a sign-in page, a plain page, and unit
+tests for the link/notice parsing) plus live checks against Google Drive links
+(public small/large files in every link shape, a folder link, and private-file
+URLs taken from the app's own history).
+
 ## 0.12.0 — 2026-10-19
 
 Make server refusals understandable (and survivable) instead of a bare

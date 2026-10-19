@@ -15,6 +15,7 @@
 
 #include "core/log.h"
 #include "core/util.h"
+#include "net/interstitial.h"
 
 namespace swiftdm {
 
@@ -628,7 +629,10 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
     return true;
 }
 
-ProbeResult probe_url(const HttpOptions& options) {
+namespace {
+
+// Probe without interstitial handling: HEAD first, GET Range: 0-0 as fallback.
+ProbeResult probe_url_once(const HttpOptions& options) {
     if (is_ftp_url(options.url)) return probe_ftp(options);
     ensure_curl_global();
     ProbeResult out;
@@ -680,6 +684,106 @@ ProbeResult probe_url(const HttpOptions& options) {
     out.content_length = cap.content_range_total;
     if (out.content_length == 0) out.content_length = cap.content_length;
     out.ok = true;
+    return out;
+}
+
+// Bodies read while resolving an interstitial. Drive's virus-scan notice is a
+// few KB; the cap keeps a mistaken fetch of a real HTML file short.
+constexpr uint64_t kInterstitialBodyLimit = 256 * 1024;
+
+// A file response carries Content-Disposition and/or range support; an HTML
+// body without either is one of the site's pages.
+bool is_web_page(const ProbeResult& probe) {
+    return probe.ok && probe.mime_type == "text/html" && probe.filename_hint.empty() &&
+           !probe.accept_ranges;
+}
+
+// Resolves a page that answered instead of the file (04-protocols.md §5):
+// download-confirmation notices are submitted transparently, everything else
+// is reported instead of being stored as the "file".
+ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) {
+    if (const std::string reason = signin_error_reason(probe.effective_url, {}); !reason.empty()) {
+        probe.ok = false;
+        probe.error = reason;
+        return probe;
+    }
+
+    std::string body;
+    std::string body_url;
+    std::string fetch_error;
+    if (!fetch_text(options, &body, &body_url, &fetch_error, kInterstitialBodyLimit)) {
+        const std::string reason = page_error_reason(options.url, probe.effective_url);
+        if (!reason.empty()) {
+            probe.ok = false;
+            probe.error = reason + " (" +
+                          (fetch_error.empty() ? std::string("page unreadable") : fetch_error) + ")";
+        }
+        return probe;
+    }
+    if (const std::string reason = signin_error_reason(body_url, body); !reason.empty()) {
+        probe.ok = false;
+        probe.error = reason;
+        return probe;
+    }
+
+    const std::string confirm = download_confirmation_url(body);
+    if (!confirm.empty()) {
+        HttpOptions next = options;
+        // The notice does not repeat the link's account/resource-key handoff.
+        next.url = keep_drive_handoff_params(confirm, options.url);
+        ProbeResult resolved = probe_url_once(next);  // exactly one confirmation step
+        if (resolved.ok && is_web_page(resolved)) {
+            resolved.ok = false;
+            resolved.error = kConfirmationPendingError;
+        }
+        if (!resolved.ok) {
+            probe.ok = false;
+            probe.error = resolved.error.empty() ? std::string(kConfirmationPendingError)
+                                                : resolved.error;
+            return probe;
+        }
+        resolved.download_url = next.url;
+        return resolved;
+    }
+
+    const std::string reason = page_error_reason(options.url, body_url);
+    if (!reason.empty()) {
+        std::string detail = condense_error_body(body, probe.mime_type);
+        if (detail.empty()) detail = condense_error_body(body, "text/html");
+        probe.ok = false;
+        probe.error = reason;
+        if (!detail.empty()) probe.error += " - " + detail;
+    }
+    return probe;
+}
+
+}  // namespace
+
+ProbeResult probe_url(const HttpOptions& options) {
+    // Drive folder links have no file behind them; fail before any request so
+    // the reason reaches the user instead of a saved page named after the id.
+    if (!google_drive_folder_id(options.url).empty()) {
+        ProbeResult out;
+        out.error = kDriveFolderError;
+        return out;
+    }
+
+    HttpOptions target = options;
+    const std::string file_id = google_drive_file_id(options.url);
+    if (!file_id.empty()) {
+        // Viewer links ("/file/d/<id>/view", "/open?id=", "/drive/u/<n>/…")
+        // serve the Drive web app; the direct URL is what the site itself
+        // redirects to for "uc?export=download" links.
+        target.url =
+            keep_drive_handoff_params(google_drive_download_url(file_id), options.url);
+    }
+
+    ProbeResult out = probe_url_once(target);
+    // POST downloads are API calls, not site links; leave their body alone.
+    if (options.post_data.empty() && is_web_page(out)) {
+        out = resolve_interstitial(target, std::move(out));
+    }
+    if (out.download_url.empty() && target.url != options.url) out.download_url = target.url;
     return out;
 }
 

@@ -67,6 +67,13 @@ Layout (from `main-window.png`):
    When the download came from a browser page, an additional `Open Page in
    Browser` button opens that page (hosts such as pixeldrain require a CAPTCHA
    there before any tool may download the file).
+   Google Drive links are resolved before the confirmation step (0.13.0):
+   viewer/file links are rewritten to Drive's direct download URL and the
+   virus-scan notice for files above Google's scan limit is confirmed
+   automatically, so the dialog shows the real file name and size. Links that
+   never lead to a file — Drive folder listings, Docs editor pages, sign-in
+   walls for private or removed files — fail with an explanation instead of
+   saving a page.
 8. **Properties** (`download-properties-window.png`): icon, file size bytes,
    status, Saved To path (+ Open Folder), Temp Path, URL (editable), Page URL
    (+ Show Page), Page Title, Browser (source that submitted it), Added On,
