@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -455,6 +456,45 @@ void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer&
     CHECK(file_matches(result.path, 300000));
 }
 
+// The speed limiter toggle is authoritative: on applies the value to the
+// sequential (unknown-size) path as well, off means unlimited no matter what
+// value is stored per download or in the settings. libcurl enforces the rate
+// on the wall clock, so only lower bounds are asserted: 256 KiB at 128 KiB/s
+// cannot finish in well under two seconds.
+void test_bandwidth_limit_toggle(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    settings.bandwidth_limit_enabled = true;
+    settings.bandwidth_limit_kbps = 8;  // applied by mistake: needs ~32 s
+    DownloadEngine engine(settings);
+
+    constexpr uint64_t kSize = 256u << 10;
+    auto run_seconds = [&](const DownloadRequest& req) {
+        const auto start = std::chrono::steady_clock::now();
+        const auto result = engine.run(req);
+        const double seconds = std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        CHECK(result.status == DownloadResult::Status::Completed);
+        CHECK_EQ(result.size, kSize);
+        CHECK(file_matches(result.path, kSize));
+        return seconds;
+    };
+
+    DownloadRequest limited;
+    limited.url = server.base_url() + "/chunked/" + std::to_string(kSize);
+    limited.bandwidth_limit_enabled = true;
+    limited.bandwidth_limit_kbps = 128;  // >= ~2 s
+    CHECK(run_seconds(limited) >= 1.5);
+
+    DownloadRequest disabled = limited;
+    disabled.bandwidth_limit_enabled = false;
+    CHECK(run_seconds(disabled) < 4.0);
+
+    // No fallback to the global setting while the toggle is off.
+    disabled.bandwidth_limit_kbps = 0;
+    CHECK(run_seconds(disabled) < 4.0);
+}
+
 void test_exact_folder_override(const std::string& dir, testutil::TestHttpServer& server) {
     Settings settings = test_settings(dir);
     settings.category_folders = true;
@@ -539,6 +579,7 @@ int main() {
     test_single_connection_fallback(dir + "/fallback", server);
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
+    test_bandwidth_limit_toggle(dir + "/bandwidth-limit", server);
     test_drive_link_helpers();
     test_drive_folder_link_probe();
     test_download_confirmation_url();

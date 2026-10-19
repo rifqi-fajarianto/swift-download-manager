@@ -15,7 +15,8 @@ void test_defaults() {
     Settings s = default_settings();
     CHECK_EQ(s.max_connections, 8);
     CHECK_EQ(s.connections_at_once, 0);
-    CHECK_EQ(s.bandwidth_limit_kbps, 0);
+    CHECK_EQ(s.bandwidth_limit_kbps, 1024);
+    CHECK(!s.bandwidth_limit_enabled);
     CHECK(s.category_folders);
     CHECK(s.completion_dialog);
     CHECK(!s.autostart);
@@ -31,6 +32,7 @@ void test_roundtrip(const std::string& dir) {
     s.max_connections = 32;
     s.connections_at_once = 1;
     s.bandwidth_limit_kbps = 512;
+    s.bandwidth_limit_enabled = true;
     s.use_ua_for_browser = true;
     s.default_agent = "TestAgent/1.0";
     s.download_dir = dir + "/downloads";
@@ -54,6 +56,7 @@ void test_roundtrip(const std::string& dir) {
     CHECK_EQ(loaded.max_connections, 32);
     CHECK_EQ(loaded.connections_at_once, 1);
     CHECK_EQ(loaded.bandwidth_limit_kbps, 512);
+    CHECK(loaded.bandwidth_limit_enabled);
     CHECK(loaded.use_ua_for_browser);
     CHECK_EQ(loaded.default_agent, std::string("TestAgent/1.0"));
     CHECK_EQ(loaded.download_dir, s.download_dir);
@@ -119,6 +122,30 @@ void test_parsing_quirks(const std::string& dir) {
     CHECK(s2.proxy.enabled());
 }
 
+void test_bandwidth_toggle(const std::string& dir) {
+    // Configs from before the toggle existed used a non-zero BandWidthLimit as
+    // "limiter on", so the upgrade must keep them limited.
+    {
+        std::ofstream out(dir + "/legacy-limit.ini");
+        out << "[general]\nBandWidthLimit = 256\n";
+    }
+    Settings legacy;
+    std::string err;
+    CHECK(load_settings(dir + "/legacy-limit.ini", legacy, &err));
+    CHECK_EQ(legacy.bandwidth_limit_kbps, 256);
+    CHECK(legacy.bandwidth_limit_enabled);
+
+    // An explicit toggle off wins even when a non-zero value is stored.
+    {
+        std::ofstream out(dir + "/limit-off.ini");
+        out << "[general]\nBandWidthLimit = 2048\nBandWidthLimitEnabled = 0\n";
+    }
+    Settings disabled;
+    CHECK(load_settings(dir + "/limit-off.ini", disabled, &err));
+    CHECK_EQ(disabled.bandwidth_limit_kbps, 2048);
+    CHECK(!disabled.bandwidth_limit_enabled);
+}
+
 }  // namespace
 
 int main() {
@@ -132,6 +159,7 @@ int main() {
     test_roundtrip(dir);
     test_missing_file(dir);
     test_parsing_quirks(dir);
+    test_bandwidth_toggle(dir);
 
     testutil::cleanup_dir(dir);
     return testutil::finish("test_settings");

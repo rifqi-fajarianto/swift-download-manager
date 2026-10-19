@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.18.0
+    VERSION 0.18.1
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -133,6 +133,7 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/confirm_download_dialog.cpp
         src/ui/properties_dialog.cpp
         src/ui/settings_dialog.cpp
+        src/ui/speed_limit_editor.cpp
         src/ui/download_window.cpp
         src/ui/browser_integration.cpp
         src/ui/main_window.cpp

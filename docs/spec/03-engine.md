@@ -57,9 +57,22 @@ are our own choices where the original is UNKNOWN (E23).
 
 ## 4. Rate limiting
 
-- `bandwidthlimit` (KB/s, per download; 0 = unlimited) (E8).
+- `bandwidthlimit` (KB/s, per download) with the per-download
+  `bandwidthlimit_enabled` toggle; the settings dialog has the global
+  `BandWidthLimit` + `BandWidthLimitEnabled` pair (E8). 0.18.1: the toggle is
+  authoritative — off means unlimited and the stored value is kept editable in
+  the Options tab (and in settings) for later. **[design: 0.18.1]** new
+  downloads are seeded from the global pair, then overridden per download.
+- Preset values offered in both editors: 500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s,
+  20 MB/s, 50 MB/s (plus a custom KB/s field).
+- While a transfer runs, the Download tab shows `Speed limit: <value>`
+  in orange next to the Bandwidth value when the limiter is on.
 - **[design]**: global token bucket per download; segments share it; sleep
   granularity 50 ms. Global limit is not part of the original settings set.
+  `stream_download` (unknown size, FTP, HLS) uses libcurl's receive-rate cap so
+  the limiter applies to those paths as well.
+- Configs and history rows written before 0.18.1 load with the toggle inferred
+  from a non-zero stored limit (the old rule was "non-zero = limit on").
 
 ## 5. Retry and error handling
 

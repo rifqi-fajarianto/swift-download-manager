@@ -172,6 +172,7 @@ void DownloadTask::run() {
     request.cookies = options_.cookies;
     request.user_agent = options_.user_agent.toStdString();
     request.connections = options_.connections;
+    request.bandwidth_limit_enabled = options_.limit_enabled;
     request.bandwidth_limit_kbps = options_.limit_kbps;
     request.headers = options_.headers;
     request.post_data.assign(options_.post_data.constData(),

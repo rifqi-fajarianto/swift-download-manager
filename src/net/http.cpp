@@ -1230,7 +1230,7 @@ int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
-                                uint64_t resume_from) {
+                                uint64_t resume_from, int64_t bandwidth_limit_bytes) {
     ensure_curl_global();
     curl_slist* headers = build_headers(options.headers);
     CURL* handle = curl_easy_init();
@@ -1265,6 +1265,10 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
         }
         curl_easy_setopt(handle, CURLOPT_RESUME_FROM_LARGE,
                          static_cast<curl_off_t>(resume_from));
+    }
+    if (bandwidth_limit_bytes > 0) {
+        curl_easy_setopt(handle, CURLOPT_MAX_RECV_SPEED_LARGE,
+                         static_cast<curl_off_t>(bandwidth_limit_bytes));
     }
     if (!options.post_data.empty()) {
         curl_easy_setopt(handle, CURLOPT_POST, 1L);

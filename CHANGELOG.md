@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.18.1 — 2026-10-19
+
+Speed limiter with an explicit toggle, presets and an active-limit display.
+
+- Settings and the download window's Options tab now have an "Enable speed
+  limiter" toggle (new `BandWidthLimitEnabled` key and `bandwidthlimit_enabled`
+  history column). Off means unlimited; the KB/s value stays visible and
+  editable so it can be prepared and enabled later.
+- Presets in both editors: 500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s, 20 MB/s and
+  50 MB/s, plus the custom KB/s field.
+- New downloads start from the global toggle/value and can override both per
+  download; restoring a row brings the per-download state back.
+- The Download tab shows `Speed limit: <value>` in orange next to the
+  Bandwidth value while the limiter is on.
+- The limiter now also caps the sequential transfer paths (unknown-size HTTP,
+  FTP, HLS) through libcurl's receive-rate cap.
+- Upgrade compatibility: configs and history rows written earlier infer the
+  toggle from a non-zero stored limit (the old "non-zero = limit on" rule).
+- Backend tests cover the settings round-trip, the legacy-config inference,
+  the history column migration and the transfer cap (on limits the sequential
+  path; off stays unlimited even with a stored value).
+
 ## 0.18.0 — 2026-10-19
 
 One confirmation window before every transfer.

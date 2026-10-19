@@ -33,7 +33,11 @@ class DownloadTask : public QObject {
         std::vector<swiftdm::HttpHeader> headers;  // extra request headers
         QByteArray post_data;  // non-empty = POST handoff body
         int connections = 0;   // 0 = settings
-        int limit_kbps = 0;    // 0 = settings
+        // Per-download speed limiter: the toggle decides whether `limit_kbps`
+        // applies (off = unlimited, even when the global limiter is on). The
+        // value is kept while off so it can be edited and enabled later.
+        bool limit_enabled = false;
+        int limit_kbps = 0;    // KB/s; ignored while `limit_enabled` is false
     };
 
     struct Snapshot {

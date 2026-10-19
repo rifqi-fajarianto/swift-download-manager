@@ -18,6 +18,7 @@ namespace swiftdm::ui {
 
 class DownloadModel;
 class DownloadTask;
+class SpeedLimitEditor;
 
 // Progress bar showing one slice per segment (green = received bytes).
 class SegmentBar : public QWidget {
@@ -74,6 +75,7 @@ class DownloadWindow : public QDialog {
     QLabel* size_label_ = nullptr;
     QLabel* downloaded_label_ = nullptr;
     QLabel* bandwidth_label_ = nullptr;
+    QLabel* limit_info_label_ = nullptr;  // "Speed limit: 5 MB/s" while active
     QLabel* remaining_label_ = nullptr;
     QLabel* resumable_label_ = nullptr;
     QProgressBar* progress_ = nullptr;
@@ -86,7 +88,7 @@ class DownloadWindow : public QDialog {
     QLineEdit* name_edit_ = nullptr;
     QLineEdit* referer_edit_ = nullptr;
     QSpinBox* connections_spin_ = nullptr;
-    QSpinBox* limit_spin_ = nullptr;
+    SpeedLimitEditor* limit_editor_ = nullptr;
     QPushButton* apply_button_ = nullptr;
 
     QTableWidget* connections_table_ = nullptr;

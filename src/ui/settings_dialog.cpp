@@ -107,17 +107,8 @@ QWidget* SettingsDialog::build_general_tab() {
 
     auto* form2 = new QFormLayout;
     form2->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    auto* limit_row = new QHBoxLayout;
-    limit_kbps_ = new QSpinBox(this);
-    limit_kbps_->setRange(0, 1024 * 1024);
-    limit_kbps_->setSpecialValueText(tr("0"));
-    limit_row->addWidget(limit_kbps_);
-    limit_row->addSpacing(12);
-    limit_row->addWidget(new QLabel(tr("0 or blank for No limit"), this));
-    limit_row->addStretch(1);
-    auto* limit_container = new QWidget(this);
-    limit_container->setLayout(limit_row);
-    form2->addRow(tr("Bandwidth Limit per Download (KB/s)"), limit_container);
+    limit_editor_ = new SpeedLimitEditor(this);
+    form2->addRow(tr("Bandwidth Limit per Download"), limit_editor_);
 
     auto* ua_row = new QHBoxLayout;
     default_agent_ = new QLineEdit(this);
@@ -234,7 +225,8 @@ void SettingsDialog::load_from_settings() {
     } else {
         all_at_once_->setChecked(true);
     }
-    limit_kbps_->setValue(settings_.bandwidth_limit_kbps);
+    limit_editor_->set_value(settings_.bandwidth_limit_enabled,
+                             settings_.bandwidth_limit_kbps);
     default_agent_->setText(QString::fromStdString(settings_.default_agent));
     use_ua_browser_->setChecked(settings_.use_ua_for_browser);
     download_dir_->setText(QString::fromStdString(settings_.download_dir));
@@ -262,7 +254,8 @@ void SettingsDialog::load_from_settings() {
 void SettingsDialog::store_to_settings() {
     settings_.max_connections = max_connections_->value();
     settings_.connections_at_once = one_by_one_->isChecked() ? 1 : 0;
-    settings_.bandwidth_limit_kbps = limit_kbps_->value();
+    settings_.bandwidth_limit_enabled = limit_editor_->enabled();
+    settings_.bandwidth_limit_kbps = limit_editor_->kbps();
     settings_.default_agent = default_agent_->text().trimmed().toStdString();
     if (settings_.default_agent.empty()) {
         settings_.default_agent = swiftdm::kDefaultUserAgent;

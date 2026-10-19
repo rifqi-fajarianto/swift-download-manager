@@ -20,6 +20,7 @@ CREATE TABLE "downloads" (
     "category"        TEXT,
     "status"          TEXT,
     "bandwidthlimit"  NUMERIC,
+    "bandwidthlimit_enabled" NUMERIC, -- speed-limiter toggle (1 = limit applies)
     "connections"     NUMERIC,
     "lasttry"         NUMERIC,
     "firsttry"        NUMERIC,
@@ -61,7 +62,8 @@ Field semantics:
 | `filesize` | total size in bytes when known |
 | `category` | one of Video/Audio/Compressed/Document/Application/Misc (E19) |
 | `status` | `Complete`, `Paused`, `Error`, and an active/downloading state (exact token set UNKNOWN) |
-| `bandwidthlimit` | per-download limit in KB/s (0 = unlimited) |
+| `bandwidthlimit` | per-download limit in KB/s (kept while the toggle is off) |
+| `bandwidthlimit_enabled` | 1 when the per-download speed limiter applies; 0 = unlimited. Added by SwiftDM 0.18.1 (additive `ALTER TABLE`); older rows with a non-zero limit are backfilled to 1. |
 | `connections` | requested connection (segment) count for this download |
 | `lasttry`/`firsttry` | unix timestamps of last/first attempt |
 | `useragent` | UA used for this download |

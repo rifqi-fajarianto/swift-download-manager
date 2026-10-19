@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS "downloads" (
     "category"        TEXT,
     "status"          TEXT,
     "bandwidthlimit"  NUMERIC,
+    "bandwidthlimit_enabled" NUMERIC, -- speed-limiter toggle (1 = limit applies)
     "connections"     NUMERIC,
     "lasttry"         NUMERIC,
     "firsttry"        NUMERIC,
@@ -62,7 +63,7 @@ std::string column_text(sqlite3_stmt* stmt, int index) {
 const char* kRecordColumns =
     "url, method, filename, filesize, category, status, bandwidthlimit, connections,"
     " lasttry, firsttry, useragent, resumable, pageurl, pagetitle, mimetype, errortext,"
-    " postdata, folderpath, temppath, groupid, done, folderexact";
+    " postdata, folderpath, temppath, groupid, done, folderexact, bandwidthlimit_enabled";
 
 HistoryStore::Record read_record(sqlite3_stmt* stmt, int base = 0) {
     HistoryStore::Record record;
@@ -88,6 +89,13 @@ HistoryStore::Record read_record(sqlite3_stmt* stmt, int base = 0) {
     record.group_id = column_text(stmt, base + 19);
     record.done = static_cast<uint64_t>(sqlite3_column_int64(stmt, base + 20));
     record.folder_exact = sqlite3_column_int64(stmt, base + 21) != 0;
+    // Rows written before the toggle column existed carry NULL here; a
+    // non-zero limit used to mean "limiter on" (see the backfill in open()).
+    if (sqlite3_column_type(stmt, base + 22) == SQLITE_NULL) {
+        record.bandwidth_limit_enabled = record.bandwidth_limit_kbps > 0;
+    } else {
+        record.bandwidth_limit_enabled = sqlite3_column_int64(stmt, base + 22) != 0;
+    }
     return record;
 }
 
@@ -164,7 +172,9 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
                                std::pair<const char*, const char*>("temppath", "TEXT"),
                                std::pair<const char*, const char*>("groupid", "TEXT"),
                                std::pair<const char*, const char*>("done", "NUMERIC"),
-                               std::pair<const char*, const char*>("folderexact", "NUMERIC")}) {
+                               std::pair<const char*, const char*>("folderexact", "NUMERIC"),
+                               std::pair<const char*, const char*>("bandwidthlimit_enabled",
+                                                                   "NUMERIC")}) {
         if (!ensure_column(column.first, column.second, error)) {
             close();
             return false;
@@ -174,6 +184,16 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
     // Running it on every open is harmless: it only touches NULL values.
     if (!exec("UPDATE downloads SET done = filesize"
               " WHERE done IS NULL AND status = 'Complete' AND filesize > 0",
+              error)) {
+        close();
+        return false;
+    }
+    // Rows written before the speed-limiter toggle existed carry NULL: any
+    // non-zero BandWidthLimit used to mean the limiter was on. Explicit 0/1
+    // values written by newer releases are never touched.
+    if (!exec("UPDATE downloads SET bandwidthlimit_enabled ="
+              " CASE WHEN bandwidthlimit > 0 THEN 1 ELSE 0 END"
+              " WHERE bandwidthlimit_enabled IS NULL",
               error)) {
         close();
         return false;
@@ -197,9 +217,9 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
         "INSERT INTO downloads (url, method, filename, ltype, filesize, category, status,"
         " bandwidthlimit, connections, lasttry, firsttry, useragent, resumable, pageurl,"
         " pagetitle, mimetype, errortext, postdata, folderpath, temppath, groupid, done,"
-        " folderexact)"
+        " folderexact, bandwidthlimit_enabled)"
         " VALUES (?1,?2,?3,'',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,"
-        "?20,?21,?22)";
+        "?20,?21,?22,?23)";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -228,6 +248,7 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     bind_text(stmt, 20, record.group_id);
     bind_int64(stmt, 21, static_cast<int64_t>(record.done));
     bind_int64(stmt, 22, record.folder_exact ? 1 : 0);
+    bind_int64(stmt, 23, record.bandwidth_limit_enabled ? 1 : 0);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -249,7 +270,7 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
         " status=?6, bandwidthlimit=?7, connections=?8, lasttry=?9, useragent=?10,"
         " resumable=?11, pageurl=?12, pagetitle=?13, mimetype=?14, errortext=?15,"
         " postdata=?16, folderpath=?17, temppath=?18, groupid=?19, done=?20,"
-        " folderexact=?21 WHERE id=?22";
+        " folderexact=?21, bandwidthlimit_enabled=?22 WHERE id=?23";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -277,7 +298,8 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
     bind_text(stmt, 19, record.group_id);
     bind_int64(stmt, 20, static_cast<int64_t>(record.done));
     bind_int64(stmt, 21, record.folder_exact ? 1 : 0);
-    bind_int64(stmt, 22, id);
+    bind_int64(stmt, 22, record.bandwidth_limit_enabled ? 1 : 0);
+    bind_int64(stmt, 23, id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {

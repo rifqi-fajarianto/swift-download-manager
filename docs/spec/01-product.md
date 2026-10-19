@@ -56,7 +56,12 @@ Layout (from `main-window.png`):
    - Download tab: URL, Status, File Size, Downloaded (bytes + %), Bandwidth,
      Remaining Time, Resumable (Yes/No), main progress bar, segment progress
      bar (segments shown as colored slices), segmented count label
-     (`Segments : N`), `Resume`/`Cancel` buttons.
+     (`Segments : N`), `Resume`/`Cancel` buttons. When the per-download speed
+     limiter is on, an orange `Speed limit: <value>` line sits next to the
+     Bandwidth value (0.18.1).
+   - Options tab: Save To, File Name, Connections, Bandwidth Limit with an
+     enable toggle and presets (500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s, 20 MB/s,
+     50 MB/s, or a custom KB/s value), Referer; `Apply` (0.18.1).
 3. **Item actions** (right-click a download row):
    - `Open File` — opens the downloaded file with the default handler. It is
      available for every completed row; when the file was deleted or moved it
@@ -101,7 +106,9 @@ Layout (from `main-window.png`):
 9. **Settings** (`options-window.png`), tabs:
    - *General*: Max Connections per Download (default 8, "8 Connections
      Recommended"); when-start policy (all at once / one by one); Bandwidth
-     Limit per Download (KB/s, 0/blank = no limit); Default User-Agent (+Reset,
+     Limit per Download with an enable toggle and presets (500 KB/s, 1 MB/s,
+     5 MB/s, 10 MB/s, 20 MB/s, 50 MB/s, or custom KB/s; value editable while
+     the toggle is off — 0.18.1); Default User-Agent (+Reset,
      + "use for both manual and browser-sent downloads"); Download Directory
      (+ category folders toggle); Temporary Directory; Get File Creation Date
      From Server; Show Download Completion Dialog; Start Application on System

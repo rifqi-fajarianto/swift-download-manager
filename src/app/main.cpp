@@ -127,6 +127,7 @@ int run_get(int argc, char** argv) {
     std::string config_path = swiftdm::default_config_path();
     uint64_t pause_after = 0;
     bool quiet = false;
+    bool limit_given = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -149,6 +150,7 @@ int run_get(int argc, char** argv) {
         } else if (arg == "--limit") {
             const char* v = need_value("--limit"); if (!v) return 2;
             request.bandwidth_limit_kbps = std::atoi(v);
+            limit_given = true;
         } else if (arg == "--no-resume") {
             request.resume = false;
         } else if (arg == "--referer") {
@@ -198,6 +200,14 @@ int run_get(int argc, char** argv) {
     swiftdm::Settings settings;
     std::string settings_error;
     swiftdm::load_settings(config_path, settings, &settings_error);
+    // --limit enables the limiter explicitly (0 = unlimited); without the flag
+    // the settings toggle and value apply.
+    if (limit_given) {
+        request.bandwidth_limit_enabled = request.bandwidth_limit_kbps > 0;
+    } else {
+        request.bandwidth_limit_enabled = settings.bandwidth_limit_enabled;
+        request.bandwidth_limit_kbps = settings.bandwidth_limit_kbps;
+    }
 
     swiftdm::DownloadEngine engine(settings);
     uint64_t last_done = 0;

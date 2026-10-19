@@ -104,6 +104,8 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     record.done = item.done;
     record.resumable = item.resumable;
     record.temp_path = item.temp_path.toStdString();
+    record.bandwidth_limit_enabled = item.bandwidth_limit_enabled;
+    record.bandwidth_limit_kbps = item.bandwidth_limit_kbps;
     record.last_try = item.last_try_epoch;
     record.folder_path = item.dest_path.isEmpty()
                              ? item.output_dir.toStdString()
@@ -120,6 +122,7 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     if (options) {
         record.user_agent = options->user_agent.toStdString();
         record.connections = options->connections;
+        record.bandwidth_limit_enabled = options->limit_enabled;
         record.bandwidth_limit_kbps = options->limit_kbps;
         record.post_data.assign(options->post_data.constData(),
                                 static_cast<size_t>(options->post_data.size()));
@@ -305,6 +308,8 @@ void MainWindow::restore_history() {
         item.group = QString::fromStdString(record.group_id);
         item.resumable = record.resumable;
         item.temp_path = QString::fromStdString(record.temp_path);
+        item.bandwidth_limit_enabled = record.bandwidth_limit_enabled;
+        item.bandwidth_limit_kbps = record.bandwidth_limit_kbps;
 
         if (item.state == DownloadItem::State::Complete) {
             item.done = item.size > 0 ? item.size : item.done;
@@ -404,6 +409,7 @@ DownloadTask::Options MainWindow::options_from_record(
     options.filename = QString::fromStdString(record.filename);
     options.user_agent = QString::fromStdString(record.user_agent);
     options.connections = record.connections;
+    options.limit_enabled = record.bandwidth_limit_enabled;
     options.limit_kbps = record.bandwidth_limit_kbps;
     options.post_data = QByteArray(record.post_data.data(),
                                    static_cast<int>(record.post_data.size()));
@@ -609,6 +615,10 @@ void MainWindow::add_download(const QString& url) {
     DownloadTask::Options options;
     options.url = url;
     options.output_dir = QString::fromStdString(settings_.download_dir);
+    // New downloads start from the global limiter state; the Options tab can
+    // override both the toggle and the value per download.
+    options.limit_enabled = settings_.bandwidth_limit_enabled;
+    options.limit_kbps = settings_.bandwidth_limit_kbps;
 
     DownloadItem item;
     item.url = url;
@@ -631,6 +641,8 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     DownloadTask::Options options;
     options.url = url.toString();
     options.output_dir = QString::fromStdString(settings_.download_dir);
+    options.limit_enabled = settings_.bandwidth_limit_enabled;
+    options.limit_kbps = settings_.bandwidth_limit_kbps;
     const std::string requested_filename = swiftdm::sanitize_filename(
         data.value(QStringLiteral("filename")).toString().toStdString());
     options.filename = QString::fromStdString(requested_filename);
@@ -759,6 +771,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
 }
 
 void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options) {
+    item.bandwidth_limit_enabled = options.limit_enabled;
+    item.bandwidth_limit_kbps = options.limit_kbps;
     const int row = model_->add_item(item);
     DownloadItem* added = model_->item_at(row);
     if (!added) return;
@@ -788,7 +802,8 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
         options.output_dir = item->output_dir;
         options.category = item->category;
         options.connections = 0;   // 0 = settings
-        options.limit_kbps = 0;    // 0 = settings
+        options.limit_enabled = item->bandwidth_limit_enabled;
+        options.limit_kbps = item->bandwidth_limit_kbps;
     }
     if (options.output_dir.isEmpty()) {
         options.output_dir = QString::fromStdString(settings_.download_dir);
@@ -802,6 +817,8 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
 
     auto* task = new DownloadTask(settings_, options, model_);
     item->task = task;
+    item->bandwidth_limit_enabled = options.limit_enabled;
+    item->bandwidth_limit_kbps = options.limit_kbps;
     item->state = DownloadItem::State::Downloading;
     item->file_missing = false;
     item->last_try = now_stamp();
@@ -1362,6 +1379,8 @@ void MainWindow::open_download_window(int id) {
             if (!item || !item->task) return;
             const DownloadTask::Options& options = item->task->options();
             item->output_dir = options.output_dir;
+            item->bandwidth_limit_enabled = options.limit_enabled;
+            item->bandwidth_limit_kbps = options.limit_kbps;
             if (!options.category.isEmpty()) {
                 item->category = options.category;
             }

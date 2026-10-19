@@ -46,6 +46,8 @@ int main() {
     record.group_id = "pair-1f2e3d4c";
     record.file_size = 1048576;
     record.done = 262144;
+    record.bandwidth_limit_kbps = 512;
+    record.bandwidth_limit_enabled = true;
     record.folder_path = "/home/user/Downloads/Compressed";
     record.folder_exact = true;
     record.temp_path = "/tmp/swiftdm/download-abc";
@@ -68,6 +70,8 @@ int main() {
     check(loaded.temp_path == record.temp_path, "temp path round-trips");
     check(loaded.folder_path == record.folder_path && loaded.folder_exact,
           "exact destination folder round-trips");
+    check(loaded.bandwidth_limit_kbps == 512 && loaded.bandwidth_limit_enabled,
+          "speed limiter toggle and value round-trip");
 
     check(store.update_progress(id, 524288, 0, &error), "progress update succeeds");
     check(store.fetch(id, &loaded, &error) && loaded.done == 524288 &&
@@ -147,8 +151,10 @@ int main() {
                 " useragent TEXT, resumable INTEGER, pageurl TEXT, pagetitle TEXT,"
                 " mimetype TEXT, errortext TEXT, postdata TEXT, folderpath TEXT, temppath TEXT);"
                 "CREATE TABLE headers (id NUMERIC, header TEXT);"
-                "INSERT INTO downloads (id,url,filename,filesize,status,folderpath)"
-                " VALUES (1,'https://example.com/old.iso','old.iso',5000,'Complete','/tmp');";
+                "INSERT INTO downloads (id,url,filename,filesize,status,bandwidthlimit,"
+                " folderpath)"
+                " VALUES (1,'https://example.com/old.iso','old.iso',5000,'Complete',256,"
+                " '/tmp');";
             sqlite3_exec(legacy, legacy_schema, nullptr, nullptr, nullptr);
             sqlite3_close(legacy);
         }
@@ -159,6 +165,8 @@ int main() {
           "completed legacy rows get their progress backfilled");
     check(loaded.folder_exact == false,
           "legacy rows keep the base-folder semantics after migration");
+    check(loaded.bandwidth_limit_enabled,
+          "legacy non-zero limits migrate to the toggle being on");
     const int64_t legacy_id = legacy_store.insert(record, &error);
     check(legacy_id > 0, "the migrated database accepts new rows");
     check(legacy_store.fetch(legacy_id, &loaded, &error) &&

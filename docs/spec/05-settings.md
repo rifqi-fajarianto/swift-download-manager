@@ -8,7 +8,8 @@ keys (same names, lowercase INI sections) in
 [general]
 MaxConnections = 8
 ConnectionsAtOnce = 0          ; 0 = add connections all at once, 1 = one by one
-BandWidthLimit = 0             ; KB/s, 0 = unlimited (default for new downloads)
+BandWidthLimit = 1024          ; KB/s value used when the limiter is enabled
+BandWidthLimitEnabled = 0      ; 1 = speed limiter on, 0 = unlimited (value kept)
 UseUAgent = 0                  ; 1 = force DefaultAgent for browser-sent downloads
 DefaultAgent = Mozilla/5.0 (...)
 DownloadDirectory = ~/Downloads
@@ -37,7 +38,8 @@ EdgePanel = 1
 |---|---|---|---|
 | `MaxConnections` | DWORD | 8 ("8 recommended") | max connections per download |
 | `ConnectionsAtOnce` | DWORD | 0 | 0 = create additional connections all at once; else one by one |
-| `BandWidthLimit` | DWORD | 0 | default per-download limit (KB/s) |
+| `BandWidthLimit` | DWORD | 1024 | per-download limit value in KB/s (kept while the toggle is off) |
+| `BandWidthLimitEnabled` | DWORD | 0 | speed-limiter toggle: 1 = apply `BandWidthLimit`, 0 = unlimited |
 | `UseUAgent` | DWORD | 2 | use configured UA for browser-sent downloads too |
 | `DefaultAgent` | STRING | Chrome-like modern UA | default User-Agent |
 | `DownloadDirectory` | STRING | `%USERPROFILE%\Downloads` | destination root |
@@ -58,8 +60,10 @@ store booleans and document the mapping.
 ## Per-download overrides
 
 `downloads.connections` and `downloads.bandwidthlimit` override the globals per
-task (E4). Proxy/auth are global; saved credentials live in the `auths` table
-and are matched per host/target (E4, E18 Passwords tab).
+task (E4). The per-download row also stores the limiter toggle
+(`bandwidthlimit_enabled`): off means unlimited for that task while the value
+is kept for a later resume. Proxy/auth are global; saved credentials live in
+the `auths` table and are matched per host/target (E4, E18 Passwords tab).
 
 ## Startup behavior
 

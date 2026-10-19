@@ -52,12 +52,17 @@ std::string proxy_token_to_type(const std::string& token) {
 }
 
 void apply_key(Settings& s, const std::string& section, const std::string& key,
-               const std::string& value) {
+               const std::string& value, bool* saw_bandwidth_toggle = nullptr) {
     const std::string k = to_lower(key);
     if (section == "general") {
         if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
         else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
         else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+        else if (k == "bandwidthlimitenabled") {
+            if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
+            s.bandwidth_limit_enabled =
+                parse_bool(value, s.bandwidth_limit_enabled);
+        }
         else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
         else if (k == "defaultagent") s.default_agent = value;
         else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
@@ -103,6 +108,7 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
     }
 
     std::string section = "general";
+    bool saw_bandwidth_toggle = false;
     std::string line;
     while (std::getline(in, line)) {
         std::string t = trim(line);
@@ -116,7 +122,13 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
         const std::string key = trim(t.substr(0, eq));
         const std::string value = trim(t.substr(eq + 1));
         if (key.empty()) continue;
-        apply_key(out, section, key, value);
+        apply_key(out, section, key, value, &saw_bandwidth_toggle);
+    }
+
+    // Configs written before the toggle existed used any non-zero
+    // BandWidthLimit as "limiter on"; keep that behavior on upgrade.
+    if (!saw_bandwidth_toggle && out.bandwidth_limit_kbps > 0) {
+        out.bandwidth_limit_enabled = true;
     }
 
     if (error) error->clear();
@@ -146,6 +158,7 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "MaxConnections = " << settings.max_connections << "\n"
         << "ConnectionsAtOnce = " << settings.connections_at_once << "\n"
         << "BandWidthLimit = " << settings.bandwidth_limit_kbps << "\n"
+        << "BandWidthLimitEnabled = " << (settings.bandwidth_limit_enabled ? 1 : 0) << "\n"
         << "UseUAgent = " << (settings.use_ua_for_browser ? 1 : 0) << "\n"
         << "DefaultAgent = " << settings.default_agent << "\n"
         << "DownloadDirectory = " << settings.download_dir << "\n"

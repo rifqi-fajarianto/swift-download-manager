@@ -39,6 +39,9 @@ class HistoryStore {
         uint64_t file_size = 0;
         uint64_t done = 0;
         int bandwidth_limit_kbps = 0;
+        // The per-download speed-limiter toggle. False keeps the stored value
+        // ready for a later resume but applies no limit.
+        bool bandwidth_limit_enabled = false;
         int connections = 0;
         bool resumable = false;
         int64_t first_try = 0;  // unix seconds

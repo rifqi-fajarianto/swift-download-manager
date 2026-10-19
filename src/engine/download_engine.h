@@ -19,7 +19,11 @@ struct DownloadRequest {
     // confirmation dialog and clears this flag.
     bool apply_category_folder = true;
     int connections = 0;           // 0 = settings.max_connections
-    int bandwidth_limit_kbps = 0;  // 0 = settings.bandwidth_limit_kbps (itself 0 = unlimited)
+    // Speed limiter for this download. The toggle decides whether the value is
+    // applied at all: off means unlimited and overrides the global setting (a
+    // stored value is kept for when the user enables the limiter again).
+    bool bandwidth_limit_enabled = false;
+    int bandwidth_limit_kbps = 0;  // KB/s; ignored while the toggle is off
     bool resume = true;
     std::vector<HttpHeader> headers;
     std::vector<HttpCookie> cookies;

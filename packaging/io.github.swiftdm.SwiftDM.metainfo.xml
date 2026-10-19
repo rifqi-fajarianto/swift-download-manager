@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.1" date="2026-10-19">
+      <description>
+        <p>Speed limiter with an enable toggle, preset values and an active-limit display next to the bandwidth value.</p>
+      </description>
+    </release>
     <release version="0.18.0" date="2026-10-19">
       <description>
         <p>Confirm every download before it starts: file name and size, category and location, with Download Now and Cancel.</p>

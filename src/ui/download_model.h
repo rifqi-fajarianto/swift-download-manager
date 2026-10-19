@@ -35,6 +35,10 @@ struct DownloadItem {
     QString group;       // adaptive pair token (video + audio), empty otherwise
     qint64 history_id = 0;  // row id in the SQLite history (0 = not stored)
     bool resumable = false;
+    // Per-download speed limiter (mirrors the task options/history row so the
+    // progress window can show them for restored/completed rows too).
+    bool bandwidth_limit_enabled = false;
+    int bandwidth_limit_kbps = 0;
     // Complete download whose file is no longer at dest_path (deleted/moved).
     bool file_missing = false;
     DownloadTask* task = nullptr;

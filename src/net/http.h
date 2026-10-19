@@ -95,10 +95,12 @@ enum class TransferOutcome { Completed, Paused, Failed };
 // pause. `bytes_written` receives the bytes stored on disk (if provided).
 // `resume_from` > 0 continues an interrupted transfer at that offset (FTP
 // REST, or HTTP Range for servers without range support).
+// `bandwidth_limit_bytes` > 0 caps the receive rate (bytes/s).
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
-                                uint64_t resume_from = 0);
+                                uint64_t resume_from = 0,
+                                int64_t bandwidth_limit_bytes = 0);
 
 // Downloads the unfinished ranges of `state` into `write_fd` (positioned
 // writes at absolute offsets) using libcurl multi with parallel connections.

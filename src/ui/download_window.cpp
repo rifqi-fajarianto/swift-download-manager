@@ -24,6 +24,7 @@
 #include "ui/download_model.h"
 #include "ui/download_task.h"
 #include "ui/icons.h"
+#include "ui/speed_limit_editor.h"
 
 namespace swiftdm::ui {
 
@@ -169,6 +170,11 @@ QWidget* DownloadWindow::build_download_tab() {
     add_row(1, tr("File Size"), size_label_);
     add_row(2, tr("Downloaded"), downloaded_label_);
     add_row(3, tr("Bandwidth"), bandwidth_label_);
+    // Active speed-limiter info sits next to the bandwidth value, in orange.
+    limit_info_label_ = new QLabel(page);
+    limit_info_label_->setStyleSheet("color:#e0a85a;");
+    limit_info_label_->setToolTip(tr("Speed limiter is active for this download"));
+    grid->addWidget(limit_info_label_, 3, 2, Qt::AlignLeft);
     add_row(4, tr("Remaining Time"), remaining_label_);
     add_row(5, tr("Resumable"), resumable_label_);
     grid->setColumnStretch(1, 1);
@@ -236,14 +242,12 @@ QWidget* DownloadWindow::build_options_tab() {
     connections_spin_ = new QSpinBox(page);
     connections_spin_->setRange(0, 64);
     connections_spin_->setSpecialValueText(tr("default"));
-    limit_spin_ = new QSpinBox(page);
-    limit_spin_->setRange(0, 1024 * 1024);
-    limit_spin_->setSpecialValueText(tr("default"));
+    limit_editor_ = new SpeedLimitEditor(page);
 
     form->addRow(tr("Save To"), dir_edit_);
     form->addRow(tr("File Name"), name_edit_);
     form->addRow(tr("Connections"), connections_spin_);
-    form->addRow(tr("Bandwidth Limit (KB/s)"), limit_spin_);
+    form->addRow(tr("Bandwidth Limit"), limit_editor_);
     form->addRow(tr("Referer"), referer_edit_);
     layout->addLayout(form);
 
@@ -269,7 +273,8 @@ QWidget* DownloadWindow::build_options_tab() {
         options.apply_category_folder = false;
         options.filename = name_edit_->text().trimmed();
         options.connections = connections_spin_->value();
-        options.limit_kbps = limit_spin_->value();
+        options.limit_enabled = limit_editor_->enabled();
+        options.limit_kbps = limit_editor_->kbps();
         options.referer = referer_edit_->text().trimmed();
         task->set_options(options);
         emit optionsApplied(item_id_);
@@ -326,6 +331,12 @@ void DownloadWindow::refresh() {
         QString("%1 ( %2% )").arg(format_bytes_q(item->done)).arg(item->percent));
     bandwidth_label_->setText(item->speed_bps > 0 ? format_speed_q(item->speed_bps)
                                                   : QString());
+    if (item->bandwidth_limit_enabled && item->bandwidth_limit_kbps > 0) {
+        limit_info_label_->setText(
+            tr("Speed limit: %1").arg(format_speed_limit(item->bandwidth_limit_kbps)));
+    } else {
+        limit_info_label_->clear();
+    }
     remaining_label_->setText(item->remaining_sec >= 0
                                   ? format_duration_q(item->remaining_sec)
                                   : QString());
@@ -358,7 +369,10 @@ void DownloadWindow::refresh() {
         dir_edit_->setText(dir);
         name_edit_->setText(item->file_name);
         connections_spin_->setValue(task ? task->options().connections : 0);
-        limit_spin_->setValue(task ? task->options().limit_kbps : 0);
+        limit_editor_->set_value(task ? task->options().limit_enabled
+                                     : item->bandwidth_limit_enabled,
+                                 task ? task->options().limit_kbps
+                                      : item->bandwidth_limit_kbps);
         referer_edit_->setText(task ? task->options().referer : QString());
     }
     refresh_connections();

@@ -90,6 +90,7 @@ std::string hls_output_filename(const std::string& filename) {
 DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
                        const std::string& filename, const std::string& out_dir,
                        const DownloadWorkspace& ws, bool allow_resume,
+                       int64_t bandwidth_limit_bytes,
                        const std::function<bool(const ProgressInfo&)>& on_progress) {
     DownloadResult result;
     result.workspace_dir = ws.dir;
@@ -121,7 +122,8 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
     uint64_t written = 0;
     std::string transfer_error;
     const TransferOutcome outcome =
-        stream_download(options, fd, progress, &written, &transfer_error, resume_from);
+        stream_download(options, fd, progress, &written, &transfer_error, resume_from,
+                        bandwidth_limit_bytes);
     ::fsync(fd);
     ::close(fd);
 
@@ -166,6 +168,7 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
 DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe,
                        const std::string& filename, const std::string& out_dir,
                        const DownloadWorkspace& ws, bool allow_resume,
+                       int64_t bandwidth_limit_bytes,
                        const std::function<bool(const ProgressInfo&)>& on_progress) {
     (void)probe;
     DownloadResult result;
@@ -270,7 +273,7 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
                             [&](uint64_t) -> bool {
                                 return on_progress ? on_progress(info) : true;
                             },
-                            &written_here, &transfer_error, 0);
+                            &written_here, &transfer_error, 0, bandwidth_limit_bytes);
         bytes_done += written_here;
         info.done = bytes_done;
         if (outcome == TransferOutcome::Completed) return true;
@@ -370,8 +373,13 @@ DownloadResult DownloadEngine::run(
 
     const int connections =
         request.connections > 0 ? request.connections : settings_.max_connections;
-    const int limit_kbps = request.bandwidth_limit_kbps > 0 ? request.bandwidth_limit_kbps
-                                                            : settings_.bandwidth_limit_kbps;
+    // The toggle is authoritative: off means unlimited and does not fall back
+    // to the global setting. Callers (CLI/GUI) seed the request from settings
+    // when the user has not overridden them.
+    const int limit_kbps = request.bandwidth_limit_enabled
+                               ? std::max(0, request.bandwidth_limit_kbps)
+                               : 0;
+    const int64_t limit_bytes = static_cast<int64_t>(limit_kbps) * 1024;
 
     HttpOptions options;
     options.url = request.url;
@@ -431,11 +439,12 @@ DownloadResult DownloadEngine::run(
     // FTP and HLS take dedicated paths (04-protocols.md §2, HLS spec note).
     // ------------------------------------------------------------------
     if (is_ftp_url(workspace_key)) {
-        return run_ftp(options, probe, filename, out_dir, ws, request.resume, on_progress);
+        return run_ftp(options, probe, filename, out_dir, ws, request.resume, limit_bytes,
+                       on_progress);
     }
     if (is_hls_url(workspace_key, probe.mime_type)) {
         return run_hls(options, probe, hls_output_filename(filename), out_dir, ws,
-                       request.resume, on_progress);
+                       request.resume, limit_bytes, on_progress);
     }
 
     const bool can_resume = probe.accept_ranges && request.post_data.empty();
@@ -461,7 +470,8 @@ DownloadResult DownloadEngine::run(
         uint64_t written = 0;
         std::string transfer_error;
         const TransferOutcome outcome =
-            stream_download(options, fd, progress, &written, &transfer_error);
+            stream_download(options, fd, progress, &written, &transfer_error, 0,
+                            limit_bytes);
         ::fsync(fd);
         ::close(fd);
 
@@ -556,7 +566,7 @@ DownloadResult DownloadEngine::run(
 
     SegmentDownloader downloader(options, state, fd);
     downloader.set_one_by_one(settings_.connections_at_once != 0);
-    downloader.set_bandwidth_limit_bytes(static_cast<int64_t>(limit_kbps) * 1024);
+    downloader.set_bandwidth_limit_bytes(limit_bytes);
     std::string transfer_error;
     TransferOutcome outcome = downloader.run(progress, &transfer_error);
 
