@@ -334,6 +334,22 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     }
     options.user_agent = data.value(QStringLiteral("userAgent")).toString();
     if (settings_.use_ua_for_browser) options.user_agent.clear();
+    const QJsonArray header_entries = data.value(QStringLiteral("headers")).toArray();
+    for (const QJsonValue& entry : header_entries) {
+        const QJsonObject header = entry.toObject();
+        swiftdm::HttpHeader value;
+        value.name = header.value(QStringLiteral("name")).toString().toStdString();
+        value.value = header.value(QStringLiteral("value")).toString().toStdString();
+        if (!value.name.empty()) options.headers.push_back(std::move(value));
+    }
+    const QString post_data = data.value(QStringLiteral("postData")).toString();
+    if (!post_data.isEmpty()) {
+        if (data.value(QStringLiteral("postDataEncoding")).toString() == QStringLiteral("base64")) {
+            options.post_data = QByteArray::fromBase64(post_data.toLatin1());
+        } else {
+            options.post_data = post_data.toUtf8();
+        }
+    }
     const QJsonArray cookie_entries = data.value(QStringLiteral("cookies")).toArray();
     for (const QJsonValue& entry : cookie_entries) {
         const QJsonObject cookie = entry.toObject();
@@ -360,6 +376,8 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     item.output_dir = options.output_dir;
     item.last_try = now_stamp();
     item.state = DownloadItem::State::Queued;
+    item.page_url = data.value(QStringLiteral("pageUrl")).toString();
+    item.page_title = data.value(QStringLiteral("pageTitle")).toString();
     const int row = model_->add_item(item);
     const int id = model_->item_at(row)->id;
     start_task_at_row(row, &options);
@@ -891,6 +909,10 @@ void MainWindow::update_status_bar() {
             .arg(paused)
             .arg(complete)
             .arg(failed));
+    // Push the app status to subscribed extension sockets (idle/busy), which is
+    // the local equivalent of the original application's waiting/nowaiting
+    // notifications.
+    if (browser_integration_) browser_integration_->set_status(active == 0, active);
     update_action_states();
 }
 

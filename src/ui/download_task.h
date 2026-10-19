@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QPair>
 #include <QString>
@@ -25,6 +26,8 @@ class DownloadTask : public QObject {
         QString referer;
         std::vector<swiftdm::HttpCookie> cookies;
         QString user_agent;
+        std::vector<swiftdm::HttpHeader> headers;  // extra request headers
+        QByteArray post_data;  // non-empty = POST handoff body
         int connections = 0;   // 0 = settings
         int limit_kbps = 0;    // 0 = settings
     };

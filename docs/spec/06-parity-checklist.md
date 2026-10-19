@@ -52,18 +52,19 @@ Status as of 0.9.3.
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload` |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup, explicit link/page context menu, and automatic download handoff; cookie permission is optional and per-origin |
-| Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept, bypass), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and per-origin |
+| Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Firefox extension | Planned |
-| Browser-sent page metadata | Partial | `pageUrl` and title sent by the extension; download history does not yet persist these fields |
+| Browser-sent page metadata | Partial | `pageUrl`/title are sent by the extension and carried on the item; the SQLite history store that persists them is still planned (C12) |
 
 Open gaps identified by the original-extension comparison
-(`07-chromium-extension-reference.md` §6, decision pending): POST/body and
-custom-header handoff (C1), an app→extension status channel (C2), a quick
-bypass (C3), an in-page media panel with media detection/HLS/site extractors
-(C4–C9), size enrichment (C10), FTP handoff (C11), persisted page metadata
-(C12), and store packaging (C14). None of these are committed to a milestone.
+(`07-chromium-extension-reference.md` §6, decision log in §10): POST/body and
+custom-header handoff (C1), an app→extension status channel (C2), a bypass
+option (C3), and the strict cookie model (C13) are implemented as of 0.10.0;
+persisted page metadata (C12), FTP handoff (C11), HLS (C7), and adaptive
+pairing/MKV mux (C8) remain planned. The in-page media panel and site extractors
+(C4–C6, C9) are still uncommitted.
 
 ## v3 — extra protocols and media
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.0 — 2026-10-19
+
+Browser integration: POST bodies, custom request headers, status push, and a
+bypass option.
+
+- `addDownload` accepts `method`, `postData` (UTF-8 or base64, ≤256 KiB), and
+  `x-*` request headers (≤16 headers / 16 KiB). The engine posts the body and
+  forwards the validated headers. Raw `Cookie`/`Authorization`-style headers
+  stay rejected: cookies remain structured and domain-scoped (C13 decision).
+- New `subscribe` command: subscribed extension sockets receive `status` events
+  (`waiting`, `active` count) whenever the active-download count changes — the
+  local equivalent of the original application's waiting/nowaiting push.
+- Chromium extension 0.2.0: `webRequest` observation remembers POST bodies and
+  `x-*` headers for 30 seconds so intercepted downloads carry them; a **Bypass**
+  popup option keeps new downloads in the browser; the popup shows the live app
+  status over the subscription socket.
+- Browser page URL/title are carried on the download item (persistence lands
+  next).
+- Tests: protocol coverage for POST/header validation, subscribe, and status
+  events; extension-logic coverage for bypass, POST/header forwarding, and the
+  status channel.
+
 ## 0.9.3 — 2026-10-18
 
 Fix the `Open Folder` and `Open` buttons in the Download Complete notification.

@@ -28,6 +28,8 @@ struct DownloadItem {
     QString added;  // filled in by DownloadModel::add_item
     QString error;
     QString dest_path;
+    QString page_url;    // browser page that initiated the download
+    QString page_title;  // title of that page
     bool resumable = false;
     DownloadTask* task = nullptr;
 

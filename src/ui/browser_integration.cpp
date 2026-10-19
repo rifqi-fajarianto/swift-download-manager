@@ -11,6 +11,8 @@
 #include <QTcpSocket>
 #include <QUrl>
 
+#include <utility>
+
 #include "swiftdm/version.h"
 
 namespace swiftdm::ui {
@@ -85,6 +87,7 @@ BrowserIntegration::~BrowserIntegration() {
     const auto sockets = buffers_.keys();
     buffers_.clear();
     handshaken_.clear();
+    subscribed_.clear();
     for (QTcpSocket* socket : sockets) {
         if (!socket) continue;
         socket->disconnect(this);
@@ -110,6 +113,7 @@ void BrowserIntegration::accept_connections() {
         connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
             buffers_.remove(socket);
             handshaken_.remove(socket);
+            subscribed_.remove(socket);
             socket->deleteLater();
         });
         connect(socket, &QTcpSocket::errorOccurred, this,
@@ -272,7 +276,7 @@ void BrowserIntegration::process_frame(QTcpSocket* socket, QByteArray& buffer) {
                               {QStringLiteral("error"), QStringLiteral("invalid JSON")}});
             return;
         }
-        send_json(socket, handle_message(document.object()));
+        send_json(socket, handle_message(socket, document.object()));
     } else {
         socket->disconnectFromHost();
     }
@@ -284,7 +288,23 @@ void BrowserIntegration::send_json(QTcpSocket* socket, const QJsonObject& respon
     }
 }
 
-QJsonObject BrowserIntegration::handle_message(const QJsonObject& message) {
+void BrowserIntegration::set_status(bool waiting, int active_downloads) {
+    if (waiting_ == waiting && active_downloads_ == active_downloads) return;
+    waiting_ = waiting;
+    active_downloads_ = active_downloads;
+    if (subscribed_.isEmpty()) return;
+    QJsonObject status;
+    status.insert(QStringLiteral("waiting"), waiting_);
+    status.insert(QStringLiteral("active"), active_downloads_);
+    const QJsonObject event{{QStringLiteral("v"), 1},
+                            {QStringLiteral("event"), QStringLiteral("status")},
+                            {QStringLiteral("data"), status}};
+    for (QTcpSocket* socket : std::as_const(subscribed_)) {
+        send_json(socket, event);
+    }
+}
+
+QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonObject& message) {
     const QJsonValue id_value = message.value(QStringLiteral("id"));
     const QString id = id_value.isString() ? id_value.toString() : QString();
     const QString command = message.value(QStringLiteral("cmd")).toString();
@@ -302,6 +322,16 @@ QJsonObject BrowserIntegration::handle_message(const QJsonObject& message) {
         result.insert(QStringLiteral("version"), QString::fromLatin1(swiftdm::kVersionString));
     } else if (command == QStringLiteral("getVersion")) {
         result.insert(QStringLiteral("version"), QString::fromLatin1(swiftdm::kVersionString));
+    } else if (command == QStringLiteral("subscribe")) {
+        // The extension keeps this socket open to receive push events without
+        // polling. Older builds never send subscribe and are unaffected.
+        subscribed_.insert(socket);
+        result.insert(QStringLiteral("subscribed"), true);
+        result.insert(QStringLiteral("version"), QString::fromLatin1(swiftdm::kVersionString));
+        QJsonObject status;
+        status.insert(QStringLiteral("waiting"), waiting_);
+        status.insert(QStringLiteral("active"), active_downloads_);
+        result.insert(QStringLiteral("status"), status);
     } else if (command == QStringLiteral("showPanel")) {
         if (!data.value(QStringLiteral("visible")).isBool()) {
             ok = false;
@@ -368,9 +398,62 @@ QJsonObject BrowserIntegration::handle_message(const QJsonObject& message) {
                                       referer_url.port(0) == download_url.port(0));
         const bool user_agent_valid = !user_agent.contains(
             QRegularExpression(QStringLiteral("[\\x00-\\x1f\\x7f]")));
+
+        // POST handoffs carry a bounded body plus optional custom x-* request
+        // headers, mirroring the original extension's model. Raw Cookie or
+        // Authorization headers are never accepted here: cookies stay
+        // structured and domain-scoped.
+        const QString method = data.value(QStringLiteral("method")).toString().toUpper();
+        const QString post_data = data.value(QStringLiteral("postData")).toString();
+        const QString post_encoding = data.value(QStringLiteral("postDataEncoding")).toString();
+        constexpr qsizetype kMaxPostBytes = 256 * 1024;
+        constexpr int kMaxExtraHeaders = 16;
+        bool method_valid = method.isEmpty() || method == QStringLiteral("GET");
+        if (method == QStringLiteral("POST")) method_valid = !post_data.isEmpty();
+        bool post_valid = post_data.isEmpty() && post_encoding.isEmpty();
+        if (!post_data.isEmpty()) {
+            const bool encoding_ok = post_encoding.isEmpty() ||
+                                     post_encoding == QStringLiteral("utf8") ||
+                                     post_encoding == QStringLiteral("base64");
+            bool body_ok = post_data.size() <= kMaxPostBytes;
+            if (encoding_ok && post_encoding == QStringLiteral("base64")) {
+                static const QRegularExpression base64_pattern(
+                    QStringLiteral("^[A-Za-z0-9+/]*={0,2}$"));
+                body_ok = body_ok && base64_pattern.match(post_data).hasMatch() &&
+                          QByteArray::fromBase64(post_data.toLatin1()).size() <= kMaxPostBytes;
+            }
+            post_valid = encoding_ok && body_ok &&
+                         (method.isEmpty() || method == QStringLiteral("POST"));
+        }
+        const QJsonValue header_value = data.value(QStringLiteral("headers"));
+        bool headers_valid = header_value.isUndefined();
+        if (header_value.isArray()) {
+            const QJsonArray entries = header_value.toArray();
+            headers_valid = entries.size() <= kMaxExtraHeaders;
+            static const QRegularExpression header_name(
+                QStringLiteral("^[Xx]-[A-Za-z0-9!#$%&'*+.^_`|~-]{0,80}$"));
+            static const QRegularExpression header_controls(
+                QStringLiteral("[\\x00-\\x1f\\x7f]"));
+            qsizetype total = 0;
+            for (const QJsonValue& entry : entries) {
+                if (!headers_valid) break;
+                if (!entry.isObject()) {
+                    headers_valid = false;
+                    break;
+                }
+                const QJsonObject header = entry.toObject();
+                const QString name = header.value(QStringLiteral("name")).toString();
+                const QString value = header.value(QStringLiteral("value")).toString();
+                total += name.size() + value.size();
+                if (!header_name.match(name).hasMatch() || value.size() > 2048 ||
+                    header_controls.match(value).hasMatch() || total > 16384) {
+                    headers_valid = false;
+                }
+            }
+        }
         if (!is_http_url(url) || !cookies_valid || !referer_valid || !referer_is_safe ||
             referer.size() > 8192 || !user_agent_valid || user_agent.size() > 2048 ||
-            filename.size() > 255) {
+            filename.size() > 255 || !method_valid || !post_valid || !headers_valid) {
             ok = false;
             error = QStringLiteral("invalid download request");
         } else {

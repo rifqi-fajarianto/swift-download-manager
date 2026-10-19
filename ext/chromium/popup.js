@@ -1,15 +1,54 @@
 const status = document.querySelector("#status");
+const appStatus = document.querySelector("#app-status");
 const download = document.querySelector("#download");
 const retry = document.querySelector("#retry");
 const autoIntercept = document.querySelector("#auto-intercept");
+const bypass = document.querySelector("#bypass");
 
-chrome.storage.local.get("autoIntercept", ({ autoIntercept: enabled }) => {
-  autoIntercept.checked = enabled !== false;
+let lastAppStatus = null;
+
+chrome.storage.local.get(["autoIntercept", "bypassDownloads", "appStatus"], (values) => {
+  autoIntercept.checked = values.autoIntercept !== false;
+  bypass.checked = values.bypassDownloads === true;
+  renderAppStatus(values.appStatus ?? null);
 });
 
 autoIntercept.addEventListener("change", () => {
   chrome.storage.local.set({ autoIntercept: autoIntercept.checked });
 });
+
+bypass.addEventListener("change", () => {
+  chrome.storage.local.set({ bypassDownloads: bypass.checked });
+  renderAppStatus(null);
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.appStatus) renderAppStatus(changes.appStatus.newValue ?? null);
+  if (changes.bypassDownloads) {
+    bypass.checked = changes.bypassDownloads.newValue === true;
+    renderAppStatus(null);
+  }
+});
+
+function renderAppStatus(value) {
+  if (value !== null) lastAppStatus = value;
+  if (bypass.checked) {
+    appStatus.hidden = false;
+    appStatus.textContent = "Bypass is on: new downloads stay in the browser.";
+    return;
+  }
+  if (!lastAppStatus) {
+    appStatus.hidden = true;
+    appStatus.textContent = "";
+    return;
+  }
+  const active = Number(lastAppStatus.active ?? 0);
+  appStatus.hidden = false;
+  appStatus.textContent = lastAppStatus.waiting
+    ? "SwiftDM is idle."
+    : `SwiftDM is downloading ${active} file${active === 1 ? "" : "s"}.`;
+}
 
 function setStatus(text, isError = false) {
   status.textContent = text;

@@ -29,16 +29,19 @@ async function settle(predicate, timeout = 1000) {
   return predicate();
 }
 
-function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
-                             cookieGranted = true } = {}) {
+function createEnvironment({ autoIntercept = true, bypassDownloads = false,
+                             webSocketMode = "ok", cookieGranted = true } = {}) {
   const calls = {
     cancel: [],
     erase: [],
     download: [],
     sockets: [],
+    storageSets: [],
   };
   let onCreated = null;
   let onMessage = null;
+  let onBeforeRequest = null;
+  let onBeforeSendHeaders = null;
   let attempts = 0;
 
   class MockWebSocket {
@@ -86,7 +89,12 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
   const chrome = {
     runtime: {
       onInstalled: { addListener() {} },
+      onStartup: { addListener() {} },
       onMessage: { addListener(fn) { onMessage = fn; } },
+    },
+    webRequest: {
+      onBeforeRequest: { addListener(fn) { onBeforeRequest = fn; } },
+      onBeforeSendHeaders: { addListener(fn) { onBeforeSendHeaders = fn; } },
     },
     contextMenus: {
       removeAll(callback) { callback?.(); },
@@ -106,11 +114,15 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
     },
     storage: {
       local: {
-        async get(key) {
-          if (key === "autoIntercept") return { autoIntercept };
-          return {};
+        async get(keys) {
+          const result = {};
+          for (const key of Array.isArray(keys) ? keys : [keys]) {
+            if (key === "autoIntercept") result.autoIntercept = autoIntercept;
+            if (key === "bypassDownloads") result.bypassDownloads = bypassDownloads;
+          }
+          return result;
         },
-        async set() {},
+        async set(values) { calls.storageSets.push(values); },
       },
     },
     permissions: {
@@ -147,6 +159,8 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
     setTimeout,
     clearTimeout,
     URL,
+    URLSearchParams,
+    btoa: (binary) => Buffer.from(binary, "binary").toString("base64"),
     Set,
     Promise,
   });
@@ -156,6 +170,8 @@ function createEnvironment({ autoIntercept = true, webSocketMode = "ok",
     calls,
     onCreated: () => onCreated,
     onMessage: () => onMessage,
+    onBeforeRequest: () => onBeforeRequest,
+    onBeforeSendHeaders: () => onBeforeSendHeaders,
     context,
   };
 }
@@ -257,6 +273,83 @@ async function testCrossOriginReferrerIsDropped() {
   check(sent.data.referer === "", "cross-origin referrer is not forwarded");
 }
 
+async function testBypassKeepsBrowserDownloads() {
+  const env = createEnvironment({ bypassDownloads: true });
+  env.onCreated()(downloadItem());
+  await sleep(30);
+  check(env.calls.cancel.length === 0, "bypass leaves the browser download alone");
+  check(env.calls.sockets.length === 0, "bypass does not contact SwiftDM");
+}
+
+async function testPostBodyAndHeadersAreForwarded() {
+  const env = createEnvironment();
+  const remember = env.onBeforeRequest();
+  const rememberHeaders = env.onBeforeSendHeaders();
+  check(typeof remember === "function" && typeof rememberHeaders === "function",
+    "webRequest observation listeners are registered");
+
+  remember({
+    method: "POST",
+    url: "https://example.com/submit",
+    requestBody: { formData: { q: ["swiftdm"], page: ["1"] } },
+  });
+  rememberHeaders({
+    url: "https://example.com/submit",
+    requestHeaders: [
+      { name: "X-Api-Key", value: "secret" },
+      { name: "Cookie", value: "not-forwarded" },
+      { name: "Referer", value: "https://example.com/page" },
+    ],
+  });
+  env.onCreated()(downloadItem({ url: "https://example.com/submit" }));
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+
+  const sent = env.calls.sockets[0].sent[0];
+  check(sent.data.method === "POST", "observed POST downloads send method=POST");
+  check(sent.data.postData === "q=swiftdm&page=1", "form bodies are reconstructed");
+  check(sent.data.postDataEncoding === "utf8", "form bodies are sent as utf8");
+  check(sent.data.headers?.length === 1 && sent.data.headers[0].name === "x-api-key",
+    "only x-* request headers are forwarded");
+}
+
+async function testRawPostBodyIsBase64Encoded() {
+  const env = createEnvironment();
+  const remember = env.onBeforeRequest();
+  const bytes = new TextEncoder().encode("a=1&b=2");
+  remember({
+    method: "POST",
+    url: "https://example.com/raw",
+    requestBody: { raw: [{ bytes: bytes.buffer }] },
+  });
+  env.onCreated()(downloadItem({ url: "https://example.com/raw" }));
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(sent.data.postDataEncoding === "base64", "raw bodies are sent as base64");
+  check(Buffer.from(sent.data.postData, "base64").toString() === "a=1&b=2",
+    "raw bodies survive the round trip");
+}
+
+async function testStatusChannel() {
+  const env = createEnvironment();
+  let response = null;
+  env.onMessage()({ type: "get-connection-status" }, {}, (value) => { response = value; });
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+
+  const statusSocket = env.calls.sockets[0];
+  check(statusSocket.sent[0].cmd === "subscribe", "the status socket subscribes for push events");
+  statusSocket.emit("message", {
+    data: JSON.stringify({ v: 1, event: "status", data: { waiting: false, active: 2 } }),
+  });
+  await settle(() => env.calls.storageSets.some((values) => values.appStatus));
+  const stored = env.calls.storageSets.find((values) => values.appStatus)?.appStatus;
+  check(stored?.waiting === false && stored?.active === 2,
+    "status events are stored for the popup");
+
+  await settle(() => response !== null);
+  check(response?.ok === true && response.version === "0.9.0",
+    "the ping command still answers while subscribed");
+}
+
 (async () => {
   await testSuccessfulHandoff();
   await testFallbackWhenAppIsDown();
@@ -265,6 +358,10 @@ async function testCrossOriginReferrerIsDropped() {
   await testDisabledToggle();
   await testIgnoredItems();
   await testCrossOriginReferrerIsDropped();
+  await testBypassKeepsBrowserDownloads();
+  await testPostBodyAndHeadersAreForwarded();
+  await testRawPostBodyIsBase64Encoded();
+  await testStatusChannel();
 
   if (failures) {
     console.error(`${failures} failure(s)`);

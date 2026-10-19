@@ -10,13 +10,18 @@
     <main>
       <h1>SwiftDM</h1>
       <p id="status" role="status">Checking connection…</p>
+      <p id="app-status" class="hint" hidden></p>
       <button id="retry" type="button" class="secondary" hidden>Retry connection</button>
       <label class="toggle">
         <input id="auto-intercept" type="checkbox" checked>
         <span>Automatically use SwiftDM for downloads</span>
       </label>
+      <label class="toggle">
+        <input id="bypass" type="checkbox">
+        <span>Bypass SwiftDM: keep new downloads in the browser</span>
+      </label>
       <button id="download" type="button" disabled>Download this page</button>
-      <p class="hint">When SwiftDM is unavailable, the browser download is restored automatically. For links, right-click and choose “Download link with SwiftDM”.</p>
+      <p class="hint">Bypass is useful for one-off downloads that should stay in the browser. For links, right-click and choose “Download link with SwiftDM”.</p>
     </main>
     <script src="popup.js"></script>
   </body>

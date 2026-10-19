@@ -2,14 +2,34 @@ const SOCKET_URL = "ws://127.0.0.1:10007/";
 const SUBPROTOCOL = "swiftdm.v1";
 const MENU_LINK = "swiftdm-download-link";
 const MENU_PAGE = "swiftdm-download-page";
+const OBSERVED_TTL_MS = 30000;
+const OBSERVED_MAX = 200;
+const MAX_POST_BYTES = 262144;
+const STATUS_RECONNECT_MS = 15000;
 const autoIntercepting = new Set();
 
+// Request bodies and custom headers are remembered briefly so an automatic
+// handoff of a POST-initiated download can forward them. Entries expire so the
+// worker never accumulates browsing data.
+const observedRequests = new Map();
+
+let statusSocket = null;
+let statusReconnectTimer = null;
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get("autoIntercept", ({ autoIntercept }) => {
-    if (typeof autoIntercept !== "boolean") {
-      chrome.storage.local.set({ autoIntercept: true });
-    }
+  chrome.storage.local.get(["autoIntercept", "bypassDownloads"], (values) => {
+    const defaults = {};
+    if (typeof values.autoIntercept !== "boolean") defaults.autoIntercept = true;
+    if (typeof values.bypassDownloads !== "boolean") defaults.bypassDownloads = false;
+    if (Object.keys(defaults).length) chrome.storage.local.set(defaults);
   });
+  createContextMenus();
+  ensureStatusSocket();
+});
+
+chrome.runtime.onStartup?.addListener(() => ensureStatusSocket());
+
+function createContextMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_LINK,
@@ -24,7 +44,7 @@ chrome.runtime.onInstalled.addListener(() => {
       documentUrlPatterns: ["http://*/*", "https://*/*"]
     });
   });
-});
+}
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_LINK) {
@@ -52,6 +72,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "get-connection-status") {
+    ensureStatusSocket();
     void sendCommand("ping", {}).then(
       (response) => sendResponse({ ok: true, version: response.version }),
       (error) => sendResponse({ ok: false, error: errorText(error) })
@@ -59,6 +80,109 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Request observation (POST bodies and x-* headers for automatic handoffs)
+// ---------------------------------------------------------------------------
+
+const observedTypes = ["main_frame", "sub_frame", "object", "xmlhttprequest", "other"];
+
+if (chrome.webRequest?.onBeforeRequest) {
+  chrome.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      rememberRequest(details.url, {
+        method: details.method,
+        ...requestBodyPayload(details.requestBody)
+      });
+    },
+    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
+    ["requestBody"]
+  );
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+    (details) => {
+      const headers = [];
+      for (const header of details.requestHeaders ?? []) {
+        const name = String(header.name ?? "");
+        if (name.toLowerCase().startsWith("x-") && headers.length < 16) {
+          headers.push({ name: name.toLowerCase(), value: String(header.value ?? "") });
+        }
+      }
+      rememberRequest(details.url, { headers });
+    },
+    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
+    ["requestHeaders"]
+  );
+}
+
+function rememberRequest(url, patch) {
+  if (!url) return;
+  const now = Date.now();
+  for (const [key, value] of observedRequests) {
+    if (now - value.at > OBSERVED_TTL_MS) observedRequests.delete(key);
+  }
+  if (!observedRequests.has(url) && observedRequests.size >= OBSERVED_MAX) {
+    observedRequests.delete(observedRequests.keys().next().value);
+  }
+  observedRequests.set(url, { ...observedRequests.get(url), ...patch, at: now });
+}
+
+function requestBodyPayload(requestBody) {
+  if (!requestBody) return {};
+  if (requestBody.formData) {
+    const params = new URLSearchParams();
+    for (const [name, values] of Object.entries(requestBody.formData)) {
+      for (const value of values ?? []) params.append(name, String(value));
+    }
+    const text = params.toString();
+    if (!text || text.length > MAX_POST_BYTES) return {};
+    return { postData: text, postDataEncoding: "utf8" };
+  }
+  const parts = requestBody.raw ?? [];
+  let size = 0;
+  for (const part of parts) {
+    if (part.bytes) size += new Uint8Array(part.bytes).byteLength;
+  }
+  if (!size || size > MAX_POST_BYTES) return {};
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    if (!part.bytes) continue;
+    const chunk = new Uint8Array(part.bytes);
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { postData: bytesToBase64(bytes), postDataEncoding: "base64" };
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return btoa(binary);
+}
+
+function observedExtrasFor(...urls) {
+  const now = Date.now();
+  for (const url of urls) {
+    if (!url) continue;
+    const observed = observedRequests.get(url);
+    if (!observed || now - observed.at > OBSERVED_TTL_MS) continue;
+    const extras = {};
+    if (observed.method) extras.method = observed.method;
+    if (observed.postData) {
+      extras.postData = observed.postData;
+      extras.postDataEncoding = observed.postDataEncoding ?? "utf8";
+    }
+    if (observed.headers?.length) extras.headers = observed.headers;
+    return extras;
+  }
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Automatic handoff
+// ---------------------------------------------------------------------------
 
 chrome.downloads.onCreated.addListener((item) => {
   if (item.state !== "in_progress" || item.incognito || !validHttpUrl(item.url)) return;
@@ -71,8 +195,9 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 
 async function interceptDownload(item) {
-  const { autoIntercept = true } = await chrome.storage.local.get("autoIntercept");
-  if (!autoIntercept) return;
+  const { autoIntercept = true, bypassDownloads = false } =
+    await chrome.storage.local.get(["autoIntercept", "bypassDownloads"]);
+  if (!autoIntercept || bypassDownloads) return;
 
   // Cancel immediately rather than pause: a paused item can still finish for
   // tiny files, which is exactly the case where the browser would "win" before
@@ -87,9 +212,11 @@ async function interceptDownload(item) {
     return;
   }
 
+  const observed = observedExtrasFor(item.finalUrl, item.url);
   try {
     await sendDownloadWithRetry(item.url, item.referrer ?? "", "", {
-      useGrantedCookiePermission: true
+      useGrantedCookiePermission: true,
+      ...observed
     });
     clearActionError();
   } catch (error) {
@@ -156,14 +283,74 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
   const source = validHttpUrl(pageUrl);
   const data = {
     url: url.href,
-    pageUrl: validHttpUrl(pageUrl)?.href ?? "",
+    pageUrl: source?.href ?? "",
     pageTitle: String(pageTitle).slice(0, 1024),
     referer: source?.origin === url.origin ? source.href : "",
     cookies,
     userAgent: navigator.userAgent
   };
+  if (options.postData) {
+    data.method = "POST";
+    data.postData = options.postData;
+    data.postDataEncoding = options.postDataEncoding ?? "utf8";
+  } else if (options.method === "POST") {
+    data.method = "POST";
+  }
+  if (options.headers?.length) data.headers = options.headers;
   return sendCommand("addDownload", data);
 }
+
+// ---------------------------------------------------------------------------
+// Status channel (app -> extension push)
+// ---------------------------------------------------------------------------
+
+function ensureStatusSocket() {
+  if (statusSocket &&
+      (statusSocket.readyState === WebSocket.OPEN ||
+       statusSocket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  try {
+    statusSocket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
+  } catch {
+    statusSocket = null;
+    scheduleStatusReconnect();
+    return;
+  }
+  const socket = statusSocket;
+  socket.addEventListener("open", () => {
+    try {
+      socket.send(JSON.stringify({ v: 1, cmd: "subscribe", id: crypto.randomUUID(), data: {} }));
+    } catch { /* the socket closed again */ }
+  });
+  socket.addEventListener("message", (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      if (message.event === "status" && message.data) {
+        chrome.storage.local.set({ appStatus: message.data });
+      }
+    } catch { /* ignore malformed events */ }
+  });
+  socket.addEventListener("error", () => {
+    try { socket.close(); } catch { /* already closed */ }
+  });
+  socket.addEventListener("close", () => {
+    if (statusSocket === socket) statusSocket = null;
+    scheduleStatusReconnect();
+  });
+}
+
+function scheduleStatusReconnect() {
+  if (statusReconnectTimer) return;
+  statusReconnectTimer = setTimeout(() => {
+    statusReconnectTimer = null;
+    ensureStatusSocket();
+  }, STATUS_RECONNECT_MS);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function validHttpUrl(value) {
   try {

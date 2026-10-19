@@ -49,11 +49,20 @@ Commands (v1 of our extension protocol):
 | cmd | direction | data |
 |---|---|---|
 | `ping` | ext → app | `{}` → `{ "pong": true, "version": "0.x.y" }` |
-| `addDownload` | ext → app | `{ "url", "pageUrl", "pageTitle", "cookies", "referer", "postData"?, "filename"?, "mime"?, "userAgent"? }` |
+| `addDownload` | ext → app | `{ "url", "pageUrl", "pageTitle", "cookies", "referer", "filename"?, "userAgent"?, "method"?, "postData"?, "postDataEncoding"?: "utf8"\|"base64", "headers"?: [{ "name": "x-…", "value" }] }` |
 | `showPanel` | ext → app | `{ "visible": true|false }` |
 | `getVersion` | ext → app | `{}` → `{ "version" }` |
+| `subscribe` | ext → app | `{}` → `{ "subscribed": true, "version", "status": { "waiting", "active" } }`; the socket then receives `{ "v":1, "event":"status", "data": { "waiting", "active" } }` frames whenever the app's active-download count changes |
 
-Server reply: `{ "v":1, "id":..., "ok": true|false, "error"?: "..." }`.
+Server reply: `{ "v":1, "id":..., "ok": true|false, "error"?: "..." }`. Push
+frames carry `event` and no `id`, so command sockets (which never subscribe) are
+unaffected.
+
+`postData` is accepted in UTF-8 or base64 form, capped at 256 KiB decoded, and
+implies `POST`. Extra request headers must be named `x-*` (HTTP token
+characters, 16 headers / 16 KiB total); raw `Cookie`, `Authorization`, or
+`Referer` headers are rejected because cookies stay structured and domain-scoped
+(C13 decision: the strict structured cookie model is kept — no raw-cookie mode).
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
 accepts a well-formed extension origin (`chrome-extension://`, `extensions://`,
@@ -63,15 +72,20 @@ pinned because reloading an unpacked extension from another path can change it.
 Ordinary web origins are rejected, the rejection is logged, and the reason is
 shown in the Extensions dialog. The Chromium Manifest V3 extension sends
 downloads either from an explicit context-menu/popup action or by intercepting
-HTTP(S) downloads. Cookie permission is optional and requested for the target
-origin; scoped cookie attributes are passed to libcurl so cookies follow
-domain/path/secure rules across redirects. The server rejects unsafe URLs,
-malformed messages, oversized frames, and cookies scoped to a different host.
-Firefox support and a production extension-store ID pin remain future work.
-The original `neatextension.v1` protocol and the behavioral comparison with the
-shipped NeatDownloadManager extension are documented in
-`07-chromium-extension-reference.md` (reference only; candidates there are not
-committed to the roadmap).
+HTTP(S) downloads. `webRequest` observation (host permissions for http/https)
+remembers POST bodies and `x-*` request headers for a short window so an
+intercepted POST download is forwarded with them. A popup option turns
+interception off (bypass) while manual actions keep working. A persistent
+subscription socket receives app-status pushes for the popup. Cookie permission
+is optional and requested for the target origin; scoped cookie attributes are
+passed to libcurl so cookies follow domain/path/secure rules across redirects.
+The server rejects unsafe URLs, malformed messages, oversized frames, bodies or
+headers over the caps above, and cookies scoped to a different host. Firefox
+support and a production extension-store ID pin remain future work. The original
+`neatextension.v1` protocol and the behavioral comparison with the shipped
+NeatDownloadManager extension are documented in
+`07-chromium-extension-reference.md`; the adopted/remaining candidates are
+tracked in its decision log.
 
 ## 4. Log/error formats
 

@@ -18,7 +18,7 @@ Nothing in this document overrides `04-protocols.md`; our protocol stays
 | Original extension | `binary-original/original-chromium-extension/1.9.91_0/` — *NeatDownloadManager Extension* v1.9.91 (Manifest V3), Edge store build; author "Javad Motallebi" |
 | Files | `manifest.json`; `bg.js` (service worker, 19.7 KB minified); `ct.js` (content script, 17 KB minified); `img/`; `_metadata/` (store hashes) |
 | Original application | `binary-original/original-windows-binary/NeatDM.exe`, SHA-256 `60b06db7dfeb6fffb1be82f8ad059d61bdb1b1a3889439b56eaac162e64c0f37` |
-| Our extension | `ext/chromium/` (v0.1.1) — see `ext/chromium/README.md` |
+| Our extension | `ext/chromium/` (v0.2.0) — see `ext/chromium/README.md` |
 | Our app side | `src/ui/browser_integration.cpp` (`swiftdm.v1`, JSON envelope) |
 | Evidence | E27–E37 in `evidence-ledger.md` (extension source lines + REA IDs) |
 
@@ -224,15 +224,17 @@ the comparison only.
 | Aspect | Our behavior |
 |---|---|
 | Structure | service worker + popup; **no content script, no page UI** |
-| Permissions | `activeTab`, `contextMenus`, `downloads`, `storage`; `cookies` and http(s) origins are **optional, per-origin**; host permission only `http://127.0.0.1:10007/*` |
-| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, version, retry, auto-intercept toggle |
+| Permissions | `activeTab`, `contextMenus`, `downloads`, `storage`, `webRequest`; http/https host permissions (needed for request observation); `cookies` optional and requested per origin |
+| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept toggle, bypass toggle |
 | Automatic handoff | `downloads.onCreated` cancel + `erase` for every HTTP(S) download that is not incognito / extension-originated / non-http; **browser download restored** if the app is unreachable (plus one short retry) |
+| Bypass | popup option that leaves new downloads in the browser; manual actions still work |
+| POST/body + custom headers | `webRequest` observation remembers POST bodies (UTF-8 or base64, ≤256 KiB) and `x-*` request headers (≤16, ≤16 KiB) for 30 s and attaches them to an intercepted download |
 | Cookies | optional permission per origin; structured entries (domain/path/secure/expires); partitioned (CHIPS) cookies omitted; app validates domain scoping |
-| Referer/UA | same-origin referer only; `userAgent` forwarded; page title/URL sent but not persisted |
+| Referer/UA | same-origin referer only; `userAgent` forwarded; page title/URL sent and carried on the item |
 | Protocol | JSON `{v, cmd, id, data}` → `{v, id, ok, error?}`, subprotocol `swiftdm.v1`, one short-lived socket per command, 5 s timeout |
-| Commands | `ping`, `getVersion`, `showPanel` (server side; unused by the extension), `addDownload` |
-| POST/body, custom headers, FTP, media detection | not implemented |
-| Diagnostics | connection error surfaced in the popup; server reports listen failures and rejected handshakes in the app's Extensions dialog |
+| Commands | `ping`, `getVersion`, `showPanel` (server side; unused by the extension), `addDownload`, `subscribe` (push status) |
+| Status channel | one persistent `subscribe` socket; `status` events (`waiting`/`active`) shown in the popup and used to reconnect lazily |
+| FTP, media detection, site extractors, in-page panel | not implemented |
 
 ## 5. Differences
 
@@ -240,19 +242,19 @@ the comparison only.
 |---|---|---|---|
 | D1 | Primary model | media catcher + automatic file handoff | explicit actions + automatic handoff of all browser downloads |
 | D2 | Page integration | content script on all frames + in-page panel | none |
-| D3 | Permissions | `webRequest`, `webNavigation`, full `cookies`, `<all_urls>` | minimal + optional per-origin cookies |
+| D3 | Permissions | `webRequest`, `webNavigation`, full `cookies`, `<all_urls>` | `webRequest` + http(s) host permissions, optional per-origin cookies |
 | D4 | Interception | `webRequest` observation + classifier; cancels only its own handed-off URL | `downloads.onCreated` cancel for every eligible download, then handoff |
 | D5 | App unavailable | alert in the page, download lost | browser download restarted, retry once |
 | D6 | Media (YouTube/Vimeo/FB/HLS/DASH/subtitles/MKV) | extensive extractors and pairing | none |
 | D7 | Connection | one persistent socket + queue + control messages | per-command socket, request/response |
 | D8 | Protocol | line-based text, `neatextension.v1`, no ids/acks | JSON envelope, `swiftdm.v1`, ids + ok/error |
-| D9 | POST/body + `x-*` headers | supported (form/multipart reconstruction) | unsupported |
+| D9 | POST/body + `x-*` headers | supported (form/multipart reconstruction) | supported (UTF-8/base64 body, `x-*` headers, 256 KiB cap) |
 | D10 | Cookies | raw joined `Cookie:` string, full permission | structured, validated, per-origin permission |
 | D11 | Referer/Origin | always sent (`Origin:` + `Referer:` lines) | same-origin referer only |
 | D12 | Page metadata | title + tab URL sent | sent, not persisted (same as ours) |
-| D13 | Bypass | hold `Delete` | popup toggle |
+| D13 | Bypass | hold `Delete` | popup option (persistent) |
 | D14 | Size enrichment | worker HEAD fetch when app is idle | app-side probe |
-| D15 | App → extension channel | `waiting`/`nowaiting`/`ShowPanel*` | none (responses only) |
+| D15 | App → extension channel | `waiting`/`nowaiting`/`ShowPanel*` push | `subscribe` socket + `status` events (idle/active count) |
 | D16 | FTP | observed and handed off | http/https only |
 | D17 | Distribution | store build with stable ID | unpacked development build |
 | D18 | Limits | 118,784-byte message cap | 1 MiB frame cap, 32 clients |
@@ -315,3 +317,21 @@ selected, record the decision here and implement it against this document and
 - `06-parity-checklist.md` §v2 — status of browser integration.
 - `evidence-ledger.md` E27–E37 — evidence rows for this document.
 - `ext/chromium/README.md` — our extension's install steps and limitations.
+
+## 10. Decision log
+
+The feature owner selected the candidates below for implementation (2026-10).
+C3 was adjusted during selection: the bypass stays a discrete feature, but it is
+a popup option instead of holding `Delete`. Status is updated as the work lands;
+version steps follow `AGENTS.md`.
+
+| ID | Decision | Status |
+|---|---|---|
+| C1 | POST/body + `x-*` headers via `webRequest` observation; caps and validation recorded in `04-protocols.md` | Implemented (extension 0.2.0, app 0.10.0) |
+| C2 | App→extension status channel: `subscribe` command plus `status` push events (`waiting`, `active`) | Implemented |
+| C3 | Bypass as a popup option instead of hold-`Delete` (owner-adjusted) | Implemented |
+| C13 | Keep the strict structured cookie model; no raw-cookie mode. Raw `Cookie`/`Authorization` headers stay rejected | Decided; enforced by protocol validation and tests |
+| C12 | Persist `pageUrl`/`pageTitle` | Planned |
+| C11 | FTP handoff / engine support | Planned |
+| C7 | HLS (`m3u8`) handling | Planned |
+| C8 | Adaptive pairing + MKV mux proposal | Planned |

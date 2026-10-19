@@ -201,6 +201,71 @@ int main(int argc, char** argv) {
             QStringLiteral("download-raw-cookie"));
         check(!raw_cookie.value(QStringLiteral("ok")).toBool(),
               "unscoped raw cookie string is rejected");
+
+        const QJsonObject post_download = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/submit")},
+             {QStringLiteral("method"), QStringLiteral("POST")},
+             {QStringLiteral("postData"), QStringLiteral("q=swiftdm&page=1")},
+             {QStringLiteral("postDataEncoding"), QStringLiteral("utf8")},
+             {QStringLiteral("headers"),
+              QJsonArray{QJsonObject{
+                  {QStringLiteral("name"), QStringLiteral("x-api-key")},
+                  {QStringLiteral("value"), QStringLiteral("secret")}}}}},
+            QStringLiteral("download-post"));
+        check(post_download.value(QStringLiteral("ok")).toBool(),
+              "POST download with an x-* header is accepted");
+        check(downloads_received == 3, "POST download signal is emitted");
+
+        const QJsonObject bad_header = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/submit")},
+             {QStringLiteral("headers"),
+              QJsonArray{QJsonObject{
+                  {QStringLiteral("name"), QStringLiteral("Cookie")},
+                  {QStringLiteral("value"), QStringLiteral("sid=secret")}}}}},
+            QStringLiteral("download-bad-header"));
+        check(!bad_header.value(QStringLiteral("ok")).toBool(),
+              "non-x-* request headers are rejected");
+
+        const QJsonObject bad_post = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/submit")},
+             {QStringLiteral("method"), QStringLiteral("POST")}},
+            QStringLiteral("download-post-empty"));
+        check(!bad_post.value(QStringLiteral("ok")).toBool(), "POST without a body is rejected");
+
+        const QJsonObject subscribe =
+            command(socket, QStringLiteral("subscribe"), {}, QStringLiteral("subscribe-1"));
+        check(subscribe.value(QStringLiteral("ok")).toBool(), "subscribe is accepted");
+        const QJsonObject subscribed = subscribe.value(QStringLiteral("data")).toObject();
+        check(subscribed.value(QStringLiteral("subscribed")).toBool() &&
+                  subscribed.value(QStringLiteral("status"))
+                      .toObject()
+                      .value(QStringLiteral("waiting"))
+                      .toBool(),
+              "subscribe returns the current app status");
+
+        server.set_status(false, 3);
+        QByteArray push_buffer;
+        QByteArray pushed;
+        for (int i = 0; i < 20 && pushed.isEmpty(); ++i) {
+            if (!pump_until([&] {
+                    push_buffer.append(socket.readAll());
+                    return !push_buffer.isEmpty();
+                })) {
+                break;
+            }
+            pushed = parse_server_frame(push_buffer);
+        }
+        const QJsonObject status_event = QJsonDocument::fromJson(pushed).object();
+        check(status_event.value(QStringLiteral("event")).toString() == QStringLiteral("status") &&
+                  status_event.value(QStringLiteral("data"))
+                          .toObject()
+                          .value(QStringLiteral("active"))
+                          .toInt() == 3,
+              "subscribed sockets receive status events");
+        server.set_status(true, 0);
     }
 
     // Reloading an unpacked extension from another path can change its ID. A

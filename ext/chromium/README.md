@@ -3,7 +3,10 @@
 Initial integration supports Chromium-based browsers (Chrome, Chromium, Edge,
 Brave) using Manifest V3. It adds right-click actions for a link or the current
 page and a popup button for the current page. Automatic HTTP(S) download
-interception is enabled by default and can be disabled from the extension popup.
+interception is enabled by default and can be disabled from the extension popup;
+a separate **Bypass** popup option keeps new downloads in the browser while the
+manual actions keep working. The popup also shows the app's live status (idle or
+how many downloads are running).
 
 ## Install for development
 
@@ -14,12 +17,15 @@ interception is enabled by default and can be disabled from the extension popup.
 3. Select this `ext/chromium` directory.
 4. Open an HTTP(S) page, then use the extension popup or right-click a link and
    select **Download link with SwiftDM**.
-5. Chromium asks for the `downloads` permission when the extension is installed
-   or reloaded. On the link/page context menu action, it asks for optional
-   cookie permission for the target site. Grant it only where authenticated
-   downloads are needed; denying it sends the URL without cookies. Automatic
-   interception and the popup action never prompt for cookie permission; they
-   use cookies only for origins previously granted.
+5. Chromium asks for the `downloads` and `webRequest` permissions plus HTTP(S)
+   host access when the extension is installed or reloaded. Observation is used
+   only to remember POST bodies and `x-*` request headers for intercepted
+   downloads; those entries expire after 30 seconds and are never sent anywhere
+   except your local SwiftDM. On the link/page context menu action, Chromium
+   also asks for optional cookie permission for the target site. Grant it only
+   where authenticated downloads are needed; denying it sends the URL without
+   cookies. Automatic interception and the popup action never prompt for cookie
+   permission; they use cookies only for origins previously granted.
 
 For command-line builds, install Qt 6 Network as well as Qt 6 Widgets (on Debian
 and Ubuntu this is included in `qt6-base-dev`).
@@ -62,9 +68,15 @@ downloader does not retain.
   the browser to avoid a duplicate copy.
 - If the app is not running, auto-interception briefly shows then restores the
   browser download. Check the popup's **Retry connection** message for details.
-- Handoff forwards the download URL (a GET). Form/POST downloads and `blob:` or
-  `data:` downloads are not reconstructed reliably; disable automatic handoff
-  when a site relies on them.
+- Handoff forwards observed POST bodies and `x-*` request headers when the
+  request was seen by `webRequest` (UTF-8 or base64, up to 256 KiB). Multipart
+  bodies are captured as raw bytes; body data is only kept in memory for 30
+  seconds. `blob:` and `data:` downloads are not forwarded.
+- Bypass keeps new downloads in the browser until it is turned off; right-click
+  and popup actions still send links/pages to SwiftDM while bypass is on.
+- The popup shows live app status (idle, or the number of active downloads)
+  pushed over a subscription socket; it reconnects automatically on the next
+  popup open or extension event.
 - Automatic interception cannot prompt for cookie permission. Use the
   context-menu action once for a site to grant cookies; later automatic
   handoffs for that origin can reuse the grant.

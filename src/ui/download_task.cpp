@@ -15,6 +15,9 @@ swiftdm::HttpOptions http_options_for(const swiftdm::Settings& settings,
                                                    : options.user_agent.toStdString();
     http.referer = options.referer.toStdString();
     http.cookies = options.cookies;
+    http.headers = options.headers;
+    http.post_data.assign(options.post_data.constData(),
+                          static_cast<size_t>(options.post_data.size()));
     if (settings.proxy.type != "none" && !settings.proxy.address.empty()) {
         http.proxy_type = settings.proxy.type;
         http.proxy_address = settings.proxy.address;
@@ -148,6 +151,9 @@ void DownloadTask::run() {
     request.user_agent = options_.user_agent.toStdString();
     request.connections = options_.connections;
     request.bandwidth_limit_kbps = options_.limit_kbps;
+    request.headers = options_.headers;
+    request.post_data.assign(options_.post_data.constData(),
+                             static_cast<size_t>(options_.post_data.size()));
 
     swiftdm::DownloadEngine engine(settings_);
     const swiftdm::DownloadResult result =
