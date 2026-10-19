@@ -53,10 +53,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - **Commit terakhir di `main`**: `c45508d` — dokumentasi lifecycle workspace
   sementara dan pembersihan file parsial.
 - **Branch saat snapshot**: `speed-limit-improvement`.
-- **Rilis terakhir yang sudah di-commit**: 0.18.0.
+- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
 - **Versi kerja**: 0.18.1 (speed limiter toggle, preset, dan tampilan limit
-  aktif). Implementasi dan dokumentasinya sudah ada di working tree tetapi
-  **belum di-commit** saat snapshot.
+  aktif). Implementasi dan dokumentasinya sudah di-commit di branch
+  `speed-limit-improvement` (`7f55efc`), **belum di-merge ke `main`**.
 - **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi.
 
