@@ -4,6 +4,7 @@ const download = document.querySelector("#download");
 const retry = document.querySelector("#retry");
 const autoIntercept = document.querySelector("#auto-intercept");
 const bypass = document.querySelector("#bypass");
+const cookies = document.querySelector("#cookies");
 const media = document.querySelector("#media");
 const mediaList = document.querySelector("#media-list");
 
@@ -80,14 +81,28 @@ function checkConnection() {
 checkConnection();
 retry.addEventListener("click", checkConnection);
 
-chrome.permissions.contains({ permissions: ["cookies"] }, (granted) => {
-  download.dataset.cookiesGranted = granted ? "true" : "false";
+// Cookies are how private or signed-in downloads (for example a Google Drive
+// share) carry the browser session. Only a user gesture may ask for the
+// optional permission, and the popup is the place that has one; the service
+// worker can only read cookies after a grant.
+let pageUrl = "";
+
+chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
+  pageUrl = tab?.url ?? "";
+  cookies.checked = await swiftdmCookies.granted();
 });
 
-chrome.permissions.onAdded.addListener((permissions) => {
-  if (permissions.permissions?.includes("cookies")) {
-    download.dataset.cookiesGranted = "true";
+cookies.addEventListener("change", async () => {
+  if (cookies.checked) {
+    const granted = await swiftdmCookies.request(pageUrl);
+    cookies.checked = granted;
+    setStatus(granted
+      ? "Browser cookies will travel with new downloads."
+      : "Cookie permission was not granted.", !granted);
+    return;
   }
+  await swiftdmCookies.drop();
+  setStatus("Browser cookies are no longer sent.");
 });
 
 download.addEventListener("click", async () => {
@@ -99,7 +114,7 @@ download.addEventListener("click", async () => {
       type: "download-current-tab",
       url: tab?.url ?? "",
       title: tab?.title ?? "",
-      cookiesGranted: download.dataset.cookiesGranted === "true"
+      cookiesGranted: cookies.checked
     });
     if (!response?.ok) throw new Error(response?.error ?? "Request failed.");
     setStatus("Download added to SwiftDM.");
@@ -168,7 +183,7 @@ async function sendDetected(item, button) {
         pageUrl: tab?.url ?? "",
         title: tab?.title ?? "",
         group: item.group ?? "",
-        cookiesGranted: download.dataset.cookiesGranted === "true"
+        cookiesGranted: cookies.checked
       });
       if (!response?.ok) throw new Error(response?.error ?? "Request failed.");
     }

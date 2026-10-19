@@ -106,7 +106,8 @@ URL (`download`, `view`, or a Drive folder id).
 | Virus-scan notice above Google's scan limit | Implemented | `confirm=t` submitted transparently, exactly one step; `uuid` dropped so the URL stays deterministic |
 | Transfers follow the resolved URL | Implemented | `ProbeResult::download_url`; resume state keeps matching because the resolved URL is stable across runs and link shapes |
 | Drive folder links | Implemented | refused before any request, with the reason |
-| Sign-in walls (private or removed files, `accounts.google.com`) | Implemented | refused with the reason instead of saving a page; also covers the browser's own `confirm=t` URLs fetched without the account session |
+| Sign-in walls (private or removed files, `accounts.google.com`) | Implemented | refused with the reason instead of saving a page; also covers the browser's own `confirm=t` URLs fetched without the account session; the message names the shared-link and browser-session ways out |
+| Signed-in retry from the browser | Implemented | the extension popup's "Send browser cookies" switch asks for the optional cookie permission on a user gesture, so the browser session travels with the handoff; automatic interception reuses the grant and never prompts |
 | Google Docs editor links | Implemented | refused with guidance (`File > Download` / export link) |
 | Plain HTML pages from other hosts | Unchanged | still downloadable; only a page carrying the confirmation form is auto-submitted |
 | CAPTCHA / account-only gates | Not bypassed | same policy as v3.1: the user clears them on the host's page |

@@ -23,11 +23,12 @@ downloadable with one click.
    host access when the extension is installed or reloaded. Observation is used
    only to remember POST bodies and `x-*` request headers for intercepted
    downloads; those entries expire after 30 seconds and are never sent anywhere
-   except your local SwiftDM. On the link/page context menu action, Chromium
-   also asks for optional cookie permission for the target site. Grant it only
-   where authenticated downloads are needed; denying it sends the URL without
-   cookies. Automatic interception and the popup action never prompt for cookie
-   permission; they use cookies only for origins previously granted.
+   except your local SwiftDM. Chromium also asks for the optional cookie
+   permission when the popup's **Send browser cookies** switch is turned on (for
+   the current site) or when the link/page context-menu action runs (for its
+   target origin). Grant it where signed-in downloads are needed; denying it
+   sends the URL without cookies. Only a user gesture can prompt, so automatic
+   interception reads cookies only after such a grant has been given.
 
 For command-line builds, install Qt 6 Network as well as Qt 6 Widgets (on Debian
 and Ubuntu this is included in `qt6-base-dev`).
@@ -57,9 +58,12 @@ downloader does not retain.
 - **Downloads still open in the browser.** Reload the extension after changing
   its files, accept the new `downloads` permission if Chromium asks, and make
   sure **Automatically use SwiftDM for downloads** is checked in the popup.
-- **Authenticated downloads fail with 403.** Automatic handoff cannot prompt
-  for cookies; use the context-menu action once for that site and allow the
-  optional cookie permission.
+- **Private or signed-in downloads are refused (403, or a sign-in page saved as
+  a file).** Open the file's page in the browser, turn on **Send browser
+  cookies** in the popup and allow the prompt, then press **Download this
+  page**; later automatic handoffs reuse the grant. Sharing the file as "Anyone
+  with the link" also works without cookies. The popup switch and the
+  context-menu action are the only places that can prompt.
 
 ## Current scope and limitations
 
@@ -79,10 +83,12 @@ downloader does not retain.
 - The popup shows live app status (idle, or the number of active downloads)
   pushed over a subscription socket; it reconnects automatically on the next
   popup open or extension event.
-- Automatic interception cannot prompt for cookie permission. Use the
-  context-menu action once for a site to grant cookies; later automatic
-  handoffs for that origin can reuse the grant.
-- Cookie permission is optional and requested per target origin.
+- Automatic interception cannot prompt for cookie permission. Grant it once
+  from the popup's **Send browser cookies** switch (or a context-menu action);
+  later handoffs reuse it, and the popup switch shows the current state.
+- Cookie permission is optional. The popup asks for the site it was opened on;
+  a single grant covers the HTTP(S) sites the extension serves, because host
+  access is already declared in the manifest.
 - Browser page URL and title are shown in download Properties and persisted in
   SwiftDM's SQLite history along with POST bodies and forwarded headers; the
   history list is not restored into the GUI yet.

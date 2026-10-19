@@ -224,12 +224,12 @@ the comparison only.
 | Aspect | Our behavior |
 |---|---|
 | Structure | service worker + popup; **no content script, no page UI** |
-| Permissions | `activeTab`, `contextMenus`, `downloads`, `storage`, `webRequest`; http/https host permissions (needed for request observation); `cookies` optional and requested per origin |
-| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept toggle, bypass toggle |
+| Permissions | `activeTab`, `contextMenus`, `downloads`, `storage`, `webRequest`; http/https host permissions (needed for request observation); `cookies` optional, requested from the popup's "Send browser cookies" switch or a context-menu action (both are user gestures) |
+| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept toggle, bypass toggle, "Send browser cookies" toggle |
 | Automatic handoff | `downloads.onCreated` cancel + `erase` for every HTTP(S) download that is not incognito / extension-originated / non-http; **browser download restored** if the app is unreachable (plus one short retry) |
 | Bypass | popup option that leaves new downloads in the browser; manual actions still work |
 | POST/body + custom headers | `webRequest` observation remembers POST bodies (UTF-8 or base64, ≤256 KiB) and `x-*` request headers (≤16, ≤16 KiB) for 30 s and attaches them to an intercepted download |
-| Cookies | optional permission per origin; structured entries (domain/path/secure/expires); partitioned (CHIPS) cookies omitted; app validates domain scoping |
+| Cookies | optional permission, granted from the popup switch or a context-menu action; structured entries (domain/path/secure/expires); partitioned (CHIPS) cookies omitted; app validates domain scoping; automatic handoffs reuse a grant but never prompt |
 | Referer/UA | same-origin referer only; `userAgent` forwarded; page title/URL sent and carried on the item |
 | Protocol | JSON `{v, cmd, id, data}` → `{v, id, ok, error?}`, subprotocol `swiftdm.v1`, one short-lived socket per command, 5 s timeout |
 | Commands | `ping`, `getVersion`, `showPanel` (server side; unused by the extension), `addDownload`, `subscribe` (push status) |
@@ -242,14 +242,14 @@ the comparison only.
 |---|---|---|---|
 | D1 | Primary model | media catcher + automatic file handoff | explicit actions + automatic handoff of all browser downloads |
 | D2 | Page integration | content script on all frames + in-page panel | none |
-| D3 | Permissions | `webRequest`, `webNavigation`, full `cookies`, `<all_urls>` | `webRequest` + http(s) host permissions, optional per-origin cookies |
+| D3 | Permissions | `webRequest`, `webNavigation`, full `cookies`, `<all_urls>` | `webRequest` + http(s) host permissions, optional cookies requested on a user gesture |
 | D4 | Interception | `webRequest` observation + classifier; cancels only its own handed-off URL | `downloads.onCreated` cancel for every eligible download, then handoff |
 | D5 | App unavailable | alert in the page, download lost | browser download restarted, retry once |
 | D6 | Media (YouTube/Vimeo/FB/HLS/DASH/subtitles/MKV) | extensive extractors and pairing | none |
 | D7 | Connection | one persistent socket + queue + control messages | per-command socket, request/response |
 | D8 | Protocol | line-based text, `neatextension.v1`, no ids/acks | JSON envelope, `swiftdm.v1`, ids + ok/error |
 | D9 | POST/body + `x-*` headers | supported (form/multipart reconstruction) | supported (UTF-8/base64 body, `x-*` headers, 256 KiB cap) |
-| D10 | Cookies | raw joined `Cookie:` string, full permission | structured, validated, per-origin permission |
+| D10 | Cookies | raw joined `Cookie:` string, full permission | structured, validated, optional permission requested from the popup switch or a context-menu action |
 | D11 | Referer/Origin | always sent (`Origin:` + `Referer:` lines) | same-origin referer only |
 | D12 | Page metadata | title + tab URL sent | sent, not persisted (same as ours) |
 | D13 | Bypass | hold `Delete` | popup option (persistent) |

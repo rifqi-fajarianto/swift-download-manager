@@ -5,10 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const source = fs.readFileSync(
-  path.join(__dirname, "..", "ext", "chromium", "service-worker.js"),
-  "utf8"
-);
+const extensionDir = path.join(__dirname, "..", "ext", "chromium");
+const source = fs.readFileSync(path.join(extensionDir, "service-worker.js"), "utf8");
 
 let failures = 0;
 
@@ -37,6 +35,9 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     download: [],
     sockets: [],
     storageSets: [],
+    permissionRequests: [],
+    permissionChecks: [],
+    permissionRemoves: [],
   };
   let onCreated = null;
   let onMessage = null;
@@ -131,8 +132,18 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
       },
     },
     permissions: {
-      request: async () => cookieGranted,
-      contains: async () => cookieGranted,
+      request: async (wanted) => {
+        calls.permissionRequests.push(wanted);
+        return cookieGranted;
+      },
+      contains: async (wanted) => {
+        calls.permissionChecks.push(wanted);
+        return cookieGranted;
+      },
+      remove: async (wanted) => {
+        calls.permissionRemoves.push(wanted);
+        return true;
+      },
       onAdded: { addListener() {} },
     },
     cookies: {
@@ -155,7 +166,7 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     },
   };
 
-  const context = vm.createContext({
+  const sandbox = {
     chrome,
     WebSocket: MockWebSocket,
     crypto: require("node:crypto").webcrypto,
@@ -168,7 +179,19 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     btoa: (binary) => Buffer.from(binary, "binary").toString("base64"),
     Set,
     Promise,
-  });
+  };
+  const context = vm.createContext(sandbox);
+  // The worker imports its shared cookie helpers the same way a real service
+  // worker does, so the test exercises the shipping file.
+  sandbox.importScripts = (...files) => {
+    for (const file of files) {
+      vm.runInContext(
+        fs.readFileSync(path.join(extensionDir, file), "utf8"),
+        context,
+        { filename: file }
+      );
+    }
+  };
   vm.runInContext(source, context, { filename: "service-worker.js" });
 
   return {
@@ -249,6 +272,83 @@ async function testNoCookiePermissionSendsEmptyArray() {
     "missing cookie permission sends an empty array, not a string");
   check(env.calls.erase.length > 0,
     "download without cookie permission still reaches SwiftDM");
+}
+
+async function testPopupAsksForTheCookiePermission() {
+  const env = createEnvironment({ cookieGranted: false });
+  const origin = await vm.runInContext(
+    "swiftdmCookies.siteOrigin('https://drive.google.com/file/d/abc/view')",
+    env.context
+  );
+  check(origin === "https://drive.google.com/*",
+    "the cookie prompt targets the page origin");
+  const noOrigin = await vm.runInContext(
+    "swiftdmCookies.siteOrigin('chrome://extensions')",
+    env.context
+  );
+  check(noOrigin === "", "non-HTTP pages have no cookie origin to ask about");
+
+  const granted = await vm.runInContext(
+    "swiftdmCookies.request('https://drive.google.com/file/d/abc/view')",
+    env.context
+  );
+  check(granted === false, "a refused prompt reports false");
+  check(env.calls.permissionRequests.length === 1 &&
+        env.calls.permissionRequests[0].permissions[0] === "cookies" &&
+        env.calls.permissionRequests[0].origins[0] === "https://drive.google.com/*",
+    "the popup requests the optional cookie permission for its page");
+}
+
+async function testPopupHandoffCarriesTheSession() {
+  const env = createEnvironment();
+  const listener = env.onMessage();
+  const response = await new Promise((resolve) => {
+    const handedOff = listener(
+      {
+        type: "download-current-tab",
+        url: "https://drive.google.com/file/d/abc/view",
+        title: "Drive",
+        cookiesGranted: true,
+      },
+      {},
+      resolve
+    );
+    check(handedOff === true, "the popup handoff answers asynchronously");
+  });
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(response?.ok === true, "the popup handoff is accepted");
+  check(sent.cmd === "addDownload" &&
+        Array.isArray(sent.data.cookies) &&
+        sent.data.cookies.length === 1 &&
+        sent.data.cookies[0].name === "sid",
+    "cookies travel with a popup handoff when the toggle is on");
+  check(env.calls.permissionChecks.length === 1,
+    "an enabled toggle only checks the granted cookie permission");
+}
+
+async function testPopupHandoffWithoutCookies() {
+  const env = createEnvironment();
+  const listener = env.onMessage();
+  await new Promise((resolve) => {
+    listener(
+      {
+        type: "download-current-tab",
+        url: "https://drive.google.com/file/d/abc/view",
+        title: "Drive",
+        cookiesGranted: false,
+      },
+      {},
+      resolve
+    );
+  });
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(Array.isArray(sent.data.cookies) && sent.data.cookies.length === 0,
+    "the popup toggle off sends no cookies");
+  check(env.calls.permissionChecks.length === 0 &&
+        env.calls.permissionRequests.length === 0,
+    "the service worker never prompts for the cookie permission");
 }
 
 async function testDisabledToggle() {
@@ -434,6 +534,9 @@ async function testStatusChannel() {
   await testFallbackWhenAppIsDown();
   await testTransientConnectionRetry();
   await testNoCookiePermissionSendsEmptyArray();
+  await testPopupAsksForTheCookiePermission();
+  await testPopupHandoffCarriesTheSession();
+  await testPopupHandoffWithoutCookies();
   await testDisabledToggle();
   await testIgnoredItems();
   await testCrossOriginReferrerIsDropped();

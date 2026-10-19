@@ -65,8 +65,8 @@ inline constexpr const char* kDriveFolderError =
     "open the folder in a browser and download the files individually";
 inline constexpr const char* kSignInError =
     "the link needs a signed-in Google account - the file is private or was "
-    "removed; share it as 'Anyone with the link' and try again, or hand the "
-    "download over from the browser so the session comes along";
+    "removed; share it as 'Anyone with the link', or open it in the browser "
+    "and use the SwiftDM popup with 'Send browser cookies' enabled";
 inline constexpr const char* kDrivePageError =
     "Google Drive returned a web page instead of the file";
 inline constexpr const char* kDocsEditorError =

@@ -1,3 +1,6 @@
+// Shared optional-cookie helpers (the popup can prompt; the worker only reads).
+importScripts("cookie-permission.js");
+
 const SOCKET_URL = "ws://127.0.0.1:10007/";
 const SUBPROTOCOL = "swiftdm.v1";
 const MENU_LINK = "swiftdm-download-link";
@@ -351,19 +354,15 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
   const url = validHttpUrl(rawUrl);
   if (!url) throw new Error("Only HTTP and HTTPS URLs can be sent to SwiftDM.");
 
-  const permissionOrigin = `${url.protocol}//${url.hostname}/*`;
-  const permissions = { permissions: ["cookies"], origins: [permissionOrigin] };
   let granted = false;
-  try {
-    if (options.requestCookiePermission) {
-      granted = await chrome.permissions.request(permissions);
-    } else if (options.useGrantedCookiePermission) {
-      granted = await chrome.permissions.contains(permissions);
-    }
-  } catch {
-    // Permission prompts are unavailable from some service-worker events.
-    // Continue without cookies rather than failing the whole handoff.
-    granted = false;
+  if (options.requestCookiePermission) {
+    // Context-menu actions are user gestures, so they may prompt. Refusal or an
+    // unavailable prompt just means the handoff continues without cookies.
+    granted = await swiftdmCookies.request(url.href);
+  } else if (options.useGrantedCookiePermission) {
+    // Service-worker events cannot prompt; the popup asks once and later
+    // automatic handoffs reuse that grant.
+    granted = await swiftdmCookies.granted();
   }
   let cookies = [];
   if (granted) {

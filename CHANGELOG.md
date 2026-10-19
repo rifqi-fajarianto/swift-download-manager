@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.1 — 2026-10-19
+
+Signed-in downloads get a path that non-CLI users can follow.
+
+- The sign-in-wall message now names the two ways out with the labels the UI
+  uses: share the file as "Anyone with the link", or open it in the browser and
+  use the SwiftDM popup with "Send browser cookies" enabled.
+- Extension 0.3.0: the popup gains a **Send browser cookies** switch. Only a
+  user gesture can ask for the optional cookie permission, so the popup now
+  asks for the site it was opened on (Chromium prompts once) and shows the
+  current state; turning the switch off drops the grant again. The popup's
+  "Download this page" and detected-media actions report that switch, and the
+  service worker only reads cookies after such a grant - automatic
+  interception still never prompts. Before this, cookies could only be granted
+  from the context-menu action, which left automatic interception without a
+  session for private files.
+- Shared permission handling lives in `ext/chromium/cookie-permission.js`
+  (loaded by the popup and imported by the service worker); the headless
+  extension tests cover the prompt target, the refusal path, and cookie-carrying
+  popup handoffs.
+
 ## 0.13.0 — 2026-10-19
 
 Google Drive links end up in the file that was asked for, not in a page.

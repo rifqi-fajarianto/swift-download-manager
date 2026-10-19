@@ -96,8 +96,11 @@ short window so an
 intercepted POST download is forwarded with them. A popup option turns
 interception off (bypass) while manual actions keep working. A persistent
 subscription socket receives app-status pushes for the popup. Cookie permission
-is optional and requested for the target origin; scoped cookie attributes are
-passed to libcurl so cookies follow domain/path/secure rules across redirects.
+is optional, and only a user gesture may ask for it: the popup's "Send browser
+cookies" switch requests it for the current site, the context-menu action for
+its target origin, and later automatic handoffs reuse the grant. Scoped cookie
+attributes are passed to libcurl so cookies follow domain/path/secure rules
+across redirects.
 The server rejects unsafe URLs, malformed messages, oversized frames, bodies or
 headers over the caps above, and cookies scoped to a different host. Firefox
 support and a production extension-store ID pin remain future work. The original
@@ -145,8 +148,10 @@ Drive is the case this section covers (verified against the live service):
   editor pages, and sign-in walls (`accounts.google.com`, where a private or
   removed file redirects — Drive answers the browser's own `confirm=t` URL the
   same way when it is fetched without the account's session). The message names
-  both ways out: share the file as "Anyone with the link", or let the browser
-  hand the download over (the extension passes the browser session on).
+  both ways out: share the file as "Anyone with the link", or open it in the
+  browser and hand it over with the extension popup's "Send browser cookies"
+  switch on (the popup asks for the cookie permission on that user gesture, and
+  later handoffs reuse the grant).
 - Other hosts are unaffected: a page is only treated as a confirmation notice
   when it carries the form above, and the body is read with a `256 KiB` cap.
   Only Drive/Docs pages are refused without such a form, because Drive serves
