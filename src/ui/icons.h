@@ -22,7 +22,14 @@ extern const QColor kOkGreen;
 // so the alpha shape is used as a monochrome mask.
 QIcon tinted_icon(const QString& resource_path, const QColor& color);
 
-// App window/tray icon (colored, defined in src/ui/icons/app.svg).
+// Application/window icon (colored, ui-assets/app-icon/main-icon.svg).
 QIcon application_icon();
+
+// Browser-integration mark (colored, ui-assets/app-icon/extension-icon.svg),
+// used by the About window and matching the extension's toolbar icon.
+QIcon extension_icon();
+
+// Monochrome tray mark (ui-assets/app-icon/single-color-icon.svg).
+QIcon tray_icon();
 
 }  // namespace swiftdm::ui

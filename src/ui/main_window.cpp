@@ -296,7 +296,7 @@ void MainWindow::build_body() {
 void MainWindow::build_tray() {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
 
-    tray_ = new QSystemTrayIcon(application_icon(), this);
+    tray_ = new QSystemTrayIcon(tray_icon(), this);
     tray_->setToolTip(QStringLiteral("SwiftDM %1").arg(swiftdm::kVersionString));
 
     auto* menu = new QMenu(this);
@@ -912,8 +912,11 @@ void MainWindow::on_browsers() {
 }
 
 void MainWindow::on_about() {
-    QMessageBox::about(
-        this, tr("About SwiftDM"),
+    QMessageBox about(this);
+    about.setWindowTitle(tr("About SwiftDM"));
+    about.setIconPixmap(extension_icon().pixmap(96, 96));
+    about.setTextFormat(Qt::RichText);
+    about.setText(
         QStringLiteral(
             "<b>SwiftDM</b> %1<br><br>"
             "Clean-room Linux download manager (segmented, resumable).<br>"
@@ -921,6 +924,7 @@ void MainWindow::on_about() {
             "no original code or assets are used.<br><br>"
             "No update check, no phone-home.")
             .arg(swiftdm::kVersionString));
+    about.exec();
 }
 
 void MainWindow::on_quit() {

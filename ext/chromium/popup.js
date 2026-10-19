@@ -11,11 +11,13 @@ let lastAppStatus = null;
 
 chrome.storage.local.get(["autoIntercept", "appStatus"], (values) => {
   autoIntercept.checked = values.autoIntercept !== false;
+  swiftdmActionIcon.apply(autoIntercept.checked);
   renderAppStatus(values.appStatus ?? null);
 });
 
 autoIntercept.addEventListener("change", () => {
   chrome.storage.local.set({ autoIntercept: autoIntercept.checked });
+  swiftdmActionIcon.apply(autoIntercept.checked);
   renderAppStatus(null);
 });
 
@@ -24,6 +26,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.appStatus) renderAppStatus(changes.appStatus.newValue ?? null);
   if (changes.autoIntercept) {
     autoIntercept.checked = changes.autoIntercept.newValue !== false;
+    swiftdmActionIcon.apply(autoIntercept.checked);
     renderAppStatus(null);
   }
 });

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.14.0
+    VERSION 0.15.0
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -34,6 +34,13 @@ find_package(SQLite3 REQUIRED)
 if(SWIFTSDM_BUILD_UI)
     find_package(Qt6 REQUIRED COMPONENTS Network Widgets)
 
+    # Regenerates ext/chromium/icons/*.png from the SVG sources after an icon
+    # change: cmake --build build --target render-extension-icons
+    add_executable(render-extension-icons tools/render_icons.cpp)
+    target_link_libraries(render-extension-icons PRIVATE Qt6::Gui)
+    target_compile_definitions(render-extension-icons PRIVATE
+        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
     # Icon assets, shared by the app and the headless icons test.
     set(SWIFTSDM_ASSET_ICONS
         "${CMAKE_SOURCE_DIR}/ui-assets/alert.svg"
@@ -54,12 +61,15 @@ if(SWIFTSDM_BUILD_UI)
         "${CMAKE_SOURCE_DIR}/ui-assets/settings.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/stop.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/video.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/main-icon.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/extension-icon.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/extension-diactivate-icon.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/single-color-icon.svg"
     )
     set(SWIFTSDM_UI_ICONS
         "${CMAKE_SOURCE_DIR}/src/ui/icons/browsers.svg"
         "${CMAKE_SOURCE_DIR}/src/ui/icons/about.svg"
         "${CMAKE_SOURCE_DIR}/src/ui/icons/quit.svg"
-        "${CMAKE_SOURCE_DIR}/src/ui/icons/app.svg"
     )
 endif()
 

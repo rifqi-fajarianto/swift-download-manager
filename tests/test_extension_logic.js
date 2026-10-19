@@ -36,11 +36,13 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
     sockets: [],
     storageSets: [],
     storageRemovals: [],
+    actionIcons: [],
     permissionRequests: [],
     permissionChecks: [],
     permissionRemoves: [],
   };
   let onInstalled = null;
+  let onStorageChanged = null;
   let onCreated = null;
   let onMessage = null;
   let onBeforeRequest = null;
@@ -121,6 +123,7 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
       async resume() {},
     },
     storage: {
+      onChanged: { addListener(fn) { onStorageChanged = fn; } },
       local: {
         async get(keys, callback) {
           const result = {};
@@ -167,6 +170,7 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
       setBadgeBackgroundColor() {},
       setBadgeText() {},
       setTitle() {},
+      setIcon(options) { calls.actionIcons.push(options?.path ?? null); },
     },
   };
 
@@ -201,6 +205,7 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
   return {
     calls,
     onInstalled: () => onInstalled,
+    onStorageChanged: () => onStorageChanged,
     onCreated: () => onCreated,
     onMessage: () => onMessage,
     onBeforeRequest: () => onBeforeRequest,
@@ -354,6 +359,25 @@ async function testPopupHandoffWithoutCookies() {
   check(env.calls.permissionChecks.length === 0 &&
         env.calls.permissionRequests.length === 0,
     "the service worker never prompts for the cookie permission");
+}
+
+async function testToolbarIconFollowsTheSwitch() {
+  const env = createEnvironment({ autoIntercept: true });
+  await settle(() => env.calls.actionIcons.length > 0);
+  check(env.calls.actionIcons[0]?.[16] === "icons/icon16.png",
+    "the active toolbar icon is applied on wake");
+
+  env.onStorageChanged()({ autoIntercept: { newValue: false } }, "local");
+  check(env.calls.actionIcons.at(-1)?.[16] === "icons/icon-off16.png",
+    "turning automatic handoff off swaps to the deactivated icon");
+  env.onStorageChanged()({ autoIntercept: { newValue: true } }, "local");
+  check(env.calls.actionIcons.at(-1)?.[16] === "icons/icon16.png",
+    "turning it back on restores the active icon");
+
+  const before = env.calls.actionIcons.length;
+  env.onStorageChanged()({ appStatus: { newValue: {} } }, "local");
+  check(env.calls.actionIcons.length === before,
+    "unrelated storage changes leave the toolbar icon alone");
 }
 
 async function testDisabledToggle() {
@@ -553,6 +577,7 @@ async function testStatusChannel() {
   await testPopupHandoffCarriesTheSession();
   await testPopupHandoffWithoutCookies();
   await testDisabledToggle();
+  await testToolbarIconFollowsTheSwitch();
   await testIgnoredItems();
   await testCrossOriginReferrerIsDropped();
   await testAutoInterceptOffKeepsBrowserDownloads();

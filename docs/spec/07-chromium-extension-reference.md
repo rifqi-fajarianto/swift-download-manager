@@ -228,6 +228,7 @@ the comparison only.
 | Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept switch, "Send browser cookies" switch |
 | Automatic handoff | `downloads.onCreated` cancel + `erase` for every HTTP(S) download that is not incognito / extension-originated / non-http; **browser download restored** if the app is unreachable (plus one short retry) |
 | Bypass | the same switch: automatic interception off leaves new downloads in the browser while manual actions still work (the separate bypass toggle was dropped in extension 0.4.0 as a duplicate; a stored bypass migrates to "off") |
+| Toolbar icon | colored `extension-icon.svg` while automatic handoff is on, grayscale `extension-diactivate-icon.svg` while it is off; PNGs under `icons/` are rendered from those SVGs (Chromium does not accept SVG action icons) |
 | POST/body + custom headers | `webRequest` observation remembers POST bodies (UTF-8 or base64, ≤256 KiB) and `x-*` request headers (≤16, ≤16 KiB) for 30 s and attaches them to an intercepted download |
 | Cookies | optional permission, granted from the popup switch or a context-menu action; structured entries (domain/path/secure/expires); partitioned (CHIPS) cookies omitted; app validates domain scoping; automatic handoffs reuse a grant but never prompt |
 | Referer/UA | same-origin referer only; `userAgent` forwarded; page title/URL sent and carried on the item |

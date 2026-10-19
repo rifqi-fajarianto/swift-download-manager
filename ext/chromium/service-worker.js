@@ -1,5 +1,7 @@
 // Shared optional-cookie helpers (the popup can prompt; the worker only reads).
 importScripts("cookie-permission.js");
+// Toolbar icon switching (active vs. automatic handoff off).
+importScripts("action-icon.js");
 
 const SOCKET_URL = "ws://127.0.0.1:10007/";
 const SUBPROTOCOL = "swiftdm.v1";
@@ -26,6 +28,25 @@ const tabStreams = new Map();
 let statusSocket = null;
 let statusReconnectTimer = null;
 
+// The toolbar mark follows the automatic-handoff switch: the colored mark while
+// it is on, the grayscale one while it is off. The worker applies the stored
+// value whenever it wakes; the popup also applies it immediately on a flip.
+async function restoreActionIcon() {
+  try {
+    const { autoIntercept = true } = await chrome.storage.local.get(["autoIntercept"]);
+    swiftdmActionIcon.apply(autoIntercept !== false);
+  } catch {
+    // The toolbar icon is cosmetic; never fail a handoff because of it.
+  }
+}
+
+void restoreActionIcon();
+
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== "local" || !changes.autoIntercept) return;
+  swiftdmActionIcon.apply(changes.autoIntercept.newValue !== false);
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(["autoIntercept", "bypassDownloads"], (values) => {
     const defaults = {};
@@ -41,6 +62,7 @@ chrome.runtime.onInstalled.addListener(() => {
   });
   createContextMenus();
   ensureStatusSocket();
+  void restoreActionIcon();
 });
 
 chrome.runtime.onStartup?.addListener(() => ensureStatusSocket());

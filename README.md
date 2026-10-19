@@ -54,5 +54,6 @@ src/ui/           Qt6 Widgets GUI (main window, download window, dialogs)
 ext/chromium/     Chromium Manifest V3 development extension
 tests/            CLI/backend tests (+ headless icon rendering test)
 binary-original/  analysis-only reference (read-only, not distributed)
-ui-assets/        user-provided toolbar icons (SVG)
+ui-assets/        user-provided icons (toolbar SVGs; app-icon/ = app, tray, extension)
+tools/            helper executables (extension icon rasterizer)
 ```

@@ -38,6 +38,8 @@ if(SWIFTSDM_BUILD_UI)
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
     )
     target_link_libraries(test_icons PRIVATE swiftdm_core Qt6::Widgets)
+    target_compile_definitions(test_icons PRIVATE
+        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     qt_add_resources(test_icons "test_icons_app"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/ui-assets"

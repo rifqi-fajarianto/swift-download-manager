@@ -5,10 +5,11 @@ Brave) using Manifest V3. It adds right-click actions for a link or the current
 page and a popup button for the current page. Automatic HTTP(S) download
 interception is enabled by default and can be switched off from the extension
 popup, which keeps new downloads in the browser while the manual actions still
-work. The popup shows the app's live status (idle or how many downloads are
-running) and lists media it noticed for the current tab: HLS (`.m3u8`)
-playlists and adaptive video+audio track pairs, each downloadable with one
-click.
+work. The toolbar icon is the colored SwiftDM mark while interception is on and
+a grayscale variant while it is off. The popup shows the app's live status
+(idle or how many downloads are running) and lists media it noticed for the
+current tab: HLS (`.m3u8`) playlists and adaptive video+audio track pairs, each
+downloadable with one click.
 
 ## Install for development
 
@@ -68,6 +69,11 @@ downloader does not retain.
 ## Current scope and limitations
 
 - HTTP and HTTPS links/pages; automatic interception is enabled by default.
+- The toolbar icon mirrors that switch: colored while automatic handoff is on,
+  grayscale while it is off (the popup and the worker both apply it, so it also
+  survives a worker restart). The PNGs in `icons/` are rendered from
+  `ui-assets/app-icon/extension-icon.svg` and
+  `extension-diactivate-icon.svg` by `render-extension-icons`.
 - Automatic interception cancels the browser item before contacting SwiftDM. If
   SwiftDM is unreachable, the extension asks the browser to download the URL
   again. Very small downloads that finish before they can be canceled stay in
