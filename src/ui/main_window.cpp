@@ -1287,13 +1287,8 @@ void MainWindow::on_browsers() {
     QMessageBox::information(
         this, tr("Browser Extensions"),
         tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
-           "Automatic browser download handoff is enabled in the extension popup.\n"
-           "Load the unpacked development extension from ext/chromium, and reload it\n"
-           "after updating the extension files.\n\n"
-           "If the popup cannot connect, check the status above. Port 10007 must be\n"
-           "free: a hidden SwiftDM tray instance or another program may be using it.\n"
-           "Quit the old instance from the tray, then restart SwiftDM.\n\n"
-           "Setup and limitations are documented in ext/chromium/README.md.")
+            "Firefox based browser integration coming soon.\n\n"
+           "Automatic browser download handoff is enabled in the extension popup.\n")
             .arg(state));
 }
 
@@ -1305,10 +1300,10 @@ void MainWindow::on_about() {
     about.setText(
         QStringLiteral(
             "<b>SwiftDM</b> %1<br><br>"
-            "Clean-room Linux download manager (segmented, resumable).<br>"
-            "Reimplemented from observed behavior of the Windows application; "
+            "Simple lightweight download manager with browser integration.<br><br>"
+            "Reimplemented from observed behavior of the NDM application "
             "no original code or assets are used.<br><br>"
-            "No update check, no phone-home.")
+            "Created By RF Design with AI Agent.")
             .arg(swiftdm::kVersionString));
     about.exec();
 }
