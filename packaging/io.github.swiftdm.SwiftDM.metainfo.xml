@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 SwiftDM contributors. SPDX-License-Identifier: Apache-2.0 -->
+<component type="desktop-application">
+  <id>io.github.swiftdm.SwiftDM</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+
+  <name>SwiftDM</name>
+  <summary>Segmented, resumable download manager</summary>
+
+  <description>
+    <p>
+      SwiftDM is a download manager for Linux with segmented HTTP/HTTPS
+      transfers, resumable partial files, per-download bandwidth limits, an FTP
+      path, HLS (m3u8) support and a browser integration for Chromium-based
+      browsers.
+    </p>
+    <p>
+      It is a clean-room reimplementation of the behavior of a Windows download
+      manager: no original code, assets, icons or branding are used, and it
+      never contacts a vendor server.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">swiftdm.desktop</launchable>
+
+  <url type="homepage">https://github.com/swiftdm/swiftdm</url>
+  <url type="bugtracker">https://github.com/swiftdm/swiftdm/issues</url>
+
+  <developer id="io.github.swiftdm">
+    <name>SwiftDM contributors</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.16.0" date="2026-10-19">
+      <description>
+        <p>Installable build: CMake install rules and a Debian package.</p>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>Network</category>
+    <category>FileTransfer</category>
+  </categories>
+
+  <keywords>
+    <keyword>download</keyword>
+    <keyword>manager</keyword>
+    <keyword>resumable</keyword>
+  </keywords>
+</component>

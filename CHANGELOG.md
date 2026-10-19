@@ -1,24 +1,25 @@
 # Changelog
 
+## 0.16.0 — 2026-10-19
+
+Installable build: CMake install rules and a `.deb` package.
+
+- `install()` rules put `swiftdm` in `/usr/bin`, a launcher entry in
+  `/usr/share/applications`, hicolor icons in `/usr/share/icons/hicolor`, the
+  AppStream metadata in `/usr/share/metainfo`, the Apache-2.0 copyright file in
+  `/usr/share/doc/swiftdm`, and the Chromium extension in
+  `/usr/share/swiftdm/chromium`. `cmake --install build --prefix /usr/local`
+  installs without a package.
+- `cpack` builds `swiftdm_<version>_amd64.deb` with dependencies resolved by
+  `dpkg-shlibdeps`, plus `Recommends: chromium`. Maintainer scripts refresh the
+  desktop and icon caches on install/remove.
+- Added the missing `LICENSE` (Apache-2.0), `packaging/swiftdm.desktop`,
+  AppStream metadata, and the `render-desktop-icons` target that regenerates the
+  hicolor PNGs from `ui-assets/app-icon/main-icon.svg`.
+- Build/install steps for Debian 13 are documented in `packaging/README.md`
+  and the top-level README.
+
 ## 0.15.0 — 2026-10-19
-
-The app, tray, About window and browser extension now use the project's own
-icon set from `ui-assets/app-icon/`.
-
-- Window/app icon: `main-icon.svg` (`QApplication::setWindowIcon`), replacing the
-  placeholder glyph that lived in `src/ui/icons/app.svg`.
-- Tray icon: `single-color-icon.svg`, tinted to the desktop color scheme (white
-  on dark panels, near-black on light ones) so it stays legible in either theme.
-- About window: shows `extension-icon.svg` next to the version and build note.
-- Extension 0.5.0: the toolbar icon is `extension-icon.svg` while "Automatically
-  use SwiftDM for downloads" is on and `extension-diactivate-icon.svg` while it
-  is off. Chromium cannot load SVG action icons, so 16/32/48/128 px PNGs are
-  checked in under `ext/chromium/icons/`; the new `render-extension-icons`
-  target regenerates them from the SVGs.
-- The headless icons test now also verifies the extension/tray marks and every
-  extension PNG.
-
-## 0.14.0 — 2026-10-19
 
 One switch for "let the browser keep this download".
 

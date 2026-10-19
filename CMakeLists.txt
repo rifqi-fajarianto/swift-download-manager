@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.15.0
+    VERSION 0.16.0
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -39,6 +39,12 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(render-extension-icons tools/render_icons.cpp)
     target_link_libraries(render-extension-icons PRIVATE Qt6::Gui)
     target_compile_definitions(render-extension-icons PRIVATE
+        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+    # Regenerates packaging/icons/hicolor/**/swiftdm.png for the .desktop entry.
+    add_executable(render-desktop-icons tools/render_desktop_icons.cpp)
+    target_link_libraries(render-desktop-icons PRIVATE Qt6::Gui)
+    target_compile_definitions(render-desktop-icons PRIVATE
         SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
     # Icon assets, shared by the app and the headless icons test.
@@ -134,6 +140,64 @@ if(SWIFTSDM_BUILD_UI)
     target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)
 endif()
+
+# ---------------------------------------------------------------------------
+# Install rules (system install and CPack .deb)
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+
+install(TARGETS swiftdm
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+install(FILES packaging/swiftdm.desktop
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+)
+install(FILES packaging/io.github.swiftdm.SwiftDM.metainfo.xml
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
+)
+install(FILES LICENSE
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/swiftdm"
+    RENAME copyright
+)
+install(DIRECTORY packaging/icons/hicolor
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
+)
+
+# Development copy of the browser integration; the store-free workflow is to
+# load ext/chromium as an unpacked extension from a checkout or from this copy.
+install(DIRECTORY ext/chromium
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/swiftdm"
+)
+
+set(CPACK_PACKAGE_NAME "swiftdm")
+set(CPACK_PACKAGE_VENDOR "SwiftDM contributors")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Clean-room Linux download manager (segmented, resumable)")
+set(CPACK_PACKAGE_CONTACT "SwiftDM contributors")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "swiftdm")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_STRIP_FILES ON)
+set(CPACK_GENERATOR "DEB")
+
+# Debian package metadata. Runtime library dependencies are resolved by
+# dpkg-shlibdeps from the built binary; only packages that are loaded at run
+# time (the SVG image plugin behind the icon resources) are listed here.
+set(CPACK_DEBIAN_PACKAGE_NAME "swiftdm")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "SwiftDM contributors")
+set(CPACK_DEBIAN_PACKAGE_SECTION "net")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6svg6, qt6-svg-plugins")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "chromium | chromium-browser | google-chrome-stable")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/swiftdm/swiftdm")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_DEBUGINFO_PACKAGE OFF)
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/debian/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/debian/postrm")
+
+include(CPack)
 
 # ---------------------------------------------------------------------------
 # Tests

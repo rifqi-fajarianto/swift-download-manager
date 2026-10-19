@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=SwiftDM
+GenericName=Download Manager
+GenericName[id]=Pengelola Unduhan
+Comment=Segmented, resumable download manager
+Comment[id]=Pengelola unduhan tersegmentasi yang bisa dilanjutkan
+Exec=swiftdm
+TryExec=swiftdm
+Icon=swiftdm
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=download;manager;resumable;segmented;
+StartupNotify=true
+StartupWMClass=swiftdm
