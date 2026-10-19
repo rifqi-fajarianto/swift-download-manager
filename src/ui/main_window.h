@@ -64,7 +64,8 @@ class MainWindow : public QMainWindow {
     void on_task_finished(DownloadTask* task, int status, const QString& path,
                           const QString& error);
     void show_completion_dialog(const QString& name, const QString& path);
-    void show_error_dialog(const QString& url, const QString& error);
+    void show_error_dialog(const QString& url, const QString& error,
+                           const QString& page_url = QString());
     void open_file_for_row(int row);
     void open_folder_for_row(int row);
     void show_properties_for_row(int row);

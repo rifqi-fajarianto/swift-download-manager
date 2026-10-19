@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.0 — 2026-10-19
+
+Make server refusals understandable (and survivable) instead of a bare
+`HTTP/1.1 403 Forbidden`.
+
+- Failure messages now quote the host. The first 1024 bytes of a 4xx/5xx body
+  are summarized and appended after ` - ` (300 bytes max): JSON
+  `value`/`message` fields (pixeldrain's `hotlink_detected`,
+  `file_rate_limited_captcha_required`, `max_concurrent_downloads`, ...), an
+  HTML `<title>` or the visible text with scripts/styles dropped, otherwise a
+  single collapsed line. Probe, segmented and streamed failures all use it, and
+  the same text is stored per download.
+- Fixed: 3xx/4xx/5xx response bodies were written into the partial file at the
+  segment offset; refused bodies are now kept for the error message instead.
+- Downloads that are refused while running in parallel now retry once on a
+  single connection (1 s pause) before failing, so hosts with a per-IP
+  connection limit still complete.
+- The error notification offers `Open Page in Browser` when the download came
+  from a browser page, which is what hosts that gate downloads behind a CAPTCHA
+  (pixeldrain's hotlink protection) need before a retry can work.
+
+Verified by build + CLI/backend suite: `test_http` gained JSON/HTML refusal
+fixtures, a connection-limited route and a single-connection fallback test.
+
 ## 0.11.1 — 2026-10-19
 
 Fix the download progress window growing with the URL length.

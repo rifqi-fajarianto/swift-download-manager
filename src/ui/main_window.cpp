@@ -532,7 +532,7 @@ void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& 
         item->state = DownloadItem::State::Error;
         item->error = error;
         model_->touch_row(row);
-        show_error_dialog(item->url, error);
+        show_error_dialog(item->url, error, item->page_url);
         update_status_bar();
         return;
     }
@@ -577,7 +577,7 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
                 show_completion_dialog(item->file_name, path);
             }
         } else if (status == static_cast<int>(DownloadTask::Status::Failed) && item) {
-            show_error_dialog(item->url, error);
+            show_error_dialog(item->url, error, item->page_url);
         }
     } else {
         // The row was removed while the task was running; clean up leftovers.
@@ -642,7 +642,8 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
     box->activateWindow();
 }
 
-void MainWindow::show_error_dialog(const QString& url, const QString& error) {
+void MainWindow::show_error_dialog(const QString& url, const QString& error,
+                                   const QString& page_url) {
     // Same rationale as the completion window: an independent top-level window.
     auto* box = new QMessageBox(nullptr);
     box->setAttribute(Qt::WA_DeleteOnClose);
@@ -654,6 +655,17 @@ void MainWindow::show_error_dialog(const QString& url, const QString& error) {
     // the complete URL behind "Show Details…".
     box->setInformativeText(QFontMetrics(box->font()).elidedText(url, Qt::ElideMiddle, 480));
     box->setDetailedText(url);
+    // Hosts that demand a site visit or a captcha (pixeldrain's hotlink
+    // protection, for example) say so in the error text. Offer the page that
+    // started the download so the user can clear it and retry.
+    if (!page_url.isEmpty()) {
+        QPushButton* open_page =
+            box->addButton(tr("Open Page in Browser"), QMessageBox::ActionRole);
+        connect(open_page, &QPushButton::clicked, this, [page_url] {
+            qInfo() << "error dialog: opening page" << page_url;
+            QDesktopServices::openUrl(QUrl(page_url));
+        });
+    }
     box->addButton(QMessageBox::Close);
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());

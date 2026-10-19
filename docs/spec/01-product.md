@@ -59,8 +59,14 @@ Layout (from `main-window.png`):
    data and can resume after restart.
 6. **Completed**: `download-complete-window.png` with `Open Folder`, `Open`,
    `Close`. Shown only when the completion-dialog setting is on.
-7. **Error**: `download-error-window.png` shows `Error : HTTP/1.1 403 Forbidden`,
-   the URL, and offers `Close` and `Log File`.
+7. **Error**: `download-error-window.png` shows `Error : <message>`, the URL, and
+   offers `Close` and `Log File`. The message carries the host's own explanation
+   when the response body has one (JSON `message`/`value`, HTML title or text),
+   e.g. `Error : HTTP/1.1 403 Forbidden - hotlink_detected: Hotlinking was
+   detected for this download, hotlinking is only allowed on premium accounts`.
+   When the download came from a browser page, an additional `Open Page in
+   Browser` button opens that page (hosts such as pixeldrain require a CAPTCHA
+   there before any tool may download the file).
 8. **Properties** (`download-properties-window.png`): icon, file size bytes,
    status, Saved To path (+ Open Folder), Temp Path, URL (editable), Page URL
    (+ Show Page), Page Title, Browser (source that submitted it), Added On,

@@ -181,6 +181,102 @@ void test_forbidden(const std::string& dir, testutil::TestHttpServer& server) {
     CHECK(result.error.find("403") != std::string::npos);
 }
 
+// Hosts that explain a refusal in the response body (pixeldrain's hotlink
+// protection, connection limits, ...) must show that reason, not just the
+// status line.
+void test_probe_error_detail(testutil::TestHttpServer& server) {
+    HttpOptions opts;
+    opts.url = server.base_url() + "/json-error";
+    opts.user_agent = "SwiftDM-Test/1.0";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK_EQ(probe.status_code, long(403));
+    CHECK(probe.error.find("403 Forbidden") != std::string::npos);
+    CHECK(probe.error.find("hotlink_detected") != std::string::npos);
+    CHECK(probe.error.find("Hotlinking was detected") != std::string::npos);
+}
+
+void test_transfer_error_detail(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/segments-forbidden/65536";
+    req.connections = 4;
+
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK(result.error.find("403 Forbidden") != std::string::npos);
+    CHECK(result.error.find("max_concurrent_downloads") != std::string::npos);
+    CHECK(result.error.find("maximum number of open download connections") != std::string::npos);
+
+    // The refused body must not be written into the partial file.
+    CHECK(!result.path.empty());
+    std::ifstream in(result.path, std::ios::binary);
+    CHECK(static_cast<bool>(in));
+    std::string head(64, '\0');
+    in.read(&head[0], static_cast<std::streamsize>(head.size()));
+    bool all_zero = true;
+    for (char c : head) {
+        if (c != '\0') all_zero = false;
+    }
+    CHECK(all_zero);
+}
+
+void test_stream_error_detail(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/stream-forbidden";
+
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK(result.error.find("403 Forbidden") != std::string::npos);
+    CHECK(result.error.find("max_concurrent_downloads") != std::string::npos);
+}
+
+// A host that refuses parallel ranges must still be usable: the engine falls
+// back to a single connection and finishes the download.
+void test_single_connection_fallback(const std::string& dir,
+                                     testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    server.reset_limited_refusals();
+
+    // Segments are never smaller than 1 MiB, so the parallel plan needs a file
+    // of at least 4 MiB to produce four ranged requests.
+    constexpr uint64_t kFallbackSize = 8u << 20;
+    DownloadRequest req;
+    req.url = server.base_url() + "/limit-connections/" + std::to_string(kFallbackSize);
+    req.connections = 4;
+
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(result.size, kFallbackSize);
+    CHECK(file_matches(result.path, kFallbackSize));
+    CHECK(server.limited_refusals() > 0);  // the parallel attempt really was refused
+    CHECK(dir_empty(settings.temp_dir));
+}
+
+// HTML error pages (Cloudflare style) are summarized without their markup.
+void test_html_error_detail(testutil::TestHttpServer& server) {
+    HttpOptions opts;
+    opts.url = server.base_url() + "/html-error";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK(probe.error.find("403") != std::string::npos);
+    CHECK(probe.error.find("Sorry, you have been blocked") != std::string::npos);
+    CHECK(probe.error.find("<html") == std::string::npos);
+    CHECK(probe.error.find("var a = 1") == std::string::npos);
+
+    // Without a <title> the visible text is used, minus scripts/styles.
+    HttpOptions plain;
+    plain.url = server.base_url() + "/html-error-plain";
+    const ProbeResult plain_probe = probe_url(plain);
+    CHECK(!plain_probe.ok);
+    CHECK(plain_probe.error.find("Request blocked by the host") != std::string::npos);
+    CHECK(plain_probe.error.find("var a = 1") == std::string::npos);
+}
+
 void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -241,6 +337,11 @@ int main() {
     test_resume_after_pause(dir + "/resume", server);
     test_redirect(dir + "/redirect", server);
     test_forbidden(dir + "/forbidden", server);
+    test_probe_error_detail(server);
+    test_transfer_error_detail(dir + "/transfer-error", server);
+    test_stream_error_detail(dir + "/stream-error", server);
+    test_single_connection_fallback(dir + "/fallback", server);
+    test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
     test_categories();
     test_unique_path(dir);

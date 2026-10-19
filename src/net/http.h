@@ -60,6 +60,10 @@ struct HttpOptions {
 // Human-readable HTTP reason phrase (subset; "" when unknown).
 std::string http_reason_phrase(long status);
 
+// Extracts the status code from an error string produced by this module
+// ("HTTP/1.1 403 Forbidden - ..."), 0 when the string is not an HTTP failure.
+int http_error_status(const std::string& error);
+
 // True for ftp:// and ftps:// URLs (case-insensitive).
 bool is_ftp_url(const std::string& url);
 

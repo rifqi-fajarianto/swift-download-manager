@@ -78,10 +78,27 @@ are still uncommitted.
 | IE/Opera/Edge-specific integration | Dropped | platform-specific |
 | MKV "Basic/Pro" license gates | Dropped | we have no license tiers |
 
+## v3.1 — refusals that explain themselves (0.12.0)
+
+Pixeldrain (and other hosts) intentionally refuse direct downloads: their FAQ
+documents "hotlink protection" that detects download managers, answers `403`
+(`hotlink_detected`, `file_rate_limited_captcha_required`,
+`max_concurrent_downloads`) and requires a CAPTCHA on the file's page. SwiftDM
+does not circumvent that gate:
+
+| Behavior | Status |
+|---|---|
+| Show the host's reason | Implemented | 4xx/5xx bodies are summarized into the error text (`value: message`, HTML title/text) |
+| Refused bodies in the partial file | Fixed | 3xx/4xx/5xx bodies are never written at the segment offset |
+| Parallel `403` handling | Implemented | one retry of the remaining ranges on a single connection (1 s pause) before failing |
+| `Open Page in Browser` in the error dialog | Implemented | offered when the download came from a browser page, so the user can clear the host's CAPTCHA and retry |
+| CAPTCHA solving / hotlink circumvention | Dropped | out of scope: the host asks for a human step, the app points at the page |
+
 ## Verification notes
 
 - Automated verification is CLI/backend only (AGENTS.md): unit tests, a local
-  range-capable HTTP test server, resume/checksum integration tests.
+  range-capable HTTP test server (including JSON/HTML refusal fixtures and a
+  connection-limited route), resume/checksum integration tests.
 - FTP and HLS are verified by the new `media` test: a local FTP server (control
   connection plus passive data, `SIZE`/`REST`/`EPSV`) checks the probe, a full
   download, and a `REST`-based resume from a pre-seeded part file; HLS fixtures

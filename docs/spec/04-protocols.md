@@ -109,4 +109,10 @@ tracked in its decision log.
 ## 4. Log/error formats
 
 - Error display: `Error : HTTP/1.1 403 Forbidden` style (E18 screenshot).
+- Error messages quote the host: when a probe or transfer fails with 4xx/5xx,
+  the first `1024` bytes of the response body are summarized (JSON
+  `value`/`message`, HTML `<title>`/text with scripts and styles dropped,
+  anything else collapsed to one line) and appended after ` - `, capped at
+  `300` bytes on a UTF-8 boundary. Refused bodies are never written into the
+  partial file.
 - Per-download log file with `.LogFile.txt` extension (E5/E14 notes).

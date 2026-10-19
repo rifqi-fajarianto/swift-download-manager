@@ -63,7 +63,21 @@ are our own choices where the original is UNKNOWN (E23).
   capped at 60s; treat 5xx/connection resets as retryable, 4xx (except 408/429)
   as terminal.
 - Errors surface as `Error : <protocol> <code> <reason>` in the error dialog
-  (E18 screenshot) and are stored in `errortext`.
+  (E18 screenshot) and are stored in `errortext`. **[design: 0.12.0]** the
+  message also quotes the host: the first `1024` bytes of a 4xx/5xx body are
+  summarized (JSON `value`/`message`, HTML `<title>`/text, otherwise one
+  collapsed line) and appended after ` - ` (max `300` bytes). This is what
+  makes hosts that explain themselves — pixeldrain's `hotlink_detected` /
+  `file_rate_limited_captcha_required`, connection limits — understandable in
+  the UI. Refused bodies are never written into the partial file (previously a
+  4xx/3xx body could land at the segment offset).
+- **[design: 0.12.0]** when parallel ranges are refused with `403` and the plan
+  has more than one segment, the remaining ranges are retried once on a single
+  connection (`ConnectionsAtOnce` semantics) after a 1 s pause. Hosts with a
+  per-IP connection limit (pixeldrain's free tier answers
+  `403 max_concurrent_downloads`) therefore still complete instead of failing.
+  CAPTCHA-gated refusals are not bypassed: the user must clear them on the
+  host's page (the error dialog offers `Open Page in Browser`).
 - HTTP specifics supported: chunked transfer decoding, redirect following
   (limit **[design: 15]**), HTTP proxy CONNECT tunneling, SOCKS4/SOCKS5
   (E15), cookies, custom headers per download (`headers` table), Basic/Digest

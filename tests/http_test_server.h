@@ -6,6 +6,12 @@
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
 //   GET/HEAD /redirect/<size>       302 to /file/<size>
 //   GET/HEAD /forbidden             403 response
+//   GET/HEAD /json-error            403 with a JSON error body (pixeldrain shape)
+//   GET/HEAD /segments-forbidden/N  200 probe, ranged GETs answer 403 JSON
+//   GET/HEAD /stream-forbidden      200 chunked probe, streamed GET answers 403 JSON
+//   GET/HEAD /limit-connections/N   200 probe, parallel ranges answer 403 JSON
+//   GET/HEAD /html-error            403 HTML page with a <title>
+//   GET/HEAD /html-error-plain      403 HTML page without a <title>
 //   GET/HEAD /hls/master.m3u8       HLS master playlist (variant-1/-2)
 //   GET/HEAD /hls/variant-<n>.m3u8  HLS media playlist (3 segments)
 //   GET/HEAD /hls/seg-<v>-<s>.ts    HLS segment (deterministic content)
@@ -30,6 +36,8 @@ namespace testutil {
 
 inline std::atomic<int> g_cookie_requests{0};
 inline std::atomic<int> g_non_matching_cookie_requests{0};
+inline std::atomic<int> g_limited_active{0};
+inline std::atomic<int> g_limited_refusals{0};
 
 inline uint8_t content_byte(uint64_t i) {
     uint32_t x = static_cast<uint32_t>(i) * 2654435761u + 12345u;
@@ -110,6 +118,8 @@ class TestHttpServer {
   public:
     int cookie_requests() const { return g_cookie_requests.load(); }
     int non_matching_cookie_requests() const { return g_non_matching_cookie_requests.load(); }
+    int limited_refusals() const { return g_limited_refusals.load(); }
+    void reset_limited_refusals() { g_limited_refusals.store(0); }
 
   private:
     void accept_loop() {
@@ -223,6 +233,53 @@ class TestHttpServer {
                              std::to_string(body.size()) +
                              "\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n" +
                              body);
+        } else if (path == "/html-error") {
+            const std::string body =
+                "<html><head><title>Sorry, you have been blocked</title>"
+                "<style>body{color:red}</style><script>var a = 1;</script></head>"
+                "<body><h1>Access denied</h1></body></html>";
+            send_str(fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: " +
+                             std::to_string(body.size()) +
+                             "\r\nContent-Type: text/html; charset=UTF-8\r\nConnection: "
+                             "close\r\n\r\n" +
+                             body);
+        } else if (path == "/html-error-plain") {
+            const std::string body =
+                "<html><body><script>var a = 1;</script><style>b{}</style>"
+                "Request blocked by the host</body></html>";
+            send_str(fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: " +
+                             std::to_string(body.size()) +
+                             "\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n" +
+                             body);
+        } else if (path == "/json-error") {
+            // Body shape used by pixeldrain and other JSON back ends: the reason
+            // lives in "value"/"message" and must reach the failure message.
+            send_json_error(fd, "403 Forbidden", hotlink_error_body());
+        } else if (path.rfind("/segments-forbidden/", 0) == 0) {
+            // The probe (HEAD) succeeds and advertises ranges, while every
+            // ranged GET is refused like a host that limits concurrent
+            // connections.
+            if (method == "HEAD" || range.empty()) {
+                const uint64_t total = std::strtoull(
+                    path.substr(std::string("/segments-forbidden/").size()).c_str(), nullptr, 10);
+                std::string head = "HTTP/1.1 200 OK\r\nContent-Length: " +
+                                   std::to_string(total) +
+                                   "\r\nAccept-Ranges: bytes\r\n" + common_headers(total) + "\r\n";
+                send_str(fd, head);
+            } else {
+                send_json_error(fd, "403 Forbidden", connection_limit_error_body());
+            }
+        } else if (path.rfind("/limit-connections/", 0) == 0) {
+            serve_limited_connections(fd, method, range,
+                                      path.substr(std::string("/limit-connections/").size()));
+        } else if (path == "/stream-forbidden") {
+            // Unknown-size probe succeeds (chunked), the streamed GET is refused.
+            if (method == "HEAD") {
+                send_str(fd, std::string("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n") +
+                                 common_headers(0) + "\r\n");
+            } else {
+                send_json_error(fd, "403 Forbidden", connection_limit_error_body());
+            }
         } else {
             const std::string body = "not found";
             send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: " +
@@ -277,7 +334,11 @@ class TestHttpServer {
         if (method != "HEAD" && !range_header.empty() && total > 0) {
             partial = parse_ranges(range_header, total, start, end);
         }
+        send_file_response(fd, method, total, start, end, partial, slow);
+    }
 
+    static void send_file_response(int fd, const std::string& method, uint64_t total,
+                                   uint64_t start, uint64_t end, bool partial, bool slow) {
         std::string head;
         if (partial) {
             head = "HTTP/1.1 206 Partial Content\r\nContent-Length: " +
@@ -304,6 +365,54 @@ class TestHttpServer {
             offset += chunk;
             if (slow) ::usleep(60000);  // ~1 MB/s per connection
         }
+    }
+
+    // One open ranged connection at a time, like a host with a per-IP limit:
+    // the probe succeeds, parallel ranges are refused with a JSON 403.
+    static void serve_limited_connections(int fd, const std::string& method,
+                                          const std::string& range_header,
+                                          const std::string& size_text) {
+        const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
+        if (method == "HEAD" || range_header.empty()) {
+            send_file_response(fd, method, total, 0, total == 0 ? 0 : total - 1, false, false);
+            return;
+        }
+        uint64_t start = 0;
+        uint64_t end = total == 0 ? 0 : total - 1;
+        if (!parse_ranges(range_header, total, start, end)) {
+            send_json_error(fd, "403 Forbidden", connection_limit_error_body());
+            return;
+        }
+        if (g_limited_active.fetch_add(1) > 0) {
+            g_limited_active.fetch_sub(1);
+            g_limited_refusals.fetch_add(1);
+            if (::getenv("HTTP_TEST_LOG")) std::fprintf(stderr, "[srv] refuse range=%s\n", range_header.c_str());
+            send_json_error(fd, "403 Forbidden", connection_limit_error_body());
+            return;
+        }
+        if (::getenv("HTTP_TEST_LOG")) std::fprintf(stderr, "[srv] accept range=%s\n", range_header.c_str());
+        // Hold the connection so the parallel requests overlap deterministically.
+        ::usleep(250000);
+        send_file_response(fd, method, total, start, end, true, false);
+        g_limited_active.fetch_sub(1);
+    }
+
+    static void send_json_error(int fd, const char* status, const std::string& body) {
+        send_str(fd, std::string("HTTP/1.1 ") + status + "\r\nContent-Length: " +
+                         std::to_string(body.size()) +
+                         "\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" +
+                         body);
+    }
+
+    // Faithful shape of pixeldrain's hotlink refusal.
+    static std::string hotlink_error_body() {
+        return "{\"success\":false,\"value\":\"hotlink_detected\",\"message\":\"Hotlinking was "
+               "detected for this download, hotlinking is only allowed on premium accounts\"}";
+    }
+
+    static std::string connection_limit_error_body() {
+        return "{\"success\":false,\"value\":\"max_concurrent_downloads\",\"message\":\"You have "
+               "reached the maximum number of open download connections for free accounts\"}";
     }
 
     static void serve_chunked(int fd, const std::string& method,

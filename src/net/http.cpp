@@ -50,6 +50,14 @@ std::string http_reason_phrase(long status) {
     }
 }
 
+int http_error_status(const std::string& error) {
+    constexpr const char* kPrefix = "HTTP/1.1 ";
+    constexpr size_t kPrefixLen = 9;  // strlen(kPrefix)
+    if (error.rfind(kPrefix, 0) != 0 || error.size() <= kPrefixLen) return 0;
+    if (!std::isdigit(static_cast<unsigned char>(error[kPrefixLen]))) return 0;
+    return static_cast<int>(std::strtol(error.c_str() + kPrefixLen, nullptr, 10));
+}
+
 namespace {
 
 constexpr int kIoTimeoutMs = 100;         // curl multi poll timeout
@@ -72,6 +80,11 @@ std::string http_error_text(long code) {
     if (!reason.empty()) text += " " + reason;
     return text;
 }
+
+// Failure messages carry the host's own explanation (rate limits, captcha
+// requirements, hotlink protection) instead of a bare "HTTP/1.1 403 Forbidden".
+constexpr size_t kErrorBodyLimit = 1024;   // body bytes kept per request
+constexpr size_t kErrorDetailLimit = 300;  // bytes shown in the message
 
 curl_slist* build_headers(const std::vector<HttpHeader>& headers) {
     curl_slist* list = nullptr;
@@ -211,6 +224,7 @@ struct ProbeCapture {
     std::string last_modified;
     std::string content_type;
     std::string filename_hint;
+    std::string error_body;  // start of a 4xx/5xx body, for the error message
 };
 
 size_t probe_header_cb(char* buffer, size_t size, size_t nitems, void* userdata) {
@@ -254,8 +268,17 @@ size_t probe_header_cb(char* buffer, size_t size, size_t nitems, void* userdata)
     return len;
 }
 
-size_t probe_discard_cb(char*, size_t, size_t, void*) {
-    return 0;  // abort as soon as the body starts; headers are already captured
+// Successful probes abort as soon as the body starts (the headers are already
+// captured); error responses keep their first bytes so the failure can explain
+// itself.
+size_t probe_body_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* cap = static_cast<ProbeCapture*>(userdata);
+    const size_t total = size * nmemb;
+    if (cap->status < 400) return 0;
+    if (cap->error_body.size() >= kErrorBodyLimit) return 0;
+    const size_t room = kErrorBodyLimit - cap->error_body.size();
+    cap->error_body.append(ptr, std::min(total, room));
+    return total;
 }
 
 // Runs one probe request. Returns true when a usable response arrived.
@@ -272,7 +295,8 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, probe_header_cb);
     curl_easy_setopt(handle, CURLOPT_HEADERDATA, &cap);
-    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, probe_discard_cb);
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, probe_body_cb);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, &cap);
     if (use_post) {
         curl_easy_setopt(handle, CURLOPT_POST, 1L);
         curl_easy_setopt(handle, CURLOPT_POSTFIELDS, o.post_data.c_str());
@@ -314,6 +338,182 @@ bool starts_with_ci(const std::string& text, const char* prefix) {
         if (std::tolower(static_cast<unsigned char>(text[i])) != prefix[i]) return false;
     }
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Error body summaries
+// ---------------------------------------------------------------------------
+
+bool is_utf8_continuation(char c) {
+    return (static_cast<unsigned char>(c) & 0xC0) == 0x80;
+}
+
+// Shortens to a UTF-8 character boundary and marks the cut with "...".
+std::string truncate_utf8(const std::string& text, size_t max_bytes) {
+    if (text.size() <= max_bytes) return text;
+    size_t cut = max_bytes;
+    while (cut > 0 && is_utf8_continuation(text[cut])) --cut;
+    return text.substr(0, cut) + "...";
+}
+
+std::string collapse_whitespace(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    bool pending_space = false;
+    for (char c : text) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        const bool is_space = u == ' ' || u == '\t' || u == '\n' || u == '\r' || u == '\f' ||
+                              u == '\v';
+        if (is_space) {
+            pending_space = !out.empty();
+            continue;
+        }
+        if (pending_space) out += ' ';
+        pending_space = false;
+        out += c;
+    }
+    return out;
+}
+
+std::string strip_html_tags(const std::string& html) {
+    std::string out;
+    out.reserve(html.size());
+    bool in_tag = false;
+    for (char c : html) {
+        if (c == '<') {
+            in_tag = true;
+            continue;
+        }
+        if (c == '>') {
+            in_tag = false;
+            out += ' ';
+            continue;
+        }
+        if (!in_tag) out += c;
+    }
+    return out;
+}
+
+std::string html_title(const std::string& html) {
+    const std::string lower = to_lower(html);
+    const size_t open = lower.find("<title");
+    if (open == std::string::npos) return {};
+    const size_t open_end = lower.find('>', open);
+    if (open_end == std::string::npos) return {};
+    const size_t close = lower.find("</title", open_end);
+    if (close == std::string::npos) return {};
+    return strip_html_tags(html.substr(open_end + 1, close - open_end - 1));
+}
+
+// Removes <script>/<style> bodies; their contents are not a message.
+std::string drop_html_blocks(const std::string& html, const char* tag) {
+    const std::string lower = to_lower(html);
+    const std::string open = std::string("<") + tag;
+    const std::string close = std::string("</") + tag;
+    std::string out;
+    size_t pos = 0;
+    while (true) {
+        const size_t start = lower.find(open, pos);
+        if (start == std::string::npos) break;
+        out += html.substr(pos, start - pos);
+        const size_t end = lower.find(close, start);
+        if (end == std::string::npos) {
+            pos = html.size();
+            break;
+        }
+        const size_t end_tag = lower.find('>', end);
+        pos = end_tag == std::string::npos ? html.size() : end_tag + 1;
+    }
+    out += html.substr(pos);
+    return out;
+}
+
+// Reads a flat JSON string field ("message", "value"). Nested objects are not
+// relevant for error payloads, so this stays a small scanner.
+bool json_string_field(const std::string& body, const char* key, std::string* value) {
+    const std::string pattern = std::string("\"") + key + "\"";
+    size_t pos = 0;
+    while ((pos = body.find(pattern, pos)) != std::string::npos) {
+        size_t i = pos + pattern.size();
+        while (i < body.size() && std::isspace(static_cast<unsigned char>(body[i]))) ++i;
+        if (i >= body.size() || body[i] != ':') {
+            pos = i;
+            continue;
+        }
+        ++i;
+        while (i < body.size() && std::isspace(static_cast<unsigned char>(body[i]))) ++i;
+        if (i >= body.size() || body[i] != '"') {
+            pos = i;
+            continue;
+        }
+        ++i;
+        std::string out;
+        bool closed = false;
+        while (i < body.size()) {
+            const char c = body[i];
+            if (c == '\\' && i + 1 < body.size()) {
+                const char escaped = body[i + 1];
+                if (escaped == 'n' || escaped == 't' || escaped == 'r') out += ' ';
+                else if (escaped == '"' || escaped == '\\' || escaped == '/') out += escaped;
+                i += 2;
+                continue;
+            }
+            if (c == '"') {
+                closed = true;
+                ++i;
+                break;
+            }
+            out += c;
+            ++i;
+        }
+        if (closed && !trim(out).empty()) {
+            *value = collapse_whitespace(out);
+            return true;
+        }
+        pos = i;
+    }
+    return false;
+}
+
+// REST APIs (pixeldrain, most JSON back ends) report the reason in the body:
+// {"success":false,"value":"hotlink_detected","message":"Hotlinking was ..."}.
+std::string json_error_message(const std::string& body) {
+    std::string message;
+    std::string value;
+    const bool has_message = json_string_field(body, "message", &message);
+    const bool has_value = json_string_field(body, "value", &value);
+    if (has_message && has_value) return value + ": " + message;
+    if (has_message) return message;
+    if (has_value) return value;
+    return {};
+}
+
+std::string condense_error_body(const std::string& body, const std::string& content_type) {
+    const std::string trimmed = trim(body);
+    if (trimmed.empty()) return {};
+    const std::string json = json_error_message(trimmed);
+    if (!json.empty()) return truncate_utf8(json, kErrorDetailLimit);
+
+    std::string text = trimmed;
+    const std::string lower_type = to_lower(content_type);
+    if (lower_type.find("html") != std::string::npos || trimmed.front() == '<') {
+        const std::string title = html_title(trimmed);
+        if (!trim(title).empty()) return truncate_utf8(collapse_whitespace(title), kErrorDetailLimit);
+        text = drop_html_blocks(trimmed, "script");
+        text = drop_html_blocks(text, "style");
+        text = strip_html_tags(text);
+    }
+    const std::string flat = collapse_whitespace(text);
+    if (flat.empty()) return {};
+    return truncate_utf8(flat, kErrorDetailLimit);
+}
+
+std::string http_error_with_detail(long code, const std::string& body,
+                                   const std::string& content_type) {
+    std::string text = http_error_text(code);
+    const std::string detail = condense_error_body(body, content_type);
+    if (detail.empty()) return text;
+    return text + " - " + detail;
 }
 
 // FTP's HEAD-only mode delivers synthetic "Content-Length"/"Accept-ranges"
@@ -474,7 +674,7 @@ ProbeResult probe_url(const HttpOptions& options) {
     out.last_modified = cap.last_modified;
 
     if (cap.status >= 400 && cap.status != 416) {
-        out.error = http_error_text(cap.status);
+        out.error = http_error_with_detail(cap.status, cap.error_body, cap.content_type);
         return out;
     }
     out.content_length = cap.content_range_total;
@@ -493,6 +693,8 @@ struct SegmentDownloader::Impl {
         size_t index = 0;
         long status = 0;
         bool range_bad = false;
+        std::string content_type;
+        std::string error_body;  // start of a 4xx/5xx body, for the error message
     };
 
     HttpOptions options;
@@ -544,6 +746,15 @@ struct SegmentDownloader::Impl {
         Impl* impl = ctx->impl;
         const size_t total = size * nmemb;
         if (total == 0 || ctx->range_bad) return 0;
+        // Redirect and error bodies must not land in the output file; keep the
+        // first bytes of a 4xx/5xx body so the failure can explain itself.
+        if (ctx->status >= 300) {
+            if (ctx->status >= 400 && ctx->error_body.size() < kErrorBodyLimit) {
+                const size_t room = kErrorBodyLimit - ctx->error_body.size();
+                ctx->error_body.append(ptr, std::min(total, room));
+            }
+            return total;
+        }
         Segment& seg = impl->state.segments[ctx->index];
         if (seg.done >= seg.length()) return total;  // nothing left; discard
         uint64_t to_write = total;
@@ -559,15 +770,23 @@ struct SegmentDownloader::Impl {
     static size_t header_cb(char* buffer, size_t size, size_t nitems, void* userdata) {
         auto* ctx = static_cast<HandleCtx*>(userdata);
         const size_t len = size * nitems;
-        if (len >= 5 && std::memcmp(buffer, "HTTP/", 5) == 0) {
-            const std::string line(buffer, len);
+        const std::string line(buffer, len);
+        if (line.rfind("HTTP/", 0) == 0) {
             const size_t sp = line.find(' ');
             if (sp != std::string::npos) {
                 ctx->status = std::strtol(line.c_str() + sp + 1, nullptr, 10);
+                // A redirect starts a new response: drop the previous captions.
+                ctx->content_type.clear();
+                ctx->error_body.clear();
                 const Segment& seg = ctx->impl->state.segments[ctx->index];
                 const uint64_t from = seg.start + seg.done;
                 if (ctx->status == 200 && from > 0) ctx->range_bad = true;
             }
+            return len;
+        }
+        if (starts_with_ci(line, "content-type")) {
+            const size_t colon = line.find(':');
+            if (colon != std::string::npos) ctx->content_type = trim(line.substr(colon + 1));
         }
         return len;
     }
@@ -585,6 +804,8 @@ struct SegmentDownloader::Impl {
         ctx.index = i;
         ctx.status = 0;
         ctx.range_bad = false;
+        ctx.content_type.clear();
+        ctx.error_body.clear();
 
         runtime[i].error_buffer.assign(CURL_ERROR_SIZE, '\0');
         apply_common_options(handle, options, headers);
@@ -656,9 +877,14 @@ struct SegmentDownloader::Impl {
             }
         }
         if (!retryable || rt.attempts > max_retries) {
-            if (code > 0) error = http_error_text(code);
-            else if (!rt.error_buffer.empty() && rt.error_buffer[0] != '\0') error = rt.error_buffer.c_str();
-            else error = curl_easy_strerror(rc);
+            if (code > 0) {
+                error = http_error_with_detail(code, contexts[i].error_body,
+                                               contexts[i].content_type);
+            } else if (!rt.error_buffer.empty() && rt.error_buffer[0] != '\0') {
+                error = rt.error_buffer.c_str();
+            } else {
+                error = curl_easy_strerror(rc);
+            }
             return 1;
         }
         const int64_t backoff = std::min<int64_t>(16000, 1000LL << (rt.attempts - 1));
@@ -842,16 +1068,47 @@ struct StreamCtx {
     uint64_t base = 0;  // bytes already on disk before this transfer
     const std::function<bool(uint64_t)>* on_progress = nullptr;
     int64_t last_report = 0;
+    long status = 0;
+    std::string content_type;
+    std::string error_body;  // start of a 4xx/5xx body, for the error message
 };
 
 size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* ctx = static_cast<StreamCtx*>(userdata);
     const size_t total = size * nmemb;
     if (total == 0) return 0;
+    // Redirect and error bodies must not land in the output file.
+    if (ctx->status >= 300) {
+        if (ctx->status >= 400 && ctx->error_body.size() < kErrorBodyLimit) {
+            const size_t room = kErrorBodyLimit - ctx->error_body.size();
+            ctx->error_body.append(ptr, std::min(total, room));
+        }
+        return total;
+    }
     const ssize_t written = ::write(ctx->fd, ptr, total);
     if (written < 0 || static_cast<size_t>(written) != total) return 0;
     ctx->written += total;
     return total;
+}
+
+size_t stream_header_cb(char* buffer, size_t size, size_t nitems, void* userdata) {
+    auto* ctx = static_cast<StreamCtx*>(userdata);
+    const size_t len = size * nitems;
+    const std::string line(buffer, len);
+    if (line.rfind("HTTP/", 0) == 0) {
+        const size_t sp = line.find(' ');
+        if (sp != std::string::npos) {
+            ctx->status = std::strtol(line.c_str() + sp + 1, nullptr, 10);
+            ctx->content_type.clear();
+            ctx->error_body.clear();
+        }
+        return len;
+    }
+    if (starts_with_ci(line, "content-type")) {
+        const size_t colon = line.find(':');
+        if (colon != std::string::npos) ctx->content_type = trim(line.substr(colon + 1));
+    }
+    return len;
 }
 
 int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
@@ -890,6 +1147,8 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, stream_write_cb);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
+    curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, stream_header_cb);
+    curl_easy_setopt(handle, CURLOPT_HEADERDATA, &ctx);
     curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, stream_progress_cb);
     curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &ctx);
@@ -923,7 +1182,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
         return TransferOutcome::Failed;
     }
     if (code >= 400) {
-        if (error) *error = http_error_text(code);
+        if (error) *error = http_error_with_detail(code, ctx.error_body, ctx.content_type);
         return TransferOutcome::Failed;
     }
     if (error) error->clear();
