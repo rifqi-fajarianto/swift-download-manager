@@ -63,12 +63,61 @@ const CategoryEntry kCategories[] = {
     {"Misc", ":/icons/other.svg"},
 };
 
+const char* history_status(DownloadItem::State state) {
+    switch (state) {
+        case DownloadItem::State::Queued: return "Queued";
+        case DownloadItem::State::Probing: return "Downloading";
+        case DownloadItem::State::Downloading: return "Downloading";
+        case DownloadItem::State::Paused: return "Paused";
+        case DownloadItem::State::Complete: return "Complete";
+        case DownloadItem::State::Error: return "Error";
+    }
+    return "Downloading";
+}
+
+// Builds the SQLite history row for an item. Browser page metadata, POST data
+// and forwarded headers come from the task options when a task exists.
+swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
+                                                 const DownloadTask::Options* options) {
+    swiftdm::HistoryStore::Record record;
+    record.url = item.url.toStdString();
+    record.filename = item.file_name.toStdString();
+    record.category = item.category.toStdString();
+    record.status = history_status(item.state);
+    record.page_url = item.page_url.toStdString();
+    record.page_title = item.page_title.toStdString();
+    record.error_text = item.error.toStdString();
+    record.file_size = item.size;
+    record.resumable = item.resumable;
+    record.folder_path = item.dest_path.isEmpty()
+                             ? item.output_dir.toStdString()
+                             : QFileInfo(item.dest_path).absolutePath().toStdString();
+    if (options) {
+        record.user_agent = options->user_agent.toStdString();
+        record.connections = options->connections;
+        record.bandwidth_limit_kbps = options->limit_kbps;
+        record.post_data.assign(options->post_data.constData(),
+                                static_cast<size_t>(options->post_data.size()));
+        if (!options->post_data.isEmpty()) record.method = "POST";
+        for (const swiftdm::HttpHeader& header : options->headers) {
+            record.headers.push_back(header.name + ": " + header.value);
+        }
+    }
+    return record;
+}
+
 }  // namespace
 
 MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
     : QMainWindow(parent), settings_(std::move(settings)) {
     setWindowTitle(QStringLiteral("SwiftDM %1").arg(swiftdm::kVersionString));
     resize(1020, 580);
+
+    std::string history_error;
+    if (!history_.open(swiftdm::default_database_path(), &history_error)) {
+        qWarning() << "history: persistence disabled:"
+                   << QString::fromStdString(history_error);
+    }
 
     model_ = new DownloadModel(this);
     proxy_ = new DownloadFilterProxy(this);
@@ -307,6 +356,9 @@ void MainWindow::add_download(const QString& url) {
     item.last_try = now_stamp();
     item.state = DownloadItem::State::Probing;
     const int row = model_->add_item(item);
+    if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
+        added->history_id = history_.insert(history_record_for(*added, nullptr));
+    }
     start_probe_at_row(row);
 }
 
@@ -379,6 +431,9 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     item.page_url = data.value(QStringLiteral("pageUrl")).toString();
     item.page_title = data.value(QStringLiteral("pageTitle")).toString();
     const int row = model_->add_item(item);
+    if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
+        added->history_id = history_.insert(history_record_for(*added, &options));
+    }
     const int id = model_->item_at(row)->id;
     start_task_at_row(row, &options);
     open_download_window(id);
@@ -408,6 +463,9 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     item->task = task;
     item->state = DownloadItem::State::Downloading;
     item->last_try = now_stamp();
+    if (item->history_id > 0 && history_.is_open()) {
+        history_.update(item->history_id, history_record_for(*item, &options));
+    }
 
     connect(task, &DownloadTask::probed, this, [this, task] {
         model_->task_probed(task);
@@ -474,6 +532,9 @@ void MainWindow::on_probe_completed(DownloadTask* task, bool ok, const QString& 
     }
 
     // Confirmation step: show the resolved file name and size first.
+    if (item->history_id > 0 && history_.is_open()) {
+        history_.update(item->history_id, history_record_for(*item, nullptr));
+    }
     const QString name = item->file_name;
     const quint64 size = item->size;
     const QString url = item->url;
@@ -498,7 +559,12 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
     model_->task_finished(task, status, path, error);
     const int row = model_->row_for_task(task);
     if (row >= 0) {
-        const DownloadItem* item = model_->item_at(row);
+        DownloadItem* item = model_->item_at(row);
+        if (item && item->history_id > 0 && history_.is_open()) {
+            history_.update(item->history_id,
+                            history_record_for(*item, item->task ? &item->task->options()
+                                                                 : nullptr));
+        }
         if (status == static_cast<int>(DownloadTask::Status::Completed)) {
             qInfo() << "download completed:" << path;
             if (settings_.completion_dialog && item) {

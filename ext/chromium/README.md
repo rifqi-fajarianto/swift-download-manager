@@ -81,8 +81,9 @@ downloader does not retain.
   context-menu action once for a site to grant cookies; later automatic
   handoffs for that origin can reuse the grant.
 - Cookie permission is optional and requested per target origin.
-- Page title is collected for protocol compatibility but is not currently
-  stored in the download list.
+- Browser page URL and title are shown in download Properties and persisted in
+  SwiftDM's SQLite history along with POST bodies and forwarded headers; the
+  history list is not restored into the GUI yet.
 - `showPanel` and `getVersion` protocol commands are implemented server-side;
   this initial extension does not expose a separate panel UI.
 - Extension store packaging/signing and persistent install instructions are

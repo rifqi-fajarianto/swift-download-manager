@@ -44,6 +44,7 @@ extern const char* const kDefaultUserAgent;
 
 std::string default_config_path();  // $XDG_CONFIG_HOME/swiftdm/swiftdm.ini
 std::string default_temp_dir();     // $XDG_DATA_HOME/swiftdm/tmp
+std::string default_database_path();  // $XDG_DATA_HOME/swiftdm/swiftdm.db
 
 Settings default_settings();
 

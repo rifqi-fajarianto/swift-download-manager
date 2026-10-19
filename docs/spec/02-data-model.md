@@ -74,6 +74,10 @@ Field semantics:
 
 ## 2. On-disk download state (behavioral)
 
+The SQLite `downloads` row is now written by SwiftDM as downloads are added and
+updated (`HistoryStore`), including `pageurl`/`pagetitle`, method, POST body, and
+extra header rows. Restoring the list into the GUI at startup is still planned.
+
 - Partial content lives under the *temp path* (`%APPDATA%\Roaming\NeatDM\` on
   Windows; SwiftDM: `~/.local/share/swiftdm/tmp/<id>/`).
 - Segment table state persists in `segments.bin` next to the partial data,

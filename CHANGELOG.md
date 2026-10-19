@@ -16,11 +16,12 @@ bypass option.
   `x-*` headers for 30 seconds so intercepted downloads carry them; a **Bypass**
   popup option keeps new downloads in the browser; the popup shows the live app
   status over the subscription socket.
-- Browser page URL/title are carried on the download item (persistence lands
-  next).
+- Browser page URL/title are carried on the download item and written to the
+  SQLite history (`downloads.pageurl`/`pagetitle`), together with method, POST
+  body, and forwarded headers. The history list is not restored at startup yet.
 - Tests: protocol coverage for POST/header validation, subscribe, and status
   events; extension-logic coverage for bypass, POST/header forwarding, and the
-  status channel.
+  status channel; new `history` test for the SQLite store.
 
 ## 0.9.3 — 2026-10-18
 

@@ -81,6 +81,8 @@ std::string default_config_path() { return xdg_config_home() + "/swiftdm/swiftdm
 
 std::string default_temp_dir() { return xdg_data_home() + "/swiftdm/tmp"; }
 
+std::string default_database_path() { return xdg_data_home() + "/swiftdm/swiftdm.db"; }
+
 Settings default_settings() {
     Settings s;
     s.default_agent = kDefaultUserAgent;

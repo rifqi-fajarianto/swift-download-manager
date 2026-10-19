@@ -82,6 +82,17 @@ PropertiesDialog::PropertiesDialog(const DownloadItem& item, const DownloadTask*
     url_edit->setReadOnly(true);
     form->addRow(tr("URL :"), url_edit);
 
+    if (!item.page_url.isEmpty()) {
+        auto* page_edit = new QLineEdit(item.page_url, this);
+        page_edit->setReadOnly(true);
+        form->addRow(tr("Page URL :"), page_edit);
+    }
+    if (!item.page_title.isEmpty()) {
+        auto* page_title = new QLabel(item.page_title, this);
+        page_title->setWordWrap(true);
+        form->addRow(tr("Page Title :"), page_title);
+    }
+
     form->addRow(tr("Category :"),
                  new QLabel(item.category.isEmpty() ? tr("Misc") : item.category, this));
     form->addRow(tr("Downloaded :"),

@@ -331,7 +331,7 @@ version steps follow `AGENTS.md`.
 | C2 | App→extension status channel: `subscribe` command plus `status` push events (`waiting`, `active`) | Implemented |
 | C3 | Bypass as a popup option instead of hold-`Delete` (owner-adjusted) | Implemented |
 | C13 | Keep the strict structured cookie model; no raw-cookie mode. Raw `Cookie`/`Authorization` headers stay rejected | Decided; enforced by protocol validation and tests |
-| C12 | Persist `pageUrl`/`pageTitle` | Planned |
+| C12 | Persist `pageUrl`/`pageTitle` | Implemented: SQLite history rows (spec 02 schema) are written/updated per download, including page metadata; restoring the list at startup remains a v1.1 item |
 | C11 | FTP handoff / engine support | Planned |
 | C7 | HLS (`m3u8`) handling | Planned |
 | C8 | Adaptive pairing + MKV mux proposal | Planned |

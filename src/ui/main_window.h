@@ -6,6 +6,7 @@
 #include <QPoint>
 #include <QPointer>
 
+#include "store/history.h"
 #include "store/settings.h"
 #include "ui/download_task.h"
 
@@ -73,6 +74,7 @@ class MainWindow : public QMainWindow {
     QList<int> selected_rows() const;  // source rows, descending
 
     swiftdm::Settings settings_;
+    swiftdm::HistoryStore history_;
     DownloadModel* model_ = nullptr;
     DownloadFilterProxy* proxy_ = nullptr;
     QTableView* table_ = nullptr;

@@ -30,6 +30,7 @@ configure_file(
 # ---------------------------------------------------------------------------
 find_package(Threads REQUIRED)
 find_package(CURL REQUIRED)
+find_package(SQLite3 REQUIRED)
 if(SWIFTSDM_BUILD_UI)
     find_package(Qt6 REQUIRED COMPONENTS Network Widgets)
 
@@ -72,13 +73,14 @@ add_library(swiftdm_core STATIC
     src/engine/download_engine.cpp
     src/engine/segment_plan.cpp
     src/net/http.cpp
+    src/store/history.cpp
     src/store/settings.cpp
 )
 target_include_directories(swiftdm_core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
-target_link_libraries(swiftdm_core PUBLIC CURL::libcurl Threads::Threads)
+target_link_libraries(swiftdm_core PUBLIC CURL::libcurl Threads::Threads SQLite::SQLite3)
 
 # ---------------------------------------------------------------------------
 # CLI / application entry point

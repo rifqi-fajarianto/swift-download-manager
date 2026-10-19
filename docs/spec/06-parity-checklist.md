@@ -41,7 +41,7 @@ Status as of 0.9.3.
 
 | Feature | Status |
 |---|---|
-| SQLite download history (`downloads` table) + restore list at startup | Planned |
+| SQLite download history (`downloads` table) + restore list at startup | Partial | Rows (incl. `pageurl`/`pagetitle`, POST data, headers) are written and updated via `src/store/history.cpp`; restoring the list into the GUI at startup is still planned |
 | Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
@@ -56,7 +56,7 @@ Status as of 0.9.3.
 | Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept, bypass), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and per-origin |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Firefox extension | Planned |
-| Browser-sent page metadata | Partial | `pageUrl`/title are sent by the extension and carried on the item; the SQLite history store that persists them is still planned (C12) |
+| Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); list restore at startup is still planned (v1.1) |
 
 Open gaps identified by the original-extension comparison
 (`07-chromium-extension-reference.md` §6, decision log in §10): POST/body and

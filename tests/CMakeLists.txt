@@ -12,6 +12,10 @@ add_executable(test_settings test_settings.cpp)
 target_link_libraries(test_settings PRIVATE swiftdm_core)
 add_test(NAME settings COMMAND test_settings)
 
+add_executable(test_history test_history.cpp)
+target_link_libraries(test_history PRIVATE swiftdm_core)
+add_test(NAME history COMMAND test_history)
+
 add_executable(test_http test_http.cpp)
 target_link_libraries(test_http PRIVATE swiftdm_core)
 add_test(NAME http COMMAND test_http)
