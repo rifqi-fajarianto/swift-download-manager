@@ -21,6 +21,11 @@
         <span>Bypass SwiftDM: keep new downloads in the browser</span>
       </label>
       <button id="download" type="button" disabled>Download this page</button>
+      <section id="media" hidden>
+        <h2>Detected media</h2>
+        <div id="media-list"></div>
+        <p class="hint">HLS playlists are downloaded as one file. Video and audio tracks are sent as a pair; muxing into a single MKV is planned for a later release.</p>
+      </section>
       <p class="hint">Bypass is useful for one-off downloads that should stay in the browser. For links, right-click and choose “Download link with SwiftDM”.</p>
     </main>
     <script src="popup.js"></script>

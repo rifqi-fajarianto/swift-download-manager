@@ -66,6 +66,15 @@ bool is_http_url(const QString& text) {
            !url.host().isEmpty() && url.userName().isEmpty() && url.password().isEmpty();
 }
 
+// Download targets may also be FTP links (the extension forwards them when a
+// page still exposes one; modern Chromium handles ftp:// internally).
+bool is_download_url(const QString& text) {
+    if (is_http_url(text)) return true;
+    const QUrl url(text);
+    return url.isValid() && url.scheme() == QStringLiteral("ftp") && !url.host().isEmpty() &&
+           url.userName().isEmpty() && url.password().isEmpty();
+}
+
 }  // namespace
 
 BrowserIntegration::BrowserIntegration(QObject* parent, quint16 port) : QObject(parent) {
@@ -451,9 +460,19 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
                 }
             }
         }
-        if (!is_http_url(url) || !cookies_valid || !referer_valid || !referer_is_safe ||
+        // Adaptive (video + audio) pairs share a short opaque token so the app
+        // can recognize both halves later (muxing is a later release).
+        const QJsonValue group_value = data.value(QStringLiteral("group"));
+        bool group_valid = group_value.isUndefined() || group_value.isNull();
+        if (!group_valid && group_value.isString()) {
+            static const QRegularExpression group_pattern(
+                QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
+            group_valid = group_pattern.match(group_value.toString()).hasMatch();
+        }
+        if (!is_download_url(url) || !cookies_valid || !referer_valid || !referer_is_safe ||
             referer.size() > 8192 || !user_agent_valid || user_agent.size() > 2048 ||
-            filename.size() > 255 || !method_valid || !post_valid || !headers_valid) {
+            filename.size() > 255 || !method_valid || !post_valid || !headers_valid ||
+            !group_valid) {
             ok = false;
             error = QStringLiteral("invalid download request");
         } else {

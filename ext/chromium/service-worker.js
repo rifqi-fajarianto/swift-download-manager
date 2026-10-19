@@ -4,6 +4,8 @@ const MENU_LINK = "swiftdm-download-link";
 const MENU_PAGE = "swiftdm-download-page";
 const OBSERVED_TTL_MS = 30000;
 const OBSERVED_MAX = 200;
+const STREAM_TTL_MS = 60000;
+const STREAM_MAX_PER_TAB = 8;
 const MAX_POST_BYTES = 262144;
 const STATUS_RECONNECT_MS = 15000;
 const autoIntercepting = new Set();
@@ -12,6 +14,11 @@ const autoIntercepting = new Set();
 // handoff of a POST-initiated download can forward them. Entries expire so the
 // worker never accumulates browsing data.
 const observedRequests = new Map();
+
+// Per-tab media-only responses (video/audio/HLS) seen while browsing. Adaptive
+// pages serve their video and audio tracks as separate responses, so the popup
+// can offer both at once (the app tags them with a shared group token).
+const tabStreams = new Map();
 
 let statusSocket = null;
 let statusReconnectTimer = null;
@@ -79,6 +86,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     );
     return true;
   }
+  if (message?.type === "get-media-streams") {
+    // Synchronous: the popup asks for whatever was observed for its tab.
+    sendResponse({ ok: true, media: mediaForTab(Number(message.tabId)) });
+    return false;
+  }
+  if (message?.type === "download-url") {
+    void sendDownload(message.url, message.pageUrl ?? "", message.title ?? "", {
+      useGrantedCookiePermission: message.cookiesGranted === true,
+      group: message.group
+    })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: errorText(error) }));
+    return true;
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -112,6 +133,89 @@ if (chrome.webRequest?.onBeforeRequest) {
     { urls: ["http://*/*", "https://*/*"], types: observedTypes },
     ["requestHeaders"]
   );
+  chrome.webRequest.onHeadersReceived.addListener(
+    (details) => {
+      const header = (details.responseHeaders ?? []).find(
+        (entry) => String(entry.name ?? "").toLowerCase() === "content-type"
+      );
+      const mimeType = header ? String(header.value ?? "") : "";
+      if (!mimeType) return;
+      rememberRequest(details.url, { mimeType: mimeType.split(";")[0].trim().toLowerCase() });
+      rememberStream(details.tabId, details.url, mimeType);
+    },
+    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
+    ["responseHeaders"]
+  );
+}
+
+// Media-only responses that the popup can offer (HLS requires app support,
+// plain video/audio tracks are paired so both halves are handed off together).
+function streamKind(mimeType, url) {
+  const mime = String(mimeType ?? "").split(";")[0].trim().toLowerCase();
+  const path = String(url ?? "").split(/[?#]/)[0].toLowerCase();
+  if (mime.includes("mpegurl") || path.endsWith(".m3u8")) return "hls";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "";
+}
+
+function rememberStream(tabId, url, mimeType) {
+  if (typeof tabId !== "number" || tabId < 0 || !validHttpUrl(url)) return;
+  const kind = streamKind(mimeType, url);
+  if (!kind) return;
+  if ((kind === "video" || kind === "audio") && !isMediaOnly(mimeType)) return;
+  const now = Date.now();
+  const entries = (tabStreams.get(tabId) ?? []).filter(
+    (entry) => now - entry.at <= STREAM_TTL_MS && entry.url !== url
+  );
+  entries.push({ url, kind, at: now });
+  while (entries.length > STREAM_MAX_PER_TAB) entries.shift();
+  tabStreams.set(tabId, entries);
+}
+
+// Container types that are really media tracks (guards against "video/html"
+// style bogus types that would otherwise be offered as a track).
+function isMediaOnly(mimeType) {
+  const mime = String(mimeType ?? "").split(";")[0].trim().toLowerCase();
+  return (mime.startsWith("video/") || mime.startsWith("audio/")) && !mime.includes("html");
+}
+
+function mediaForTab(tabId) {
+  const now = Date.now();
+  const entries = (tabStreams.get(tabId) ?? []).filter(
+    (entry) => now - entry.at <= STREAM_TTL_MS
+  );
+  const hls = entries.filter((entry) => entry.kind === "hls").map((entry) => entry.url);
+  const video = entries.filter((entry) => entry.kind === "video");
+  const audio = entries.filter((entry) => entry.kind === "audio");
+  const pairs = [];
+  // Pair the newest video track with the newest audio track first; deeper pairs
+  // cover pages that expose multiple renditions in one tab.
+  const count = Math.min(video.length, audio.length);
+  for (let i = 0; i < count; i++) {
+    const videoEntry = video[video.length - 1 - i];
+    const audioEntry = audio[audio.length - 1 - i];
+    pairs.push({
+      video: videoEntry.url,
+      audio: audioEntry.url,
+      group: streamGroup(videoEntry.url)
+    });
+  }
+  return { hls, pairs };
+}
+
+// Short stable token shared by both halves of a pair. It is not derived from
+// page content, just enough for the app to recognize the pair later.
+function streamGroup(videoUrl) {
+  let hash = 0;
+  for (let i = 0; i < videoUrl.length; i++) {
+    hash = (hash * 31 + videoUrl.charCodeAt(i)) >>> 0;
+  }
+  return `pair-${hash.toString(16).padStart(8, "0")}`;
+}
+
+if (chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => tabStreams.delete(tabId));
 }
 
 function rememberRequest(url, patch) {
@@ -297,7 +401,15 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
     data.method = "POST";
   }
   if (options.headers?.length) data.headers = options.headers;
+  // Adaptive pairs share a short token so the app can tell both halves apart
+  // without inventing a second protocol command.
+  const group = sanitizeGroup(options.group);
+  if (group) data.group = group;
   return sendCommand("addDownload", data);
+}
+
+function sanitizeGroup(value) {
+  return String(value ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32);
 }
 
 // ---------------------------------------------------------------------------

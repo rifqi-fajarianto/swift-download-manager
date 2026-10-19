@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.0 — 2026-10-19
+
+Extra protocols and adaptive media: FTP, HLS, and paired video/audio handoff.
+
+- FTP downloads: the app, CLI, and manual dialog accept `ftp://`/`ftps://`
+  URLs. The engine probes the file with `SIZE` and downloads it over a single
+  connection, resuming an interrupted transfer with `REST` (C11).
+- HLS (`m3u8`): the engine parses master and media playlists, picks the
+  highest-bandwidth variant, writes the `EXT-X-MAP` init segment when present,
+  downloads every segment sequentially into one `.ts` file, and resumes at the
+  first unfinished segment. Encrypted playlists are refused with a clear error
+  instead of writing unusable data (C7).
+- Adaptive pairing (C8): the extension remembers media-only responses per tab,
+  pairs the newest video and audio tracks, and lists both — plus any detected
+  HLS playlist — in the popup. Paired handoffs carry a shared `group` token;
+  the app validates it, shows it in Properties, and stores it in
+  `downloads.groupid`. Muxing the pair into MKV is documented as a v3 proposal
+  (no muxer dependency is added yet).
+- Tests: protocol coverage for POST/header/pair-token validation, subscribe,
+  and status events; extension-logic coverage for bypass, POST/header
+  forwarding, media detection/pairing, and the status channel; new `history`
+  test for the SQLite store; new `media` test with a local FTP server
+  (`SIZE`/`REST`/`EPSV`) and HLS fixtures (playlists, segments, resume).
+
 ## 0.10.0 — 2026-10-19
 
 Browser integration: POST bodies, custom request headers, status push, and a
@@ -19,10 +43,6 @@ bypass option.
 - Browser page URL/title are carried on the download item and written to the
   SQLite history (`downloads.pageurl`/`pagetitle`), together with method, POST
   body, and forwarded headers. The history list is not restored at startup yet.
-- Tests: protocol coverage for POST/header validation, subscribe, and status
-  events; extension-logic coverage for bypass, POST/header forwarding, and the
-  status channel; new `history` test for the SQLite store.
-
 ## 0.9.3 — 2026-10-18
 
 Fix the `Open Folder` and `Open` buttons in the Download Complete notification.

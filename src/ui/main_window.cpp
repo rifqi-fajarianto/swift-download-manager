@@ -86,6 +86,7 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     record.status = history_status(item.state);
     record.page_url = item.page_url.toStdString();
     record.page_title = item.page_title.toStdString();
+    record.group_id = item.group.toStdString();
     record.error_text = item.error.toStdString();
     record.file_size = item.size;
     record.resumable = item.resumable;
@@ -365,7 +366,8 @@ void MainWindow::add_download(const QString& url) {
 void MainWindow::add_browser_download(const QJsonObject& data) {
     const QUrl url(data.value(QStringLiteral("url")).toString());
     if (!url.isValid() || (url.scheme() != QStringLiteral("http") &&
-                           url.scheme() != QStringLiteral("https")) ||
+                           url.scheme() != QStringLiteral("https") &&
+                           url.scheme() != QStringLiteral("ftp")) ||
         url.host().isEmpty()) {
         return;
     }
@@ -430,6 +432,9 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     item.state = DownloadItem::State::Queued;
     item.page_url = data.value(QStringLiteral("pageUrl")).toString();
     item.page_title = data.value(QStringLiteral("pageTitle")).toString();
+    // Adaptive video+audio handoffs share a token (validated by the protocol
+    // layer) so both rows can be recognized as one pair.
+    item.group = data.value(QStringLiteral("group")).toString();
     const int row = model_->add_item(item);
     if (DownloadItem* added = model_->item_at(row); added && history_.is_open()) {
         added->history_id = history_.insert(history_record_for(*added, &options));

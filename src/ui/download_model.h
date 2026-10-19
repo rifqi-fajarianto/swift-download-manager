@@ -30,6 +30,7 @@ struct DownloadItem {
     QString dest_path;
     QString page_url;    // browser page that initiated the download
     QString page_title;  // title of that page
+    QString group;       // adaptive pair token (video + audio), empty otherwise
     qint64 history_id = 0;  // row id in the SQLite history (0 = not stored)
     bool resumable = false;
     DownloadTask* task = nullptr;

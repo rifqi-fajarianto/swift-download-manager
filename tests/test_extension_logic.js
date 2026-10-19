@@ -42,6 +42,7 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
   let onMessage = null;
   let onBeforeRequest = null;
   let onBeforeSendHeaders = null;
+  let onHeadersReceived = null;
   let attempts = 0;
 
   class MockWebSocket {
@@ -95,11 +96,15 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     webRequest: {
       onBeforeRequest: { addListener(fn) { onBeforeRequest = fn; } },
       onBeforeSendHeaders: { addListener(fn) { onBeforeSendHeaders = fn; } },
+      onHeadersReceived: { addListener(fn) { onHeadersReceived = fn; } },
     },
     contextMenus: {
       removeAll(callback) { callback?.(); },
       create() {},
       onClicked: { addListener() {} },
+    },
+    tabs: {
+      onRemoved: { addListener() {} },
     },
     downloads: {
       onCreated: { addListener(fn) { onCreated = fn; } },
@@ -172,6 +177,7 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     onMessage: () => onMessage,
     onBeforeRequest: () => onBeforeRequest,
     onBeforeSendHeaders: () => onBeforeSendHeaders,
+    onHeadersReceived: () => onHeadersReceived,
     context,
   };
 }
@@ -329,6 +335,79 @@ async function testRawPostBodyIsBase64Encoded() {
     "raw bodies survive the round trip");
 }
 
+async function testDetectedMediaStreams() {
+  const env = createEnvironment();
+  const headers = env.onHeadersReceived();
+  check(typeof headers === "function", "response header observation listener is registered");
+
+  const media = (url, mime, tabId = 7) =>
+    headers({ url, tabId, responseHeaders: [{ name: "Content-Type", value: mime }] });
+
+  media("https://cdn.example/playlist.m3u8", "application/vnd.apple.mpegurl", 1);
+  media("https://cdn.example/sd/video.mp4", "video/mp4; codecs=avc1", 2);
+  media("https://cdn.example/sd/audio.mp4", "audio/mp4", 2);
+  media("https://cdn.example/page.html", "text/html", 2);
+
+  let response = null;
+  env.onMessage()({ type: "get-media-streams", tabId: 1 }, {}, (value) => { response = value; });
+  check(response?.ok === true && response.media.hls.length === 1,
+    "HLS playlists are reported for the tab that requested them");
+  check(response.media.pairs.length === 0, "separate tabs are not paired");
+
+  response = null;
+  env.onMessage()({ type: "get-media-streams", tabId: 2 }, {}, (value) => { response = value; });
+  check(response?.media.pairs.length === 1, "video and audio tracks in one tab are paired");
+  check(response.media.pairs[0].video.endsWith("video.mp4") &&
+        response.media.pairs[0].audio.endsWith("audio.mp4"),
+    "the pair contains the video and audio URLs");
+  check(/^pair-[0-9a-f]{8}$/.test(response.media.pairs[0].group),
+    "the pair carries a short group token");
+
+  response = null;
+  env.onMessage()({ type: "get-media-streams", tabId: 3 }, {}, (value) => { response = value; });
+  check(response?.media.pairs.length === 0 && response.media.hls.length === 0,
+    "pages without media streams report nothing");
+}
+
+async function testPairedHandoffSharesTheGroupToken() {
+  const env = createEnvironment();
+  const headers = env.onHeadersReceived();
+  headers({ url: "https://cdn.example/hd/video.mp4", tabId: 4,
+    responseHeaders: [{ name: "Content-Type", value: "video/mp4" }] });
+  headers({ url: "https://cdn.example/hd/audio.mp4", tabId: 4,
+    responseHeaders: [{ name: "Content-Type", value: "audio/mp4" }] });
+
+  let media = null;
+  env.onMessage()({ type: "get-media-streams", tabId: 4 }, {}, (value) => { media = value; });
+  const pair = media.media.pairs[0];
+
+  for (const url of [pair.video, pair.audio]) {
+    let response = null;
+    env.onMessage()({ type: "download-url", url, group: pair.group ?? "",
+      pageUrl: "https://cdn.example/watch", title: "Episode", cookiesGranted: false },
+      {}, (value) => { response = value; });
+    await settle(() => response !== null && env.calls.sockets.length > 0 &&
+                        env.calls.sockets[env.calls.sockets.length - 1].sent.length > 0);
+    check(response?.ok === true, "detected media handoff is accepted");
+    const sent = env.calls.sockets[env.calls.sockets.length - 1].sent[0];
+    check(sent.cmd === "addDownload" && sent.data.url === url,
+      "the handoff uses addDownload with the detected URL");
+    check(sent.data.group === pair.group, "both halves share the pair token");
+  }
+}
+
+async function testPairTokenIsSanitized() {
+  const env = createEnvironment();
+  let response = null;
+  env.onMessage()({ type: "download-url", url: "https://cdn.example/v.mp4",
+    group: "pair token/../etc", pageUrl: "", title: "", cookiesGranted: false },
+    {}, (value) => { response = value; });
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(sent.data.group === "pairtokenetc", "group tokens keep only safe characters");
+  check(response?.ok === true, "sanitized handoff still succeeds");
+}
+
 async function testStatusChannel() {
   const env = createEnvironment();
   let response = null;
@@ -361,6 +440,9 @@ async function testStatusChannel() {
   await testBypassKeepsBrowserDownloads();
   await testPostBodyAndHeadersAreForwarded();
   await testRawPostBodyIsBase64Encoded();
+  await testDetectedMediaStreams();
+  await testPairedHandoffSharesTheGroupToken();
+  await testPairTokenIsSanitized();
   await testStatusChannel();
 
   if (failures) {

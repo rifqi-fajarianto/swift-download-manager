@@ -24,6 +24,7 @@ class HistoryStore {
         std::string user_agent;
         std::string page_url;
         std::string page_title;
+        std::string group_id;  // adaptive pair token (video + audio handoff)
         std::string mime_type;
         std::string error_text;
         std::string folder_path;
@@ -61,6 +62,7 @@ class HistoryStore {
   private:
     bool exec(const char* sql, std::string* error) const;
     bool ensure_schema(std::string* error);
+    bool ensure_column(const char* name, const char* type, std::string* error);
     bool write_headers(int64_t id, const std::vector<std::string>& headers,
                        std::string* error);
     void set_error(std::string* error, const std::string& message) const;

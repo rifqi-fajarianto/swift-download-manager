@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.10.0
+    VERSION 0.11.0
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -71,6 +71,7 @@ add_library(swiftdm_core STATIC
     src/core/util.cpp
     src/engine/categories.cpp
     src/engine/download_engine.cpp
+    src/engine/hls.cpp
     src/engine/segment_plan.cpp
     src/net/http.cpp
     src/store/history.cpp

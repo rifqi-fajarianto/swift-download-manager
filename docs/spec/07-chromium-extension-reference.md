@@ -332,6 +332,6 @@ version steps follow `AGENTS.md`.
 | C3 | Bypass as a popup option instead of hold-`Delete` (owner-adjusted) | Implemented |
 | C13 | Keep the strict structured cookie model; no raw-cookie mode. Raw `Cookie`/`Authorization` headers stay rejected | Decided; enforced by protocol validation and tests |
 | C12 | Persist `pageUrl`/`pageTitle` | Implemented: SQLite history rows (spec 02 schema) are written/updated per download, including page metadata; restoring the list at startup remains a v1.1 item |
-| C11 | FTP handoff / engine support | Planned |
-| C7 | HLS (`m3u8`) handling | Planned |
-| C8 | Adaptive pairing + MKV mux proposal | Planned |
+| C11 | FTP handoff / engine support | Implemented: `ftp://`/`ftps://` are accepted by the protocol, the manual dialog, and the CLI; the engine probes with `SIZE` and resumes with `REST` on one connection. The extension only forwards explicit FTP links (modern Chromium no longer loads FTP pages) |
+| C7 | HLS (`m3u8`) handling | Implemented: engine parses master/media playlists, picks the highest-bandwidth variant, writes `EXT-X-MAP`, downloads segments sequentially into one `.ts`, and resumes at the first unfinished segment; encrypted playlists are refused. The extension lists detected playlists in the popup |
+| C8 | Adaptive pairing + MKV mux proposal | Implemented (pairing): the extension pairs the newest video-only and audio-only responses per tab and hands both off with a shared `group` token (validated by the protocol, shown in Properties, stored in `downloads.groupid`). MKV muxing itself is proposed only — no muxer dependency is added in 0.11.0 (`03-engine.md` §9) |

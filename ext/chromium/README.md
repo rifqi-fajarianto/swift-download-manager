@@ -6,7 +6,9 @@ page and a popup button for the current page. Automatic HTTP(S) download
 interception is enabled by default and can be disabled from the extension popup;
 a separate **Bypass** popup option keeps new downloads in the browser while the
 manual actions keep working. The popup also shows the app's live status (idle or
-how many downloads are running).
+how many downloads are running). The popup also lists media it noticed for the
+current tab: HLS (`.m3u8`) playlists and adaptive video+audio track pairs, each
+downloadable with one click.
 
 ## Install for development
 
@@ -84,6 +86,15 @@ downloader does not retain.
 - Browser page URL and title are shown in download Properties and persisted in
   SwiftDM's SQLite history along with POST bodies and forwarded headers; the
   history list is not restored into the GUI yet.
+- Detected HLS playlists are sent as ordinary URLs: SwiftDM fetches the
+  playlist and its segments itself. Encrypted (`EXT-X-KEY`) playlists are
+  refused by the app with a clear error.
+- Adaptive pairs are two separate downloads that share a `group` token (shown
+  as **Pair** in Properties and stored in `downloads.groupid`). SwiftDM does not
+  mux them into one MKV yet; both files are kept side by side.
+- FTP has no automatic interception (Chromium no longer loads FTP pages);
+  explicit `ftp://` links can be sent from the context menu, and the app's
+  manual dialog and CLI accept FTP URLs directly.
 - `showPanel` and `getVersion` protocol commands are implemented server-side;
   this initial extension does not expose a separate panel UI.
 - Extension store packaging/signing and persistent install instructions are

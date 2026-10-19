@@ -85,3 +85,59 @@ are our own choices where the original is UNKNOWN (E23).
 
 - libcurl multi (epoll backend) driven by one I/O thread; worker-side disk
   writes via positioned writes; UI communicates via queued signals (Qt).
+
+## 9. FTP, HLS, and adaptive media (0.11.0)
+
+### FTP
+
+`ftp://` and `ftps://` URLs bypass the segmented HTTP path:
+
+1. **Probe** — libcurl `NOBODY` maps to `SIZE`, so `probe_url` reports the file
+   size (an error is reported verbatim when the server refuses `SIZE`). FTP has
+   no HTTP status code; `accept_ranges` mirrors "size known" because resume uses
+   `REST` rather than byte ranges.
+2. **Transfer** — one connection writes the part file from offset 0, or, when a
+   part file exists, seeks to its size and sets `CURLOPT_RESUME_FROM_LARGE`
+   (libcurl then issues `REST <offset>` before `RETR`). `connections` is
+   ignored on purpose.
+3. **Completion** — the part file is moved to the final name and the workspace
+   is removed, exactly like the HTTP path. A paused/failed transfer keeps the
+   part file so the next attempt resumes.
+
+### HLS (m3u8)
+
+Urls whose MIME type contains `mpegurl` or whose path ends in `.m3u8` are
+treated as HLS by `engine/hls.cpp`:
+
+- **Playlist parsing** — `#EXTM3U`, `#EXT-X-STREAM-INF` (bandwidth + URI),
+  `#EXTINF` segment URIs, `#EXT-X-MAP` init segment, `#EXT-X-KEY` (any method
+  other than `NONE` marks the playlist encrypted). URIs are resolved against the
+  post-redirect playlist URL (absolute, protocol-relative, root-relative, or
+  relative).
+- **Variant selection** — a master playlist picks the highest `BANDWIDTH`
+  variant (one level; nested masters are rejected).
+- **Download** — the `EXT-X-MAP` init segment (if any, fMP4) is written first,
+  then every media segment sequentially into the part file, which becomes one
+  `.ts` file. Progress follows the segment index; byte progress is reported when
+  known.
+- **Resume** — the workspace keeps `hls_progress` (index of the next segment)
+  and the concatenated part file; a resumed run appends from that index. Segments
+  already written are never re-fetched.
+- **Unsupported** — encrypted playlists fail with "encrypted HLS playlists are
+  not supported yet" instead of writing undecryptable data.
+
+### MKV mux (planned)
+
+Muxing the paired video/audio tracks (or an HLS variant with separate audio) into
+one Matroska file stays out of scope for 0.11.0: the project has no muxer
+dependency, and writing one is a release of its own. The planned shape:
+
+1. The extension hands both tracks off with a shared `group` token; the app
+   stores it (`downloads.groupid`) so the pair survives a restart.
+2. A future engine step (v3) reads both completed files plus `groupid`, and
+   remuxes them into MKV. The realistic implementation is a shell-out to
+   `ffmpeg -c copy` when it is installed, with a hand-written EBML writer as the
+   fallback (both tracks are usually already Matroska/WebM-friendly codecs, so a
+   copy remux is enough and re-encoding is not required).
+3. Until then the app documents the pair in Properties and leaves both files
+   side by side — no silent data loss and no half-muxed output.

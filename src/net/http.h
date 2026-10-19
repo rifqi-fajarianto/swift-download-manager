@@ -60,18 +60,31 @@ struct HttpOptions {
 // Human-readable HTTP reason phrase (subset; "" when unknown).
 std::string http_reason_phrase(long status);
 
+// True for ftp:// and ftps:// URLs (case-insensitive).
+bool is_ftp_url(const std::string& url);
+
 // Probes a URL: HEAD first, falling back to GET Range: 0-0 (or POST when
-// post_data is set). Fills size/range support/validators/filename hint.
+// post_data is set). FTP URLs use a NOBODY (SIZE) probe instead. Fills
+// size/range support/validators/filename hint.
 ProbeResult probe_url(const HttpOptions& options);
+
+// Fetches a small resource into memory (HLS playlists). Fails when the body
+// exceeds `max_bytes`. `effective_url` receives the post-redirect URL so
+// relative playlist URIs resolve correctly.
+bool fetch_text(const HttpOptions& options, std::string* text, std::string* effective_url,
+                std::string* error, uint64_t max_bytes = 2u << 20);
 
 enum class TransferOutcome { Completed, Paused, Failed };
 
 // Sequential (non-ranging) download for servers without a known size or range
 // support, writing from offset 0. The progress callback returns false to
 // pause. `bytes_written` receives the bytes stored on disk (if provided).
+// `resume_from` > 0 continues an interrupted transfer at that offset (FTP
+// REST, or HTTP Range for servers without range support).
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
-                                uint64_t* bytes_written, std::string* error);
+                                uint64_t* bytes_written, std::string* error,
+                                uint64_t resume_from = 0);
 
 // Downloads the unfinished ranges of `state` into `write_fd` (positioned
 // writes at absolute offsets) using libcurl multi with parallel connections.

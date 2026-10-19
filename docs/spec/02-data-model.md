@@ -34,6 +34,7 @@ CREATE TABLE "downloads" (
     "postdata"        TEXT,
     "folderpath"      TEXT,
     "temppath"        TEXT,
+    "groupid"         TEXT,   -- adaptive pair token (video + audio handoff)
     PRIMARY KEY("id")
 );
 CREATE TABLE headers (id NUMERIC, header TEXT);      -- extra request headers per download
@@ -71,6 +72,7 @@ Field semantics:
 | `postdata` | POST body |
 | `folderpath` | destination directory for this download |
 | `temppath` | temporary directory for this download |
+| `groupid` | adaptive pair token shared by the video and audio halves of a browser handoff (empty otherwise) |
 
 ## 2. On-disk download state (behavioral)
 

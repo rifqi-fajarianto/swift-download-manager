@@ -228,6 +228,30 @@ int main(int argc, char** argv) {
         check(!bad_header.value(QStringLiteral("ok")).toBool(),
               "non-x-* request headers are rejected");
 
+        const QJsonObject paired_download = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/video.mp4")},
+             {QStringLiteral("group"), QStringLiteral("pair-1f2e3d4c")}},
+            QStringLiteral("download-paired"));
+        check(paired_download.value(QStringLiteral("ok")).toBool(),
+              "adaptive pair token is accepted");
+        check(downloads_received == 4, "paired download signal is emitted");
+
+        const QJsonObject bad_group = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("https://example.com/video.mp4")},
+             {QStringLiteral("group"), QStringLiteral("pair token with spaces")}},
+            QStringLiteral("download-bad-group"));
+        check(!bad_group.value(QStringLiteral("ok")).toBool(),
+              "malformed pair token is rejected");
+
+        const QJsonObject ftp_download = command(
+            socket, QStringLiteral("addDownload"),
+            {{QStringLiteral("url"), QStringLiteral("ftp://example.com/file.bin")}},
+            QStringLiteral("download-ftp"));
+        check(ftp_download.value(QStringLiteral("ok")).toBool(), "FTP download URL accepted");
+        check(downloads_received == 5, "FTP download signal is emitted");
+
         const QJsonObject bad_post = command(
             socket, QStringLiteral("addDownload"),
             {{QStringLiteral("url"), QStringLiteral("https://example.com/submit")},

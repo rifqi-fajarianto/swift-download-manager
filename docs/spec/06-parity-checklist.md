@@ -55,24 +55,26 @@ Status as of 0.9.3.
 | WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
 | Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept, bypass), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and per-origin |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
+| Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
 | Firefox extension | Planned |
 | Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); list restore at startup is still planned (v1.1) |
 
 Open gaps identified by the original-extension comparison
 (`07-chromium-extension-reference.md` §6, decision log in §10): POST/body and
 custom-header handoff (C1), an app→extension status channel (C2), a bypass
-option (C3), and the strict cookie model (C13) are implemented as of 0.10.0;
-persisted page metadata (C12), FTP handoff (C11), HLS (C7), and adaptive
-pairing/MKV mux (C8) remain planned. The in-page media panel and site extractors
-(C4–C6, C9) are still uncommitted.
+option (C3), the strict cookie model (C13), and persisted page metadata (C12)
+are implemented as of 0.10.0; FTP (C11), HLS (C7), and adaptive pairing (C8)
+landed in 0.11.0, with MKV muxing left as a documented proposal
+(`03-engine.md` §9). The in-page media panel and site extractors (C4–C6, C9)
+are still uncommitted.
 
 ## v3 — extra protocols and media
 
 | Feature | Status |
 |---|---|
-| FTP (passive, REST resume) | Planned |
-| HLS/m3u8 (`NeatSocketHlsMaster` equivalent) | Planned |
-| MKV/WebM muxing of HLS streams | Planned |
+| FTP (passive, REST resume) | Implemented | `ftp://`/`ftps://` probe (`SIZE`), single connection, `REST` resume, validated protocol handoff |
+| HLS/m3u8 (`NeatSocketHlsMaster` equivalent) | Implemented | master/media playlists, highest-bandwidth variant, `EXT-X-MAP`, sequential segments concatenated to `.ts`, per-segment resume; encrypted playlists are refused |
+| MKV/WebM muxing of HLS streams | Proposal | `03-engine.md` §9: paired tracks are stored with a `groupid`; ffmpeg `-c copy` remux (hand-written EBML fallback) is the planned v3 step |
 | IE/Opera/Edge-specific integration | Dropped | platform-specific |
 | MKV "Basic/Pro" license gates | Dropped | we have no license tiers |
 
@@ -80,4 +82,11 @@ pairing/MKV mux (C8) remain planned. The in-page media panel and site extractors
 
 - Automated verification is CLI/backend only (AGENTS.md): unit tests, a local
   range-capable HTTP test server, resume/checksum integration tests.
+- FTP and HLS are verified by the new `media` test: a local FTP server (control
+  connection plus passive data, `SIZE`/`REST`/`EPSV`) checks the probe, a full
+  download, and a `REST`-based resume from a pre-seeded part file; HLS fixtures
+  served by the HTTP test server check master-variant selection, segment
+  concatenation, mid-download pause plus resume, and the encrypted-playlist
+  refusal. The extension-side pairing logic runs in the Node `vm` harness
+  (`extension_logic`) with mocked `webRequest`/`tabs` APIs.
 - GUI verification is manual by the user with a per-milestone checklist.

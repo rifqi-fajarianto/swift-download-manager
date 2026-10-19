@@ -6,6 +6,11 @@
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
 //   GET/HEAD /redirect/<size>       302 to /file/<size>
 //   GET/HEAD /forbidden             403 response
+//   GET/HEAD /hls/master.m3u8       HLS master playlist (variant-1/-2)
+//   GET/HEAD /hls/variant-<n>.m3u8  HLS media playlist (3 segments)
+//   GET/HEAD /hls/seg-<v>-<s>.ts    HLS segment (deterministic content)
+//   GET/HEAD /hls/encrypted.m3u8    playlist with EXT-X-KEY (unsupported)
+//   GET/HEAD /hls/map.m3u8          playlist with EXT-X-MAP init segment
 // Content bytes are shared with the tests via content_byte().
 
 #include <arpa/inet.h>
@@ -32,6 +37,14 @@ inline uint8_t content_byte(uint64_t i) {
     x *= 2246822519u;
     x ^= x >> 16;
     return static_cast<uint8_t>(x & 0xff);
+}
+
+// HLS fixtures: every segment is 16 KiB and distinguishable by variant/index.
+inline constexpr uint64_t kHlsSegmentSize = 16 * 1024;
+
+inline uint8_t hls_segment_byte(int variant, int segment, uint64_t i) {
+    return content_byte(static_cast<uint64_t>(variant) * 1000000u +
+                        static_cast<uint64_t>(segment) * 100000u + i);
 }
 
 class TestHttpServer {
@@ -202,6 +215,8 @@ class TestHttpServer {
             const std::string location = "/file/" + path.substr(10);
             send_str(fd, "HTTP/1.1 302 Found\r\nLocation: " + location +
                              "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        } else if (path.rfind("/hls/", 0) == 0) {
+            serve_hls(fd, method, path);
         } else if (path == "/forbidden") {
             const std::string body = "denied";
             send_str(fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: " +
@@ -316,6 +331,84 @@ class TestHttpServer {
             offset += chunk;
         }
         send_str(fd, "0\r\n\r\n");
+    }
+
+    static std::string hls_media_playlist(int variant, int segments) {
+        std::string text = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n";
+        for (int s = 0; s < segments; ++s) {
+            text += "#EXTINF:4.0,\nseg-" + std::to_string(variant) + "-" +
+                    std::to_string(s) + ".ts\n";
+        }
+        text += "#EXT-X-ENDLIST\n";
+        return text;
+    }
+
+    static void send_playlist(int fd, const std::string& method, const std::string& body) {
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl"
+                     "\r\nContent-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n");
+        if (method != "HEAD") send_str(fd, body);
+    }
+
+    static void serve_hls(int fd, const std::string& method, const std::string& path) {
+        if (path == "/hls/master.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-STREAM-INF:BANDWIDTH=500000,RESOLUTION=640x360\n"
+                          "variant-1.m3u8\n"
+                          "#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n"
+                          "variant-2.m3u8\n");
+            return;
+        }
+        if (path == "/hls/encrypted.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n"
+                          "#EXTINF:4.0,\nseg-1-0.ts\n"
+                          "#EXT-X-ENDLIST\n");
+            return;
+        }
+        if (path == "/hls/map.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-MAP:URI=\"init.mp4\"\n"
+                          "#EXTINF:4.0,\nseg-1-0.ts\n"
+                          "#EXTINF:4.0,\nseg-2-1.ts\n"
+                          "#EXT-X-ENDLIST\n");
+            return;
+        }
+        if (path == "/hls/init.mp4") {
+            serve_hls_segment(fd, method, 0, 0);
+            return;
+        }
+        if (path.rfind("/hls/variant-", 0) == 0 && path.size() >= 14) {
+            const int variant = path[13] - '0';
+            send_playlist(fd, method, hls_media_playlist(variant, 3));
+            return;
+        }
+        if (path.rfind("/hls/seg-", 0) == 0) {
+            const std::string rest = path.substr(9);  // "<v>-<s>.ts"
+            const int variant = std::atoi(rest.c_str());
+            const size_t dash = rest.find('-');
+            const int segment =
+                dash == std::string::npos ? 0 : std::atoi(rest.substr(dash + 1).c_str());
+            serve_hls_segment(fd, method, variant, segment);
+            return;
+        }
+        send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    }
+
+    static void serve_hls_segment(int fd, const std::string& method, int variant, int segment) {
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nAccept-Ranges: bytes"
+                     "\r\nContent-Length: " +
+                         std::to_string(kHlsSegmentSize) + "\r\nConnection: close\r\n\r\n");
+        if (method == "HEAD") return;
+        std::vector<char> buf(static_cast<size_t>(kHlsSegmentSize));
+        for (uint64_t i = 0; i < kHlsSegmentSize; ++i) {
+            buf[static_cast<size_t>(i)] =
+                static_cast<char>(hls_segment_byte(variant, segment, i));
+        }
+        send_all(fd, buf.data(), buf.size());
     }
 };
 

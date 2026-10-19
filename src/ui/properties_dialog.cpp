@@ -93,6 +93,12 @@ PropertiesDialog::PropertiesDialog(const DownloadItem& item, const DownloadTask*
         form->addRow(tr("Page Title :"), page_title);
     }
 
+    if (!item.group.isEmpty()) {
+        auto* group_edit = new QLineEdit(item.group, this);
+        group_edit->setReadOnly(true);
+        form->addRow(tr("Pair :"), group_edit);
+    }
+
     form->addRow(tr("Category :"),
                  new QLabel(item.category.isEmpty() ? tr("Misc") : item.category, this));
     form->addRow(tr("Downloaded :"),

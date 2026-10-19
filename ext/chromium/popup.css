@@ -32,3 +32,14 @@ button.secondary {
 .hint { margin: 12px 0 0; color: #aeb9c8; font-size: 12px; }
 .toggle { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; }
 .toggle input { margin: 4px 0 0; accent-color: #348dcc; }
+
+#media { margin-top: 12px; }
+#media h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #aeb9c8; }
+#media-list { display: flex; flex-direction: column; gap: 6px; }
+#media-list button {
+  text-align: left;
+  font-size: 13px;
+  background: #2f3a46;
+  overflow-wrap: anywhere;
+}
+#media-list button:hover { background: #39485a; }

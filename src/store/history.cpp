@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS "downloads" (
     "postdata"        TEXT,
     "folderpath"      TEXT,
     "temppath"        TEXT,
+    "groupid"         TEXT,
     PRIMARY KEY("id")
 );
 CREATE TABLE IF NOT EXISTS headers (id NUMERIC, header TEXT);
@@ -78,6 +79,29 @@ bool HistoryStore::exec(const char* sql, std::string* error) const {
 
 bool HistoryStore::ensure_schema(std::string* error) { return exec(kSchema, error); }
 
+// CREATE TABLE IF NOT EXISTS does not touch databases written by an older
+// release, so columns added later are appended when they are missing (spec 02
+// migration note). SQLite has no "ADD COLUMN IF NOT EXISTS".
+bool HistoryStore::ensure_column(const char* name, const char* type, std::string* error) {
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "PRAGMA table_info(downloads)", -1, &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bool found = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (column_text(stmt, 1) == name) {
+            found = true;
+            break;
+        }
+    }
+    sqlite3_finalize(stmt);
+    if (found) return true;
+    const std::string sql =
+        std::string("ALTER TABLE downloads ADD COLUMN \"") + name + "\" " + type;
+    return exec(sql.c_str(), error);
+}
+
 bool HistoryStore::open(const std::string& path, std::string* error) {
     close();
     std::error_code ec;
@@ -100,6 +124,15 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
         close();
         return false;
     }
+    // Columns appended after the first release.
+    for (const auto& column : {std::pair<const char*, const char*>("folderpath", "TEXT"),
+                               std::pair<const char*, const char*>("temppath", "TEXT"),
+                               std::pair<const char*, const char*>("groupid", "TEXT")}) {
+        if (!ensure_column(column.first, column.second, error)) {
+            close();
+            return false;
+        }
+    }
     return true;
 }
 
@@ -118,8 +151,9 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     static const char* sql =
         "INSERT INTO downloads (url, method, filename, ltype, filesize, category, status,"
         " bandwidthlimit, connections, lasttry, firsttry, useragent, resumable, pageurl,"
-        " pagetitle, mimetype, errortext, postdata, folderpath, temppath)"
-        " VALUES (?1,?2,?3,'',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)";
+        " pagetitle, mimetype, errortext, postdata, folderpath, temppath, groupid)"
+        " VALUES (?1,?2,?3,'',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,"
+        "?20)";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -145,6 +179,7 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     bind_text(stmt, 17, record.post_data);
     bind_text(stmt, 18, record.folder_path);
     bind_text(stmt, 19, record.temp_path);
+    bind_text(stmt, 20, record.group_id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -165,7 +200,7 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
         "UPDATE downloads SET url=?1, method=?2, filename=?3, filesize=?4, category=?5,"
         " status=?6, bandwidthlimit=?7, connections=?8, lasttry=?9, useragent=?10,"
         " resumable=?11, pageurl=?12, pagetitle=?13, mimetype=?14, errortext=?15,"
-        " postdata=?16, folderpath=?17, temppath=?18 WHERE id=?19";
+        " postdata=?16, folderpath=?17, temppath=?18, groupid=?19 WHERE id=?20";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -190,7 +225,8 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
     bind_text(stmt, 16, record.post_data);
     bind_text(stmt, 17, record.folder_path);
     bind_text(stmt, 18, record.temp_path);
-    bind_int64(stmt, 19, id);
+    bind_text(stmt, 19, record.group_id);
+    bind_int64(stmt, 20, id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -237,7 +273,7 @@ bool HistoryStore::fetch(int64_t id, Record* out, std::string* error) const {
                            "SELECT url, method, filename, filesize, category, status,"
                            " bandwidthlimit, connections, lasttry, firsttry, useragent,"
                            " resumable, pageurl, pagetitle, mimetype, errortext, postdata,"
-                           " folderpath, temppath FROM downloads WHERE id=?1",
+                           " folderpath, temppath, groupid FROM downloads WHERE id=?1",
                            -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
         return false;
@@ -269,6 +305,7 @@ bool HistoryStore::fetch(int64_t id, Record* out, std::string* error) const {
     out->post_data = column_text(stmt, 16);
     out->folder_path = column_text(stmt, 17);
     out->temp_path = column_text(stmt, 18);
+    out->group_id = column_text(stmt, 19);
     sqlite3_finalize(stmt);
 
     if (sqlite3_prepare_v2(db_, "SELECT header FROM headers WHERE id=?1 ORDER BY rowid", -1,

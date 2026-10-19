@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -306,9 +307,129 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
     return true;
 }
 
+bool starts_with_ci(const std::string& text, const char* prefix) {
+    const size_t n = std::strlen(prefix);
+    if (text.size() < n) return false;
+    for (size_t i = 0; i < n; ++i) {
+        if (std::tolower(static_cast<unsigned char>(text[i])) != prefix[i]) return false;
+    }
+    return true;
+}
+
+// FTP's HEAD-only mode delivers synthetic "Content-Length"/"Accept-ranges"
+// lines to the write callback, so the probe must consume them instead of
+// aborting like the HTTP header probe does.
+size_t discard_all_cb(char*, size_t size, size_t nmemb, void*) { return size * nmemb; }
+
+// FTP probe: libcurl maps CURLOPT_NOBODY to a SIZE command, so the existing
+// discard callback can be reused. FTP has no HTTP status; a transfer error is
+// reported through the curl error buffer instead.
+ProbeResult probe_ftp(const HttpOptions& options) {
+    ProbeResult out;
+    ensure_curl_global();
+    CURL* handle = curl_easy_init();
+    if (!handle) {
+        out.error = "cannot initialize curl";
+        return out;
+    }
+    char errbuf[CURL_ERROR_SIZE] = {0};
+    curl_slist* headers = build_headers(options.headers);
+    apply_common_options(handle, options, headers);
+    curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
+    curl_easy_setopt(handle, CURLOPT_NOBODY, 1L);
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, discard_all_cb);
+    const CURLcode rc = curl_easy_perform(handle);
+
+    char* effective = nullptr;
+    if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK && effective) {
+        out.effective_url = effective;
+    }
+    curl_off_t length = -1;
+    curl_easy_getinfo(handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &length);
+    curl_easy_cleanup(handle);
+    if (headers) curl_slist_free_all(headers);
+
+    if (out.effective_url.empty()) out.effective_url = options.url;
+    if (rc != CURLE_OK) {
+        out.error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+        return out;
+    }
+    out.status_code = 0;  // no HTTP status over FTP
+    out.content_length = length > 0 ? static_cast<uint64_t>(length) : 0;
+    out.accept_ranges = out.content_length > 0;  // REST-based resume
+    out.ok = true;
+    return out;
+}
+
+struct TextCtx {
+    std::string* text = nullptr;
+    uint64_t max_bytes = 0;
+    bool overflow = false;
+};
+
+size_t text_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* ctx = static_cast<TextCtx*>(userdata);
+    const size_t total = size * nmemb;
+    if (total == 0) return 0;
+    if (ctx->text->size() + total > ctx->max_bytes) {
+        ctx->overflow = true;
+        return 0;
+    }
+    ctx->text->append(ptr, total);
+    return total;
+}
+
 }  // namespace
 
+bool is_ftp_url(const std::string& url) {
+    return starts_with_ci(url, "ftp://") || starts_with_ci(url, "ftps://");
+}
+
+bool fetch_text(const HttpOptions& options, std::string* text, std::string* effective_url,
+                std::string* error, uint64_t max_bytes) {
+    ensure_curl_global();
+    if (text) text->clear();
+    CURL* handle = curl_easy_init();
+    if (!handle) {
+        if (error) *error = "cannot initialize curl";
+        return false;
+    }
+    curl_slist* headers = build_headers(options.headers);
+    char errbuf[CURL_ERROR_SIZE] = {0};
+    TextCtx ctx{text, max_bytes};
+    apply_common_options(handle, options, headers);
+    curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
+    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, text_write_cb);
+    curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
+    const CURLcode rc = curl_easy_perform(handle);
+    long code = 0;
+    curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
+    char* effective = nullptr;
+    if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK && effective &&
+        effective_url) {
+        *effective_url = effective;
+    }
+    curl_easy_cleanup(handle);
+    if (headers) curl_slist_free_all(headers);
+
+    if (effective_url && effective_url->empty()) *effective_url = options.url;
+    if (rc != CURLE_OK) {
+        if (error) {
+            if (ctx.overflow) *error = "response is larger than the allowed size";
+            else *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+        }
+        return false;
+    }
+    if (code >= 400) {
+        if (error) *error = http_error_text(code);
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+}
+
 ProbeResult probe_url(const HttpOptions& options) {
+    if (is_ftp_url(options.url)) return probe_ftp(options);
     ensure_curl_global();
     ProbeResult out;
     curl_slist* headers = build_headers(options.headers);
@@ -718,6 +839,7 @@ namespace {
 struct StreamCtx {
     int fd = -1;
     uint64_t written = 0;
+    uint64_t base = 0;  // bytes already on disk before this transfer
     const std::function<bool(uint64_t)>* on_progress = nullptr;
     int64_t last_report = 0;
 };
@@ -737,7 +859,7 @@ int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
     const int64_t now = now_ms();
     if (now - ctx->last_report >= kReportIntervalMs) {
         ctx->last_report = now;
-        if (ctx->on_progress && !(*ctx->on_progress)(ctx->written)) return 1;  // pause
+        if (ctx->on_progress && !(*ctx->on_progress)(ctx->written + ctx->base)) return 1;  // pause
     }
     return 0;
 }
@@ -746,7 +868,8 @@ int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
 
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
-                                uint64_t* bytes_written, std::string* error) {
+                                uint64_t* bytes_written, std::string* error,
+                                uint64_t resume_from) {
     ensure_curl_global();
     curl_slist* headers = build_headers(options.headers);
     CURL* handle = curl_easy_init();
@@ -758,6 +881,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
 
     StreamCtx ctx;
     ctx.fd = write_fd;
+    ctx.base = resume_from;
     ctx.on_progress = &on_progress;
     ctx.last_report = now_ms();
 
@@ -769,6 +893,16 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, stream_progress_cb);
     curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &ctx);
+    if (resume_from > 0 && options.post_data.empty()) {
+        if (::lseek(write_fd, static_cast<off_t>(resume_from), SEEK_SET) < 0) {
+            curl_easy_cleanup(handle);
+            if (headers) curl_slist_free_all(headers);
+            if (error) *error = "cannot seek in the partial file";
+            return TransferOutcome::Failed;
+        }
+        curl_easy_setopt(handle, CURLOPT_RESUME_FROM_LARGE,
+                         static_cast<curl_off_t>(resume_from));
+    }
     if (!options.post_data.empty()) {
         curl_easy_setopt(handle, CURLOPT_POST, 1L);
         curl_easy_setopt(handle, CURLOPT_POSTFIELDS, options.post_data.c_str());
@@ -781,7 +915,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
     curl_easy_cleanup(handle);
     if (headers) curl_slist_free_all(headers);
-    if (bytes_written) *bytes_written = ctx.written;
+    if (bytes_written) *bytes_written = ctx.written + ctx.base;
 
     if (rc == CURLE_ABORTED_BY_CALLBACK) return TransferOutcome::Paused;
     if (rc != CURLE_OK) {
