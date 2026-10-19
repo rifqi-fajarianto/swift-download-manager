@@ -17,10 +17,6 @@
         <span>Automatically use SwiftDM for downloads</span>
       </label>
       <label class="toggle">
-        <input id="bypass" type="checkbox">
-        <span>Bypass SwiftDM: keep new downloads in the browser</span>
-      </label>
-      <label class="toggle">
         <input id="cookies" type="checkbox">
         <span>Send browser cookies (signed-in downloads)</span>
       </label>
@@ -30,7 +26,7 @@
         <div id="media-list"></div>
         <p class="hint">HLS playlists are downloaded as one file. Video and audio tracks are sent as a pair; muxing into a single MKV is planned for a later release.</p>
       </section>
-      <p class="hint">Bypass is useful for one-off downloads that should stay in the browser. For links, right-click and choose “Download link with SwiftDM”. Private or signed-in files (for example a Google Drive share) need <strong>Send browser cookies</strong> so the browser session travels with the request.</p>
+      <p class="hint">Turn off automatic handoff for one-off downloads that should stay in the browser; right-click actions and this popup still send links and pages to SwiftDM. Private or signed-in files (for example a Google Drive share) need <strong>Send browser cookies</strong> so the browser session travels with the request.</p>
     </main>
     <script src="cookie-permission.js"></script>
     <script src="popup.js"></script>

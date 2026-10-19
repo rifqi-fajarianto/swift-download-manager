@@ -3,12 +3,12 @@
 Initial integration supports Chromium-based browsers (Chrome, Chromium, Edge,
 Brave) using Manifest V3. It adds right-click actions for a link or the current
 page and a popup button for the current page. Automatic HTTP(S) download
-interception is enabled by default and can be disabled from the extension popup;
-a separate **Bypass** popup option keeps new downloads in the browser while the
-manual actions keep working. The popup also shows the app's live status (idle or
-how many downloads are running). The popup also lists media it noticed for the
-current tab: HLS (`.m3u8`) playlists and adaptive video+audio track pairs, each
-downloadable with one click.
+interception is enabled by default and can be switched off from the extension
+popup, which keeps new downloads in the browser while the manual actions still
+work. The popup shows the app's live status (idle or how many downloads are
+running) and lists media it noticed for the current tab: HLS (`.m3u8`)
+playlists and adaptive video+audio track pairs, each downloadable with one
+click.
 
 ## Install for development
 
@@ -78,8 +78,10 @@ downloader does not retain.
   request was seen by `webRequest` (UTF-8 or base64, up to 256 KiB). Multipart
   bodies are captured as raw bytes; body data is only kept in memory for 30
   seconds. `blob:` and `data:` downloads are not forwarded.
-- Bypass keeps new downloads in the browser until it is turned off; right-click
-  and popup actions still send links/pages to SwiftDM while bypass is on.
+- Switching automatic interception off keeps new downloads in the browser until
+  it is turned back on; right-click and popup actions still send links/pages to
+  SwiftDM meanwhile. An older stored "bypass" setting is migrated to this switch
+  when the extension updates.
 - The popup shows live app status (idle, or the number of active downloads)
   pushed over a subscription socket; it reconnects automatically on the next
   popup open or extension event.

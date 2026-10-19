@@ -93,8 +93,8 @@ downloads either from an explicit context-menu/popup action or by intercepting
 HTTP(S) downloads. `webRequest` observation (host permissions for http/https)
 remembers POST bodies, `x-*` request headers, and response content types for a
 short window so an
-intercepted POST download is forwarded with them. A popup option turns
-interception off (bypass) while manual actions keep working. A persistent
+intercepted POST download is forwarded with them. A popup switch turns
+automatic interception off while manual actions keep working. A persistent
 subscription socket receives app-status pushes for the popup. Cookie permission
 is optional, and only a user gesture may ask for it: the popup's "Send browser
 cookies" switch requests it for the current site, the context-menu action for

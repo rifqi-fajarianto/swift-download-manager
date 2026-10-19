@@ -3,42 +3,36 @@ const appStatus = document.querySelector("#app-status");
 const download = document.querySelector("#download");
 const retry = document.querySelector("#retry");
 const autoIntercept = document.querySelector("#auto-intercept");
-const bypass = document.querySelector("#bypass");
 const cookies = document.querySelector("#cookies");
 const media = document.querySelector("#media");
 const mediaList = document.querySelector("#media-list");
 
 let lastAppStatus = null;
 
-chrome.storage.local.get(["autoIntercept", "bypassDownloads", "appStatus"], (values) => {
+chrome.storage.local.get(["autoIntercept", "appStatus"], (values) => {
   autoIntercept.checked = values.autoIntercept !== false;
-  bypass.checked = values.bypassDownloads === true;
   renderAppStatus(values.appStatus ?? null);
 });
 
 autoIntercept.addEventListener("change", () => {
   chrome.storage.local.set({ autoIntercept: autoIntercept.checked });
-});
-
-bypass.addEventListener("change", () => {
-  chrome.storage.local.set({ bypassDownloads: bypass.checked });
   renderAppStatus(null);
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.appStatus) renderAppStatus(changes.appStatus.newValue ?? null);
-  if (changes.bypassDownloads) {
-    bypass.checked = changes.bypassDownloads.newValue === true;
+  if (changes.autoIntercept) {
+    autoIntercept.checked = changes.autoIntercept.newValue !== false;
     renderAppStatus(null);
   }
 });
 
 function renderAppStatus(value) {
   if (value !== null) lastAppStatus = value;
-  if (bypass.checked) {
+  if (!autoIntercept.checked) {
     appStatus.hidden = false;
-    appStatus.textContent = "Bypass is on: new downloads stay in the browser.";
+    appStatus.textContent = "Automatic handoff is off: new downloads stay in the browser.";
     return;
   }
   if (!lastAppStatus) {

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.14.0 — 2026-10-19
+
+One switch for "let the browser keep this download".
+
+- Extension 0.4.0: the separate **Bypass** switch is gone. It did exactly what
+  turning "Automatically use SwiftDM for downloads" off already does, so the
+  popup now has two switches instead of three (automatic handoff, browser
+  cookies). The status line says plainly that new downloads stay in the browser
+  while the switch is off, and manual right-click/popup actions still send
+  links and pages to SwiftDM.
+- A stored bypass setting from an older build is migrated to "automatic
+  interception off" when the extension updates, and the obsolete
+  `bypassDownloads` key is removed.
+- Headless extension tests cover the migrated setting and the switch-off path;
+  docs (04 §3, 06, 07 C3/D13, extension README) now describe the single switch.
+
 ## 0.13.1 — 2026-10-19
 
 Signed-in downloads get a path that non-CLI users can follow.

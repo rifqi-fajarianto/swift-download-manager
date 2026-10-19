@@ -27,7 +27,7 @@ async function settle(predicate, timeout = 1000) {
   return predicate();
 }
 
-function createEnvironment({ autoIntercept = true, bypassDownloads = false,
+function createEnvironment({ autoIntercept = true, legacyBypass = false,
                              webSocketMode = "ok", cookieGranted = true } = {}) {
   const calls = {
     cancel: [],
@@ -35,10 +35,12 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     download: [],
     sockets: [],
     storageSets: [],
+    storageRemovals: [],
     permissionRequests: [],
     permissionChecks: [],
     permissionRemoves: [],
   };
+  let onInstalled = null;
   let onCreated = null;
   let onMessage = null;
   let onBeforeRequest = null;
@@ -90,7 +92,7 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
 
   const chrome = {
     runtime: {
-      onInstalled: { addListener() {} },
+      onInstalled: { addListener(fn) { onInstalled = fn; } },
       onStartup: { addListener() {} },
       onMessage: { addListener(fn) { onMessage = fn; } },
     },
@@ -120,15 +122,17 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
     },
     storage: {
       local: {
-        async get(keys) {
+        async get(keys, callback) {
           const result = {};
           for (const key of Array.isArray(keys) ? keys : [keys]) {
             if (key === "autoIntercept") result.autoIntercept = autoIntercept;
-            if (key === "bypassDownloads") result.bypassDownloads = bypassDownloads;
+            if (key === "bypassDownloads" && legacyBypass) result.bypassDownloads = true;
           }
+          callback?.(result);
           return result;
         },
         async set(values) { calls.storageSets.push(values); },
+        async remove(key) { calls.storageRemovals.push(key); },
       },
     },
     permissions: {
@@ -196,6 +200,7 @@ function createEnvironment({ autoIntercept = true, bypassDownloads = false,
 
   return {
     calls,
+    onInstalled: () => onInstalled,
     onCreated: () => onCreated,
     onMessage: () => onMessage,
     onBeforeRequest: () => onBeforeRequest,
@@ -379,12 +384,22 @@ async function testCrossOriginReferrerIsDropped() {
   check(sent.data.referer === "", "cross-origin referrer is not forwarded");
 }
 
-async function testBypassKeepsBrowserDownloads() {
-  const env = createEnvironment({ bypassDownloads: true });
+async function testAutoInterceptOffKeepsBrowserDownloads() {
+  const env = createEnvironment({ autoIntercept: false });
   env.onCreated()(downloadItem());
   await sleep(30);
-  check(env.calls.cancel.length === 0, "bypass leaves the browser download alone");
-  check(env.calls.sockets.length === 0, "bypass does not contact SwiftDM");
+  check(env.calls.cancel.length === 0, "auto-intercept off leaves the browser download alone");
+  check(env.calls.sockets.length === 0, "auto-intercept off does not contact SwiftDM");
+}
+
+async function testLegacyBypassMigratesToAutoInterceptOff() {
+  const env = createEnvironment({ legacyBypass: true });
+  env.onInstalled()();
+  await settle(() => env.calls.storageSets.length > 0 && env.calls.storageRemovals.length > 0);
+  check(env.calls.storageSets[0].autoIntercept === false,
+    "a stored bypass carries over as automatic interception off");
+  check(env.calls.storageRemovals[0] === "bypassDownloads",
+    "the obsolete bypass key is removed");
 }
 
 async function testPostBodyAndHeadersAreForwarded() {
@@ -540,7 +555,8 @@ async function testStatusChannel() {
   await testDisabledToggle();
   await testIgnoredItems();
   await testCrossOriginReferrerIsDropped();
-  await testBypassKeepsBrowserDownloads();
+  await testAutoInterceptOffKeepsBrowserDownloads();
+  await testLegacyBypassMigratesToAutoInterceptOff();
   await testPostBodyAndHeadersAreForwarded();
   await testRawPostBodyIsBase64Encoded();
   await testDetectedMediaStreams();

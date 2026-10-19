@@ -53,7 +53,7 @@ Status as of 0.9.3.
 | Feature | Status |
 |---|---|
 | WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept, bypass), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and per-origin |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept switch, browser cookies), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
 | Firefox extension | Planned |
@@ -61,8 +61,9 @@ Status as of 0.9.3.
 
 Open gaps identified by the original-extension comparison
 (`07-chromium-extension-reference.md` §6, decision log in §10): POST/body and
-custom-header handoff (C1), an app→extension status channel (C2), a bypass
-option (C3), the strict cookie model (C13), and persisted page metadata (C12)
+custom-header handoff (C1), an app→extension status channel (C2), the
+interception-off switch (C3), the strict cookie model (C13), and persisted page
+metadata (C12)
 are implemented as of 0.10.0; FTP (C11), HLS (C7), and adaptive pairing (C8)
 landed in 0.11.0, with MKV muxing left as a documented proposal
 (`03-engine.md` §9). The in-page media panel and site extractors (C4–C6, C9)

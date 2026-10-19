@@ -30,8 +30,14 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(["autoIntercept", "bypassDownloads"], (values) => {
     const defaults = {};
     if (typeof values.autoIntercept !== "boolean") defaults.autoIntercept = true;
-    if (typeof values.bypassDownloads !== "boolean") defaults.bypassDownloads = false;
+    // The separate bypass switch was removed in 0.4.0: it did exactly what
+    // turning automatic interception off does. Carry an enabled bypass over as
+    // "automatic interception off" so the user's choice is preserved.
+    if (values.bypassDownloads === true) defaults.autoIntercept = false;
     if (Object.keys(defaults).length) chrome.storage.local.set(defaults);
+    if (values.bypassDownloads !== undefined) {
+      chrome.storage.local.remove("bypassDownloads");
+    }
   });
   createContextMenus();
   ensureStatusSocket();
@@ -302,9 +308,8 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 
 async function interceptDownload(item) {
-  const { autoIntercept = true, bypassDownloads = false } =
-    await chrome.storage.local.get(["autoIntercept", "bypassDownloads"]);
-  if (!autoIntercept || bypassDownloads) return;
+  const { autoIntercept = true } = await chrome.storage.local.get(["autoIntercept"]);
+  if (!autoIntercept) return;
 
   // Cancel immediately rather than pause: a paused item can still finish for
   // tiny files, which is exactly the case where the browser would "win" before

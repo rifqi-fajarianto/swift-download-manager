@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu8okC1PU1pDeEgKCOVhzUsPKL+3+Ux2lErbv4em++BL3I1BviM1eufHnggTi/2QWWUCO4wgPt0Lw/u454ag54JsYWv+/pwdDkZe7y5COuwMreY//zR+gQWm6YUYSW7svYqxoRDE+JRVNxp5UZ/BOy0c9o5c/P3XHUVEAhjmPPNIIveVetanXP/SW/9Rjwpnu2ZkO16Z8m/meG9n10YewAczXG5fvizekd9xa/B5IgZ6iGMgejTtFDF1iOMJkvtWYin7y7MOC2UgJ7RcZ2rhSSUix9tQQINie0okFfFG9IM5FL44JPpl8Fz6KxxXMfYPsb4UQLJ+0MNiwIjGFWylmfwIDAQAB",
   "name": "SwiftDM Browser Integration",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Send links, pages, POST downloads and custom headers from Chromium browsers to SwiftDM.",
   "permissions": ["activeTab", "contextMenus", "downloads", "storage", "webRequest"],
   "optional_permissions": ["cookies"],

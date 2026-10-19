@@ -225,9 +225,9 @@ the comparison only.
 |---|---|
 | Structure | service worker + popup; **no content script, no page UI** |
 | Permissions | `activeTab`, `contextMenus`, `downloads`, `storage`, `webRequest`; http/https host permissions (needed for request observation); `cookies` optional, requested from the popup's "Send browser cookies" switch or a context-menu action (both are user gestures) |
-| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept toggle, bypass toggle, "Send browser cookies" toggle |
+| Manual actions | context menu for a link and for the page; popup "Download this page" with connection status, app status, retry, auto-intercept switch, "Send browser cookies" switch |
 | Automatic handoff | `downloads.onCreated` cancel + `erase` for every HTTP(S) download that is not incognito / extension-originated / non-http; **browser download restored** if the app is unreachable (plus one short retry) |
-| Bypass | popup option that leaves new downloads in the browser; manual actions still work |
+| Bypass | the same switch: automatic interception off leaves new downloads in the browser while manual actions still work (the separate bypass toggle was dropped in extension 0.4.0 as a duplicate; a stored bypass migrates to "off") |
 | POST/body + custom headers | `webRequest` observation remembers POST bodies (UTF-8 or base64, ≤256 KiB) and `x-*` request headers (≤16, ≤16 KiB) for 30 s and attaches them to an intercepted download |
 | Cookies | optional permission, granted from the popup switch or a context-menu action; structured entries (domain/path/secure/expires); partitioned (CHIPS) cookies omitted; app validates domain scoping; automatic handoffs reuse a grant but never prompt |
 | Referer/UA | same-origin referer only; `userAgent` forwarded; page title/URL sent and carried on the item |
@@ -252,7 +252,7 @@ the comparison only.
 | D10 | Cookies | raw joined `Cookie:` string, full permission | structured, validated, optional permission requested from the popup switch or a context-menu action |
 | D11 | Referer/Origin | always sent (`Origin:` + `Referer:` lines) | same-origin referer only |
 | D12 | Page metadata | title + tab URL sent | sent, not persisted (same as ours) |
-| D13 | Bypass | hold `Delete` | popup option (persistent) |
+| D13 | Bypass | hold `Delete` | automatic-interception switch off (persistent) |
 | D14 | Size enrichment | worker HEAD fetch when app is idle | app-side probe |
 | D15 | App → extension channel | `waiting`/`nowaiting`/`ShowPanel*` push | `subscribe` socket + `status` events (idle/active count) |
 | D16 | FTP | observed and handed off | http/https only |
@@ -321,15 +321,16 @@ selected, record the decision here and implement it against this document and
 ## 10. Decision log
 
 The feature owner selected the candidates below for implementation (2026-10).
-C3 was adjusted during selection: the bypass stays a discrete feature, but it is
-a popup option instead of holding `Delete`. Status is updated as the work lands;
-version steps follow `AGENTS.md`.
+C3 was adjusted during selection: bypass is a persistent switch instead of
+holding `Delete`; extension 0.4.0 folded it into the automatic-interception
+switch, since "keep downloads in the browser" is exactly that switch off.
+Status is updated as the work lands; version steps follow `AGENTS.md`.
 
 | ID | Decision | Status |
 |---|---|---|
 | C1 | POST/body + `x-*` headers via `webRequest` observation; caps and validation recorded in `04-protocols.md` | Implemented (extension 0.2.0, app 0.10.0) |
 | C2 | App→extension status channel: `subscribe` command plus `status` push events (`waiting`, `active`) | Implemented |
-| C3 | Bypass as a popup option instead of hold-`Delete` (owner-adjusted) | Implemented |
+| C3 | Bypass as a persistent switch instead of hold-`Delete` (owner-adjusted); since extension 0.4.0 the automatic-interception switch covers it, and a stored bypass value migrates to "off" | Implemented |
 | C13 | Keep the strict structured cookie model; no raw-cookie mode. Raw `Cookie`/`Authorization` headers stay rejected | Decided; enforced by protocol validation and tests |
 | C12 | Persist `pageUrl`/`pageTitle` | Implemented: SQLite history rows (spec 02 schema) are written/updated per download, including page metadata; restoring the list at startup remains a v1.1 item |
 | C11 | FTP handoff / engine support | Implemented: `ftp://`/`ftps://` are accepted by the protocol, the manual dialog, and the CLI; the engine probes with `SIZE` and resumes with `REST` on one connection. The extension only forwards explicit FTP links (modern Chromium no longer loads FTP pages) |
