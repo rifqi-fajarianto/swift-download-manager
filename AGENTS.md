@@ -46,7 +46,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-19**, versi kerja **0.18.1**. Status ini cepat
+> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.2**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -54,13 +54,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   sementara dan pembersihan file parsial.
 - **Branch saat snapshot**: `speed-limit-improvement`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
-- **Versi kerja**: 0.18.1 (speed limiter toggle, preset, dan tampilan limit
-  aktif). Implementasi dan dokumentasinya sudah di-commit di branch
-  `speed-limit-improvement` (`7f55efc`), **belum di-merge ke `main`**.
+- **Versi kerja**: 0.18.2 (limit speed dapat diubah saat download berlangsung).
+  Implementasi dan dokumentasinya sudah di-commit di branch
+  `speed-limit-improvement` (`52f89c6`), **belum di-merge ke `main`**.
 - **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi.
 
-### Sudah tersedia sampai 0.18.0
+### Sudah tersedia sampai 0.18.2
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -77,14 +77,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1 — pekerjaan yang ada di working tree
+### 0.18.1–0.18.2 — sudah di-commit di branch kerja
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
 - `SpeedLimitEditor` bersama untuk Settings dan tab Options Download window:
   preset 500 KB/s, 1/5/10/20/50 MB/s, plus nilai kustom.
-- Limit juga diterapkan pada jalur sequential (HTTP tanpa ukuran, FTP, HLS)
-  lewat receive-rate cap libcurl.
+- Limit diterapkan pada jalur sequential (HTTP tanpa ukuran, FTP, HLS) lewat
+  shared receive-rate gate; toggle/value dapat diubah live selama transfer.
 - Migrasi kompatibel: config/DB lama dengan limit non-nol dianggap "aktif".
 - Test `test_settings` dan `test_history` diperbarui; dokumentasi 0.18.1 sudah
   ditambahkan ke `CHANGELOG.md`, `README.md`, dan `docs/spec/`.
