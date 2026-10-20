@@ -1,91 +1,160 @@
 # SwiftDM
 
-Clean-room Linux reimplementation (C++20 / Qt6) of a segmented, resumable
-download manager, derived from behavioral analysis of the original Windows
-application. No code, assets, icons, or branding are taken from the original;
-behavior is documented in `docs/spec/` first and implemented from that spec.
+SwiftDM adalah aplikasi pengelola unduhan desktop untuk Linux. Aplikasi ini
+mendukung unduhan bersegmen, jeda dan lanjutkan unduhan, serta penggunaan lewat
+antarmuka grafis maupun command line. SwiftDM dibuat dengan C++20, Qt 6,
+libcurl, dan SQLite.
 
-## Status
+Proyek ini merupakan implementasi clean-room berdasarkan spesifikasi perilaku
+yang didokumentasikan di [`docs/spec/`](docs/spec/). Kode, aset, ikon, dan
+branding tidak diambil dari aplikasi yang menjadi referensi analisis.
 
-- [x] Milestone 0 — project skeleton, versioning policy, RE toolchain
-- [x] Milestone 1 — behavioral spec (`docs/spec/`) — first pass complete
-- [x] Milestone 2 — core engine: segmented HTTP/HTTPS, resume, limits, CLI
-- [x] Milestone 3 — Qt6 GUI (first increment; v1.1 gaps tracked in
-      `docs/spec/06-parity-checklist.md`)
-- [x] Chromium integration — development preview (`ext/chromium/`)
-- [x] Milestone 4 — packaging: CMake install rules + `.deb` (CPack)
-- [x] 0.17.0 — restore the download history at startup
-- [x] 0.18.0 — confirm every download before it starts (category/location,
-      Download Now / Cancel)
-- [x] 0.18.1 — speed limiter toggle, presets and active-limit display
-- [x] 0.18.2 — change a download's speed limit while it is running
-- [x] 0.18.3 — keep the main window hidden during browser download confirmation
-- [x] 0.18.4 — confirm before fully quitting the application
-- [x] 0.18.5 — preserve/encode URL paths with spaces for browser and manual downloads
+## Tangkapan layar
 
-## Versioning
+![Jendela utama SwiftDM](screenshots/main-window.png)
 
-Single source of truth: `project(... VERSION ...)` in `CMakeLists.txt`.
-Feature/UI/UX changes bump MINOR (+0.1.0); small fixes bump PATCH (+0.0.1).
-See `AGENTS.md`.
+| Konfirmasi unduhan | Progres unduhan | Segmen koneksi |
+|---|---|---|
+| ![Dialog konfirmasi unduhan](screenshots/download-confirm.png) | ![Jendela progres unduhan](screenshots/download-progress.png) | ![Tab koneksi dan segmen](screenshots/download-segment.png) |
 
-## Building and installing
+| Opsi unduhan | Properti unduhan | Pengaturan aplikasi |
+|---|---|---|
+| ![Opsi unduhan](screenshots/download-options.png) | ![Properti unduhan](screenshots/download-properties.png) | ![Pengaturan SwiftDM](screenshots/options.png) |
 
-Debian 13 (trixie) is the reference platform. Dependencies:
+## Fungsi dan fitur
 
+- Mengunduh melalui HTTP, HTTPS, FTP, FTPS, dan playlist HLS (`.m3u8`).
+- Membagi unduhan HTTP/HTTPS menjadi beberapa koneksi; jumlah koneksi dapat
+  diatur.
+- Menjeda, melanjutkan, dan memulihkan unduhan setelah aplikasi dibuka kembali.
+- Mengatur kategori dan folder tujuan, serta melihat progres, kecepatan, waktu
+  tersisa, dan koneksi/segmen aktif.
+- Mengatur batas kecepatan global dan per unduhan, termasuk mengubah batas
+  unduhan yang sedang berjalan.
+- Menggunakan proxy HTTP, SOCKS4, atau SOCKS5; mengatur header HTTP, cookie,
+  referer, User-Agent, dan data POST.
+- Menyimpan riwayat unduhan di SQLite dan pengaturan aplikasi dalam file INI.
+- Mengunduh dari command line tanpa membuka GUI.
+- Integrasi pratinjau dengan ekstensi Chromium: kirim tautan atau halaman,
+  intersepsi unduhan HTTP(S), dan deteksi playlist/pasangan media.
+- Resolusi format tautan unduhan Google Drive yang didukung.
+
+> Catatan: penjadwalan antrean, ekstensi Firefox, dan penggabungan pasangan
+> trek audio/video belum tersedia. Ekstensi Chromium masih berstatus pratinjau
+> pengembangan. Lihat [parity checklist](docs/spec/06-parity-checklist.md)
+> untuk status dan batasan fitur yang lebih lengkap.
+
+## Menjalankan
+
+Setelah SwiftDM terpasang, jalankan aplikasi grafis dari menu aplikasi atau
+dengan perintah:
+
+```sh
+swiftdm
 ```
+
+Untuk menjalankan langsung dari hasil build, gunakan `./build/swiftdm`.
+Antarmuka grafis terbuka secara default. Menambahkan URL melalui GUI akan
+memeriksa tautan terlebih dahulu dan menampilkan konfirmasi sebelum unduhan
+dimulai.
+
+SwiftDM juga menyediakan CLI headless:
+
+```sh
+swiftdm get <url>
+```
+
+Contoh dengan folder tujuan, nama file, dan batas kecepatan 1.5 MB/s:
+
+```sh
+swiftdm get 'https://example.org/file.zip' \
+  --dir ~/Downloads --name file.zip --limit 1500
+```
+
+Opsi CLI lainnya mencakup `--connections`, `--no-resume`, `--referer`,
+`--header`, `--ua`, `--post`, `--config`, `--quiet`, dan `--log-level`. Untuk
+daftar lengkap:
+
+```sh
+swiftdm --help
+swiftdm --version
+```
+
+## Build dari source
+
+Platform acuan adalah Debian 13 (trixie). Pasang dependency berikut:
+
+```sh
 sudo apt install build-essential cmake ninja-build \
-    qt6-base-dev qt6-svg-plugins libqt6svg6 \
-    libcurl4-openssl-dev libsqlite3-dev
+  qt6-base-dev qt6-svg-plugins libqt6svg6 \
+  libcurl4-openssl-dev libsqlite3-dev
 ```
 
-Build, test, and run:
+`qt6-svg-plugins` diperlukan agar ikon SVG dapat dimuat saat aplikasi
+dijalankan.
 
-```
+Konfigurasi dan build:
+
+```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build
-
-./build/swiftdm                  # GUI
-./build/swiftdm get <url>        # headless CLI
 ```
 
-Install as a Debian package (recommended) or with CMake:
+Jalankan test backend/unit dan integrasi:
 
+```sh
+ctest --test-dir build --output-on-failure
 ```
-cd build && cpack
+
+Jalankan hasil build:
+
+```sh
+./build/swiftdm                 # GUI
+./build/swiftdm get <url>       # CLI headless
+```
+
+### Instalasi
+
+Buat paket Debian menggunakan CPack:
+
+```sh
+cd build
+cpack
 sudo apt install ./swiftdm_0.18.5_amd64.deb
+```
 
-# or, without a package:
+Atau pasang menggunakan aturan instalasi CMake:
+
+```sh
 sudo cmake --install build --prefix /usr/local
 ```
 
-The package installs `/usr/bin/swiftdm`, a `.desktop` launcher, hicolor icons,
-AppStream metadata, the Apache-2.0 copyright file, and the Chromium extension
-under `/usr/share/swiftdm/chromium`. Full details and icon regeneration
-targets: `packaging/README.md`.
+Paket memasang executable, launcher desktop, ikon, metadata AppStream, dan
+sumber ekstensi Chromium. Panduan packaging lebih rinci tersedia di
+[`packaging/README.md`](packaging/README.md).
 
-## Testing policy
+## Data aplikasi
 
-Automated testing is CLI/backend only (unit + integration tests, headless
-engine runs). GUI verification is performed manually by the user with a
-checklist provided per milestone — see `AGENTS.md`.
+Secara default, SwiftDM menyimpan konfigurasi di
+`~/.config/swiftdm/swiftdm.ini`, riwayat di `~/.local/share/swiftdm/swiftdm.db`,
+dan workspace unduhan sementara di `~/.local/share/swiftdm/tmp`. Lokasi tersebut
+mengikuti variabel lingkungan XDG.
 
-## Layout
+## Lisensi dan atribusi
 
-```
-cmake/            version.h.in and CMake helpers
-docs/spec/        clean-room behavioral specification + evidence ledger
-src/app/          entry points (GUI default, headless `get` CLI)
-src/core/         shared utilities
-src/engine/       download engine (segmentation, resume, categories)
-src/net/          HTTP/curl layer (probe, segmented transfer, streaming)
-src/store/        settings (INI) + SQLite history (downloads/headers)
-src/ui/           Qt6 Widgets GUI (main window, download window, dialogs)
-ext/chromium/     Chromium Manifest V3 development extension
-tests/            CLI/backend tests (+ headless icon rendering test)
-binary-original/  analysis-only reference (read-only, not distributed)
-ui-assets/        user-provided icons (toolbar SVGs; app-icon/ = app, tray, extension)
-packaging/        .desktop entry, AppStream metadata, hicolor icons, .deb maintainer scripts
-tools/            helper executables (extension and desktop icon rasterizers)
-```
+SwiftDM dilisensikan di bawah [Apache License 2.0](LICENSE).
+
+Sebagian ikon antarmuka pengguna menggunakan **Tabler Icons** oleh Tabler.
+Tabler Icons dilisensikan di bawah MIT License. Terima kasih kepada para
+kontributor Tabler atas ikon-ikon tersebut.
+
+- Situs: <https://tabler.io/icons>
+- Repositori dan teks lisensi: <https://github.com/tabler/tabler-icons>
+- Lisensi Tabler Icons: <https://github.com/tabler/tabler-icons/blob/main/LICENSE>
+
+## Dokumentasi
+
+- [Spesifikasi dan status fitur](docs/spec/06-parity-checklist.md)
+- [Panduan ekstensi Chromium](ext/chromium/README.md)
+- [Panduan packaging](packaging/README.md)
+- [Changelog](CHANGELOG.md)
