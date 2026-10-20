@@ -797,6 +797,7 @@ struct SegmentDownloader::Impl {
         size_t index = 0;
         long status = 0;
         bool range_bad = false;
+        bool interrupted = false;
         std::string content_type;
         std::string error_body;  // start of a 4xx/5xx body, for the error message
     };
@@ -808,7 +809,7 @@ struct SegmentDownloader::Impl {
     CURLM* multi = nullptr;
     curl_slist* headers = nullptr;
 
-    int64_t limit_bytes = 0;
+    std::shared_ptr<BandwidthLimit> bandwidth_limit;
     bool one_by_one = false;
     int max_retries = kMaxRetries;
 
@@ -828,23 +829,6 @@ struct SegmentDownloader::Impl {
 
     uint64_t done_bytes() const { return state.done_bytes(); }
 
-    void apply_speed_limit() {
-        if (limit_bytes <= 0) return;
-        size_t active = 0;
-        for (const auto& r : runtime) {
-            if (r.active) ++active;
-        }
-        if (active == 0) return;
-        int64_t per = limit_bytes / static_cast<int64_t>(active);
-        if (per < 1024) per = 1024;
-        for (size_t i = 0; i < runtime.size(); ++i) {
-            if (runtime[i].active && runtime[i].easy) {
-                curl_easy_setopt(runtime[i].easy, CURLOPT_MAX_RECV_SPEED_LARGE,
-                                 static_cast<curl_off_t>(per));
-            }
-        }
-    }
-
     static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
         auto* ctx = static_cast<HandleCtx*>(userdata);
         Impl* impl = ctx->impl;
@@ -858,6 +842,10 @@ struct SegmentDownloader::Impl {
                 ctx->error_body.append(ptr, std::min(total, room));
             }
             return total;
+        }
+        if (impl->bandwidth_limit && !impl->bandwidth_limit->wait_for_bytes(total)) {
+            ctx->interrupted = true;
+            return 0;
         }
         Segment& seg = impl->state.segments[ctx->index];
         if (seg.done >= seg.length()) return total;  // nothing left; discard
@@ -908,6 +896,7 @@ struct SegmentDownloader::Impl {
         ctx.index = i;
         ctx.status = 0;
         ctx.range_bad = false;
+        ctx.interrupted = false;
         ctx.content_type.clear();
         ctx.error_body.clear();
 
@@ -932,7 +921,7 @@ struct SegmentDownloader::Impl {
         return true;
     }
 
-    // Returns: 0 = retry scheduled, 1 = terminal error (message in `error`).
+    // Returns: 0 = retry scheduled, 1 = terminal error, 2 = interrupted.
     int finalize_segment(size_t i, CURLcode rc, std::string& error) {
         SegRuntime& rt = runtime[i];
         CURL* handle = rt.easy;
@@ -944,6 +933,10 @@ struct SegmentDownloader::Impl {
         curl_easy_cleanup(handle);
 
         Segment& seg = state.segments[i];
+        if (contexts[i].interrupted) {
+            error = "transfer interrupted";
+            return 2;
+        }
         if (rc == CURLE_OK && code >= 200 && code < 300 && seg.finished()) {
             rt.done = true;
             return 0;
@@ -1017,8 +1010,8 @@ SegmentDownloader::SegmentDownloader(const HttpOptions& options, TransferState& 
 
 SegmentDownloader::~SegmentDownloader() = default;
 
-void SegmentDownloader::set_bandwidth_limit_bytes(int64_t bytes_per_sec) {
-    impl_->limit_bytes = bytes_per_sec;
+void SegmentDownloader::set_bandwidth_limit(std::shared_ptr<BandwidthLimit> bandwidth_limit) {
+    impl_->bandwidth_limit = std::move(bandwidth_limit);
 }
 
 void SegmentDownloader::set_one_by_one(bool one_by_one) { impl_->one_by_one = one_by_one; }
@@ -1074,8 +1067,6 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                 goto finish;
             }
         }
-        impl.apply_speed_limit();
-
         // Finished everything?
         if (impl.state.finished()) {
             outcome = TransferOutcome::Completed;
@@ -1116,7 +1107,12 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                 }
                 if (idx == count) continue;
                 std::string seg_error;
-                if (impl.finalize_segment(idx, msg->data.result, seg_error) == 1) {
+                const int finalized = impl.finalize_segment(idx, msg->data.result, seg_error);
+                if (finalized == 2) {
+                    outcome = TransferOutcome::Paused;
+                    goto finish;
+                }
+                if (finalized == 1) {
                     failure = seg_error;
                     outcome = TransferOutcome::Failed;
                     goto finish;
@@ -1175,6 +1171,8 @@ struct StreamCtx {
     long status = 0;
     std::string content_type;
     std::string error_body;  // start of a 4xx/5xx body, for the error message
+    std::shared_ptr<BandwidthLimit> bandwidth_limit;
+    bool interrupted = false;
 };
 
 size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
@@ -1188,6 +1186,10 @@ size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
             ctx->error_body.append(ptr, std::min(total, room));
         }
         return total;
+    }
+    if (ctx->bandwidth_limit && !ctx->bandwidth_limit->wait_for_bytes(total)) {
+        ctx->interrupted = true;
+        return 0;
     }
     const ssize_t written = ::write(ctx->fd, ptr, total);
     if (written < 0 || static_cast<size_t>(written) != total) return 0;
@@ -1230,7 +1232,8 @@ int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_o
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
-                                uint64_t resume_from, int64_t bandwidth_limit_bytes) {
+                                uint64_t resume_from,
+                                std::shared_ptr<BandwidthLimit> bandwidth_limit) {
     ensure_curl_global();
     curl_slist* headers = build_headers(options.headers);
     CURL* handle = curl_easy_init();
@@ -1245,6 +1248,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     ctx.base = resume_from;
     ctx.on_progress = &on_progress;
     ctx.last_report = now_ms();
+    ctx.bandwidth_limit = std::move(bandwidth_limit);
 
     char errbuf[CURL_ERROR_SIZE] = {0};
     apply_common_options(handle, options, headers);
@@ -1266,10 +1270,6 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
         curl_easy_setopt(handle, CURLOPT_RESUME_FROM_LARGE,
                          static_cast<curl_off_t>(resume_from));
     }
-    if (bandwidth_limit_bytes > 0) {
-        curl_easy_setopt(handle, CURLOPT_MAX_RECV_SPEED_LARGE,
-                         static_cast<curl_off_t>(bandwidth_limit_bytes));
-    }
     if (!options.post_data.empty()) {
         curl_easy_setopt(handle, CURLOPT_POST, 1L);
         curl_easy_setopt(handle, CURLOPT_POSTFIELDS, options.post_data.c_str());
@@ -1284,7 +1284,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     if (headers) curl_slist_free_all(headers);
     if (bytes_written) *bytes_written = ctx.written + ctx.base;
 
-    if (rc == CURLE_ABORTED_BY_CALLBACK) return TransferOutcome::Paused;
+    if (rc == CURLE_ABORTED_BY_CALLBACK || ctx.interrupted) return TransferOutcome::Paused;
     if (rc != CURLE_OK) {
         if (error) *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
         return TransferOutcome::Failed;

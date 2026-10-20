@@ -3,9 +3,12 @@
 // playlist + segments) provide the remote side.
 
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "engine/download_engine.h"
@@ -114,6 +117,30 @@ void test_hls_download(const std::string& dir, testutil::TestHttpServer& server)
     CHECK(std::filesystem::is_empty(settings.temp_dir));
 }
 
+void test_hls_live_bandwidth_limit(const std::string& dir,
+                                   testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = server.base_url() + "/hls/master.m3u8";
+    request.bandwidth_limit_enabled = true;
+    request.bandwidth_limit_kbps = 8;
+    request.live_bandwidth_limit = std::make_shared<BandwidthLimit>(8 * 1024);
+    const auto start = std::chrono::steady_clock::now();
+    std::thread editor([&] {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        request.live_bandwidth_limit->set_bytes_per_second(0);
+    });
+    const auto result = engine.run(request);
+    editor.join();
+    const double seconds = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now() - start)
+                               .count();
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(read_file(result.path) == expected_hls_bytes());
+    CHECK(seconds < 5.0);
+}
+
 void test_hls_resume(const std::string& dir, testutil::TestHttpServer& server) {
     Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -179,6 +206,29 @@ void test_ftp_probe_and_download(const std::string& dir, testutil::TestFtpServer
     CHECK(server.retr_commands() >= 1);
 }
 
+void test_ftp_live_bandwidth_limit(const std::string& dir, testutil::TestFtpServer& server) {
+    Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = server.url("/ftp-file.bin");
+    request.bandwidth_limit_enabled = true;
+    request.bandwidth_limit_kbps = 8;
+    request.live_bandwidth_limit = std::make_shared<BandwidthLimit>(8 * 1024);
+    const auto start = std::chrono::steady_clock::now();
+    std::thread editor([&] {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        request.live_bandwidth_limit->set_bytes_per_second(1024 * 1024);
+    });
+    const auto result = engine.run(request);
+    editor.join();
+    const double seconds = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now() - start)
+                               .count();
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(read_file(result.path) == expected_ftp_bytes());
+    CHECK(seconds < 8.0);
+}
+
 void test_ftp_resume_uses_rest(const std::string& dir, testutil::TestFtpServer& server) {
     Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -218,9 +268,11 @@ int main() {
 
     test_playlist_parsing();
     test_hls_download(dir, http);
+    test_hls_live_bandwidth_limit(dir + "/hls-live-limit", http);
     test_hls_resume(dir, http);
     test_hls_encrypted_is_refused(dir, http);
     test_ftp_probe_and_download(dir, ftp);
+    test_ftp_live_bandwidth_limit(dir + "/ftp-live-limit", ftp);
     test_ftp_resume_uses_rest(dir, ftp);
 
     testutil::cleanup_dir(dir);

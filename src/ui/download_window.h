@@ -12,6 +12,7 @@ class QProgressBar;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
+class QTimer;
 class QWidget;
 
 namespace swiftdm::ui {
@@ -51,6 +52,9 @@ class DownloadWindow : public QDialog {
     // The Options tab changed the destination/name; the main window updates the
     // item and its history row.
     void optionsApplied(int item_id);
+    // The live limiter is independent of Apply and persists as soon as the
+    // debounce timer accepts the edited value.
+    void limitEdited(int item_id, bool enabled, int kbps);
 
   private:
     QWidget* build_download_tab();
@@ -58,6 +62,7 @@ class DownloadWindow : public QDialog {
     QWidget* build_connections_tab();
     void refresh();
     void refresh_connections();
+    void apply_live_limit();
     // Shows the URL as an elided link so its length can never widen the
     // window; the full URL stays in the href and the tooltip.
     void update_url_label();
@@ -90,6 +95,7 @@ class DownloadWindow : public QDialog {
     QSpinBox* connections_spin_ = nullptr;
     SpeedLimitEditor* limit_editor_ = nullptr;
     QPushButton* apply_button_ = nullptr;
+    QTimer* limit_debounce_ = nullptr;
 
     QTableWidget* connections_table_ = nullptr;
 
@@ -97,6 +103,7 @@ class DownloadWindow : public QDialog {
     // closes itself when the download finishes (a window opened on an
     // already-complete item stays open for inspection).
     bool seen_incomplete_ = false;
+    bool options_initialized_ = false;
 };
 
 }  // namespace swiftdm::ui

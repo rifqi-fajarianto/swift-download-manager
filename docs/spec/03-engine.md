@@ -67,12 +67,19 @@ are our own choices where the original is UNKNOWN (E23).
   20 MB/s, 50 MB/s (plus a custom KB/s field).
 - While a transfer runs, the Download tab shows `Speed limit: <value>`
   in orange next to the Bandwidth value when the limiter is on.
-- **[design]**: global token bucket per download; segments share it; sleep
-  granularity 50 ms. Global limit is not part of the original settings set.
+- **[design]**: per-download receive-rate gate; segments share it. The global
+  limit is not part of the original settings set.
   `stream_download` (unknown size, FTP, HLS) uses libcurl's receive-rate cap so
   the limiter applies to those paths as well.
 - Configs and history rows written before 0.18.1 load with the toggle inferred
   from a non-zero stored limit (the old rule was "non-zero = limit on").
+- **[design: 0.18.2]** The active transfer shares an atomic per-download byte
+  rate with the UI. Receive callbacks pace data before writing it, so a change
+  (including zero = unlimited) takes effect without restarting the transfer
+  across segmented HTTP/HTTPS, sequential HTTP, FTP and each HLS resource.
+  Pause/cancel interrupts a pacing wait. The history value is updated when the
+  debounced UI edit is applied. Other Options fields still take effect on
+  resume only.
 
 ## 5. Retry and error handling
 

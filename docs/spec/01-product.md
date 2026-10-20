@@ -61,7 +61,10 @@ Layout (from `main-window.png`):
      Bandwidth value (0.18.1).
    - Options tab: Save To, File Name, Connections, Bandwidth Limit with an
      enable toggle and presets (500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s, 20 MB/s,
-     50 MB/s, or a custom KB/s value), Referer; `Apply` (0.18.1).
+     50 MB/s, or a custom KB/s value), Referer; `Apply` (0.18.1). While a
+     transfer is active, only the speed-limit editor remains enabled and its
+     changes apply after 500 ms without pausing. Other fields are disabled
+     until the transfer is paused; `Apply` saves them then (0.18.2).
 3. **Item actions** (right-click a download row):
    - `Open File` — opens the downloaded file with the default handler. It is
      available for every completed row; when the file was deleted or moved it

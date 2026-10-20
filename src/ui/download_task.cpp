@@ -4,6 +4,8 @@
 #include "engine/download_engine.h"
 #include "net/http.h"
 
+#include <algorithm>
+
 namespace swiftdm::ui {
 
 namespace {
@@ -32,17 +34,41 @@ swiftdm::HttpOptions http_options_for(const swiftdm::Settings& settings,
 }  // namespace
 
 DownloadTask::DownloadTask(swiftdm::Settings settings, Options options, QObject* parent)
-    : QObject(parent), settings_(std::move(settings)), options_(std::move(options)) {}
+    : QObject(parent), settings_(std::move(settings)), options_(std::move(options)) {
+    const int64_t limit = options_.limit_enabled
+                              ? static_cast<int64_t>(std::max(0, options_.limit_kbps)) * 1024
+                              : 0;
+    live_limit_ = std::make_shared<swiftdm::BandwidthLimit>(limit);
+}
 
 DownloadTask::~DownloadTask() {
     cancel_requested_ = true;
     pause_requested_ = true;
+    if (live_limit_) live_limit_->interrupt();
     if (thread_.joinable()) thread_.join();
 }
 
 void DownloadTask::set_options(const Options& options) {
     if (active()) return;
     options_ = options;
+    set_live_limit(options_.limit_enabled, options_.limit_kbps);
+}
+
+void DownloadTask::set_live_limit(bool enabled, int kbps) {
+    const int safe_kbps = std::max(0, kbps);
+    // Do not touch the options snapshot from the UI while the worker is using
+    // it to build the request. The item owns the latest persisted values and
+    // resume paths copy them back into Options after the worker stops.
+    if (!active()) {
+        options_.limit_enabled = enabled;
+        options_.limit_kbps = safe_kbps;
+    }
+    if (live_limit_) {
+        const int64_t bytes_per_second = enabled
+                                             ? static_cast<int64_t>(safe_kbps) * 1024
+                                             : 0;
+        live_limit_->set_bytes_per_second(bytes_per_second);
+    }
 }
 
 QString DownloadTask::resolved_filename() const {
@@ -73,6 +99,7 @@ DownloadTask::Snapshot DownloadTask::snapshot() const {
 void DownloadTask::start() {
     if (active_.exchange(true)) return;
     if (thread_.joinable()) thread_.join();
+    if (live_limit_) live_limit_->clear_interrupt();
     pause_requested_ = false;
     cancel_requested_ = false;
     thread_ = std::thread([this] { run(); });
@@ -115,11 +142,17 @@ void DownloadTask::run_probe() {
 }
 
 void DownloadTask::pause() {
-    if (active()) pause_requested_ = true;
+    if (active()) {
+        pause_requested_ = true;
+        if (live_limit_) live_limit_->interrupt();
+    }
 }
 
 void DownloadTask::pause_and_wait() {
-    if (active()) pause_requested_ = true;
+    if (active()) {
+        pause_requested_ = true;
+        if (live_limit_) live_limit_->interrupt();
+    }
     if (thread_.joinable()) thread_.join();
 }
 
@@ -139,7 +172,10 @@ void DownloadTask::set_workspace_dir(const QString& dir) {
 }
 
 void DownloadTask::cancel() {
-    if (active()) cancel_requested_ = true;
+    if (active()) {
+        cancel_requested_ = true;
+        if (live_limit_) live_limit_->interrupt();
+    }
 }
 
 void DownloadTask::run() {
@@ -174,6 +210,7 @@ void DownloadTask::run() {
     request.connections = options_.connections;
     request.bandwidth_limit_enabled = options_.limit_enabled;
     request.bandwidth_limit_kbps = options_.limit_kbps;
+    request.live_bandwidth_limit = live_limit_;
     request.headers = options_.headers;
     request.post_data.assign(options_.post_data.constData(),
                              static_cast<size_t>(options_.post_data.size()));
@@ -181,7 +218,10 @@ void DownloadTask::run() {
     swiftdm::DownloadEngine engine(settings_);
     const swiftdm::DownloadResult result =
         engine.run(request, [this](const swiftdm::ProgressInfo& info) {
-            if (cancel_requested_.load() || pause_requested_.load()) return false;
+            if (cancel_requested_.load() || pause_requested_.load()) {
+                if (live_limit_) live_limit_->interrupt();
+                return false;
+            }
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 snapshot_.done = info.done;
@@ -197,6 +237,7 @@ void DownloadTask::run() {
             emit progressed();
             return true;
         });
+    if (live_limit_) live_limit_->interrupt();
 
     Status status = Status::Completed;
     if (cancel_requested_.load()) {

@@ -7,6 +7,7 @@
 #include <QVector>
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -57,6 +58,7 @@ class DownloadTask : public QObject {
 
     const Options& options() const { return options_; }
     void set_options(const Options& options);
+    void set_live_limit(bool enabled, int kbps);
 
     bool active() const { return active_.load(); }
     QString resolved_filename() const;
@@ -90,6 +92,7 @@ class DownloadTask : public QObject {
 
     swiftdm::Settings settings_;
     Options options_;
+    std::shared_ptr<swiftdm::BandwidthLimit> live_limit_;
     std::thread thread_;
     std::atomic<bool> active_{false};
     std::atomic<bool> pause_requested_{false};

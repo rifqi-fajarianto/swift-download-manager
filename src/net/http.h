@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "net/rate_limit.h"
+
 #include "engine/segment_plan.h"
 #include "store/settings.h"
 
@@ -95,12 +97,13 @@ enum class TransferOutcome { Completed, Paused, Failed };
 // pause. `bytes_written` receives the bytes stored on disk (if provided).
 // `resume_from` > 0 continues an interrupted transfer at that offset (FTP
 // REST, or HTTP Range for servers without range support).
-// `bandwidth_limit_bytes` > 0 caps the receive rate (bytes/s).
+// The shared bandwidth control can be changed while the transfer is active;
+// a zero rate means unlimited.
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
                                 uint64_t resume_from = 0,
-                                int64_t bandwidth_limit_bytes = 0);
+                                std::shared_ptr<BandwidthLimit> bandwidth_limit = {});
 
 // Downloads the unfinished ranges of `state` into `write_fd` (positioned
 // writes at absolute offsets) using libcurl multi with parallel connections.
@@ -116,7 +119,7 @@ class SegmentDownloader {
     SegmentDownloader(const SegmentDownloader&) = delete;
     SegmentDownloader& operator=(const SegmentDownloader&) = delete;
 
-    void set_bandwidth_limit_bytes(int64_t bytes_per_sec);  // 0 = unlimited
+    void set_bandwidth_limit(std::shared_ptr<BandwidthLimit> bandwidth_limit);
     void set_one_by_one(bool one_by_one);                   // ConnectionsAtOnce
     void set_max_retries(int retries);
 

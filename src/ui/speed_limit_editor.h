@@ -23,8 +23,12 @@ class SpeedLimitEditor : public QWidget {
     bool enabled() const;
     int kbps() const;
 
+  signals:
+    void valueEdited(bool enabled, int kbps);
+
   private:
     void sync_preset();
+    void emit_value_edited();
 
     QCheckBox* enabled_ = nullptr;
     QComboBox* preset_ = nullptr;

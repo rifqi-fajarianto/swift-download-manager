@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.1.
+Status as of 0.18.2.
 
 ## v1 — core engine + GUI
 
@@ -13,7 +13,7 @@ Status as of 0.18.1.
 | Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished rows stay Paused until the user resumes |
 | Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts (queue scheduling is v1.1) |
 | Categories + category folders | Replicated | tree filter + extension-based routing |
-| Per-download bandwidth limit | Replicated | token bucket; enable toggle + presets in Settings and the progress Options tab, active limit shown in orange next to Bandwidth (0.18.1) |
+| Per-download bandwidth limit | Replicated | enable toggle + presets; active limit shown in orange. 0.18.2: live changes apply across transfer paths with 500 ms UI debounce; other Options fields require pause. |
 | Speed + remaining time display | Replicated | 250 ms engine progress → 1 Hz effective UI refresh |
 | Retry with backoff | Replicated (approximation) | exact original values UNKNOWN (E23) |
 | HTTP proxy + CONNECT tunnel | Replicated | via libcurl; settings dialog |

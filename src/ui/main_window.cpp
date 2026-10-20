@@ -88,7 +88,8 @@ const char* history_status(DownloadItem::State state) {
 }
 
 // Builds the SQLite history row for an item. Browser page metadata, POST data
-// and forwarded headers come from the task options when a task exists.
+// and forwarded headers come from task options; live speed-limit values come
+// from the item so an active edit is persisted even if options are stale.
 swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
                                                  const DownloadTask::Options* options) {
     swiftdm::HistoryStore::Record record;
@@ -122,8 +123,6 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     if (options) {
         record.user_agent = options->user_agent.toStdString();
         record.connections = options->connections;
-        record.bandwidth_limit_enabled = options->limit_enabled;
-        record.bandwidth_limit_kbps = options->limit_kbps;
         record.post_data.assign(options->post_data.constData(),
                                 static_cast<size_t>(options->post_data.size()));
         if (!options->post_data.isEmpty()) record.method = "POST";
@@ -789,10 +788,12 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     if (!item) return;
 
     // Replace the previous (inactive) task so that current settings apply.
-    if (item->task) {
+    if (item->task && !item->task->active()) {
         item->task->deleteLater();
         item->task = nullptr;
     }
+
+    if (item->task && item->task->active()) return;
 
     DownloadTask::Options options;
     if (options_override) {
@@ -805,6 +806,10 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
         options.limit_enabled = item->bandwidth_limit_enabled;
         options.limit_kbps = item->bandwidth_limit_kbps;
     }
+    // The per-item values are authoritative after live edits, including when
+    // an older Options snapshot was supplied by the resume action.
+    options.limit_enabled = item->bandwidth_limit_enabled;
+    options.limit_kbps = item->bandwidth_limit_kbps;
     if (options.output_dir.isEmpty()) {
         options.output_dir = QString::fromStdString(settings_.download_dir);
         if (settings_.category_folders && !options.category.isEmpty()) {
@@ -1254,7 +1259,9 @@ void MainWindow::on_resume() {
             continue;
         }
         const int id = item->id;
-        const DownloadTask::Options options = item->task->options();
+        DownloadTask::Options options = item->task->options();
+        options.limit_enabled = item->bandwidth_limit_enabled;
+        options.limit_kbps = item->bandwidth_limit_kbps;
         start_task_at_row(row, &options);
         open_download_window(id);
     }
@@ -1369,7 +1376,9 @@ void MainWindow::open_download_window(int id) {
             if (row < 0) return;
             DownloadItem* item = model_->item_at(row);
             if (!item || !item->task) return;
-            const DownloadTask::Options options = item->task->options();
+            DownloadTask::Options options = item->task->options();
+            options.limit_enabled = item->bandwidth_limit_enabled;
+            options.limit_kbps = item->bandwidth_limit_kbps;
             start_task_at_row(row, &options);
         });
         connect(window, &DownloadWindow::optionsApplied, this, [this](int item_id) {
@@ -1381,6 +1390,7 @@ void MainWindow::open_download_window(int id) {
             item->output_dir = options.output_dir;
             item->bandwidth_limit_enabled = options.limit_enabled;
             item->bandwidth_limit_kbps = options.limit_kbps;
+            item->task->set_live_limit(options.limit_enabled, options.limit_kbps);
             if (!options.category.isEmpty()) {
                 item->category = options.category;
             }
@@ -1395,6 +1405,30 @@ void MainWindow::open_download_window(int id) {
                 history_.update(item->history_id, history_record_for(*item, &options));
             }
             model_->touch_row(row);
+        });
+        connect(window, &DownloadWindow::limitEdited, this,
+                [this](int item_id, bool enabled, int kbps) {
+                    const int row = model_->row_for_id(item_id);
+                    if (row < 0) return;
+                    DownloadItem* item = model_->item_at(row);
+                    if (!item || !item->task) return;
+            item->bandwidth_limit_enabled = enabled;
+            item->bandwidth_limit_kbps = kbps;
+            item->task->set_live_limit(enabled, kbps);
+            if (item->history_id > 0 && history_.is_open()) {
+                        history_.update(item->history_id,
+                                        history_record_for(*item, &item->task->options()));
+                    }
+                    model_->touch_row(row);
+                });
+        connect(window, &QObject::destroyed, this, [this, id] {
+            const int row = model_->row_for_id(id);
+            if (row < 0) return;
+            DownloadItem* item = model_->item_at(row);
+            if (!item || !item->task) return;
+            // Keep the last debounced editor state across a pause/resume cycle.
+            item->task->set_live_limit(item->bandwidth_limit_enabled,
+                                       item->bandwidth_limit_kbps);
         });
     }
     window->show();

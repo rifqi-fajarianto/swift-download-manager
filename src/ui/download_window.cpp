@@ -16,6 +16,7 @@
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -243,6 +244,16 @@ QWidget* DownloadWindow::build_options_tab() {
     connections_spin_->setRange(0, 64);
     connections_spin_->setSpecialValueText(tr("default"));
     limit_editor_ = new SpeedLimitEditor(page);
+    limit_debounce_ = new QTimer(this);
+    limit_debounce_->setSingleShot(true);
+    limit_debounce_->setInterval(500);
+    connect(limit_editor_, &SpeedLimitEditor::valueEdited, this,
+            [this](bool, int) {
+                const int row = model_->row_for_id(item_id_);
+                const DownloadItem* item = model_->item_at(row);
+                if (item && item->task) limit_debounce_->start();
+            });
+    connect(limit_debounce_, &QTimer::timeout, this, [this] { apply_live_limit(); });
 
     form->addRow(tr("Save To"), dir_edit_);
     form->addRow(tr("File Name"), name_edit_);
@@ -251,7 +262,8 @@ QWidget* DownloadWindow::build_options_tab() {
     form->addRow(tr("Referer"), referer_edit_);
     layout->addLayout(form);
 
-    auto* note = new QLabel(tr("Changes apply when the download is resumed."), page);
+    auto* note = new QLabel(
+        tr("Speed limit changes apply while downloading. Other changes apply when resumed."), page);
     note->setStyleSheet("color:#a0a0a0;");
     layout->addWidget(note);
     layout->addStretch(1);
@@ -357,8 +369,14 @@ void DownloadWindow::refresh() {
     action_button_->setText(running ? tr("Pause") : tr("Resume"));
     action_button_->setEnabled(running || can_resume);
     apply_button_->setEnabled(!active && task != nullptr);
+    const bool other_options_enabled = !active && item->state != DownloadItem::State::Complete;
+    dir_edit_->setEnabled(other_options_enabled);
+    name_edit_->setEnabled(other_options_enabled);
+    connections_spin_->setEnabled(other_options_enabled);
+    referer_edit_->setEnabled(other_options_enabled);
+    limit_editor_->setEnabled(task != nullptr && item->state != DownloadItem::State::Complete);
 
-    if (!active && dir_edit_->text().isEmpty()) {
+    if (!options_initialized_) {
         QString dir = item->output_dir;
         if (dir.isEmpty()) {
             dir = QString::fromStdString(settings_.download_dir);
@@ -369,13 +387,33 @@ void DownloadWindow::refresh() {
         dir_edit_->setText(dir);
         name_edit_->setText(item->file_name);
         connections_spin_->setValue(task ? task->options().connections : 0);
-        limit_editor_->set_value(task ? task->options().limit_enabled
-                                     : item->bandwidth_limit_enabled,
-                                 task ? task->options().limit_kbps
-                                      : item->bandwidth_limit_kbps);
+        limit_editor_->set_value(item->bandwidth_limit_enabled,
+                                 item->bandwidth_limit_kbps);
         referer_edit_->setText(task ? task->options().referer : QString());
+        options_initialized_ = true;
+    } else if (!limit_debounce_->isActive() &&
+               !(task && task->active() && limit_editor_->hasFocus())) {
+        limit_editor_->set_value(item->bandwidth_limit_enabled,
+                                 item->bandwidth_limit_kbps);
     }
     refresh_connections();
+}
+
+void DownloadWindow::apply_live_limit() {
+    const int row = model_->row_for_id(item_id_);
+    DownloadItem* item = model_->item_at(row);
+    if (!item || !item->task) return;
+    if (item->task->active()) {
+        emit limitEdited(item_id_, limit_editor_->enabled(), limit_editor_->kbps());
+        return;
+    }
+
+    item->bandwidth_limit_enabled = limit_editor_->enabled();
+    item->bandwidth_limit_kbps = limit_editor_->kbps();
+    item->task->set_live_limit(item->bandwidth_limit_enabled,
+                               item->bandwidth_limit_kbps);
+    emit limitEdited(item_id_, item->bandwidth_limit_enabled,
+                     item->bandwidth_limit_kbps);
 }
 
 void DownloadWindow::update_url_label() {

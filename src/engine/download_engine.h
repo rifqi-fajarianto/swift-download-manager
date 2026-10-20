@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,9 @@ struct DownloadRequest {
     // stored value is kept for when the user enables the limiter again).
     bool bandwidth_limit_enabled = false;
     int bandwidth_limit_kbps = 0;  // KB/s; ignored while the toggle is off
+    // Optional live control shared with the UI. If absent, the engine creates
+    // one from the toggle/value above, preserving CLI and backend callers.
+    std::shared_ptr<BandwidthLimit> live_bandwidth_limit;
     bool resume = true;
     std::vector<HttpHeader> headers;
     std::vector<HttpCookie> cookies;

@@ -3,7 +3,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "engine/categories.h"
@@ -495,6 +497,43 @@ void test_bandwidth_limit_toggle(const std::string& dir, testutil::TestHttpServe
     CHECK(run_seconds(disabled) < 4.0);
 }
 
+void test_live_bandwidth_limit(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    constexpr uint64_t kSize = 4u << 20;
+    const auto run_and_raise_limit = [&](const std::string& url, int new_limit) {
+        DownloadRequest request;
+        request.url = url;
+        request.connections = 4;
+        request.bandwidth_limit_enabled = true;
+        request.bandwidth_limit_kbps = 32;
+        request.live_bandwidth_limit = std::make_shared<BandwidthLimit>(32 * 1024);
+
+        const auto start = std::chrono::steady_clock::now();
+        // The test thread represents the independent GUI thread. Wait long
+        // enough for the fast local probe and first transfer bytes, then edit
+        // the atomic while the worker remains inside its active download.
+        std::thread editor([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            request.live_bandwidth_limit->set_bytes_per_second(new_limit);
+        });
+        const auto result = engine.run(request);
+        editor.join();
+        const double seconds = std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        CHECK(result.status == DownloadResult::Status::Completed);
+        CHECK_EQ(result.size, kSize);
+        CHECK(file_matches(result.path, kSize));
+        CHECK(seconds < 20.0);
+    };
+
+    // Ranged/multi-handle transfer and sequential chunked transfer both use
+    // the same live control while running.
+    run_and_raise_limit(server.base_url() + "/file/" + std::to_string(kSize), 1024 * 1024);
+    run_and_raise_limit(server.base_url() + "/chunked/" + std::to_string(kSize), 0);
+}
+
 void test_exact_folder_override(const std::string& dir, testutil::TestHttpServer& server) {
     Settings settings = test_settings(dir);
     settings.category_folders = true;
@@ -580,6 +619,7 @@ int main() {
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
     test_bandwidth_limit_toggle(dir + "/bandwidth-limit", server);
+    test_live_bandwidth_limit(dir + "/live-bandwidth-limit", server);
     test_drive_link_helpers();
     test_drive_folder_link_probe();
     test_download_confirmation_url();

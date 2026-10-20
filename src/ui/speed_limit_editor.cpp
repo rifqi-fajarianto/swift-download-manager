@@ -62,11 +62,18 @@ SpeedLimitEditor::SpeedLimitEditor(QWidget* parent) : QWidget(parent) {
         if (index >= 1) kbps_->setValue(kPresetKbps[index - 1]);
     });
     connect(kbps_, qOverload<int>(&QSpinBox::valueChanged), this,
-            [this] { sync_preset(); });
+            [this] {
+                sync_preset();
+                emit_value_edited();
+            });
+    connect(enabled_, &QCheckBox::toggled, this, [this] { emit_value_edited(); });
     sync_preset();
 }
 
 void SpeedLimitEditor::set_value(bool enabled, int kbps) {
+    const QSignalBlocker enabled_blocker(enabled_);
+    const QSignalBlocker value_blocker(kbps_);
+    const QSignalBlocker preset_blocker(preset_);
     enabled_->setChecked(enabled);
     kbps_->setValue(std::clamp(kbps > 0 ? kbps : kDefaultLimitKbps, 1, kMaxLimitKbps));
     sync_preset();
@@ -75,6 +82,10 @@ void SpeedLimitEditor::set_value(bool enabled, int kbps) {
 bool SpeedLimitEditor::enabled() const { return enabled_->isChecked(); }
 
 int SpeedLimitEditor::kbps() const { return kbps_->value(); }
+
+void SpeedLimitEditor::emit_value_edited() {
+    emit valueEdited(enabled(), kbps());
+}
 
 void SpeedLimitEditor::sync_preset() {
     const int value = kbps_->value();

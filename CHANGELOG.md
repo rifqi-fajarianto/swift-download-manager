@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.2 — 2026-10-20
+
+Speed limits can now be changed while a download is running.
+
+- The Options tab applies speed-limiter toggle/value changes after a 500 ms
+  debounce, without pausing or resuming the transfer. This works for segmented
+  HTTP/HTTPS, sequential HTTP, FTP and each HLS resource.
+- Speed-limit edits are persisted immediately to the history row and restored
+  for a later resume. Save To, File Name, Connections and Referer remain
+  disabled while the transfer is active; Apply continues to apply those fields
+  while paused.
+- A shared receive-rate gate paces data before writing, avoiding libcurl option
+  changes on active handles. Pause/cancel can interrupt the pacing wait.
+- Backend integration tests update the rate during segmented/sequential HTTP,
+  FTP, and HLS transfers.
+
 ## 0.18.1 — 2026-10-19
 
 Speed limiter with an explicit toggle, presets and an active-limit display.
