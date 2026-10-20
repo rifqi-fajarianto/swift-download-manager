@@ -70,8 +70,8 @@ Layout (from `main-window.png`):
      available for every completed row; when the file was deleted or moved it
      shows a warning ("The file has been deleted or moved") with `Open File
      Location` instead of failing silently. A completed row whose file is
-     missing is labelled `Complete (file missing)` in amber, and one summary
-     dialog lists missing files after a restart.
+     missing is labelled `Complete (file missing)` in amber with a tooltip; no
+     dialog appears at startup, only when `Open File` is chosen for that row.
    - `Open File Location` — opens the containing folder in the file manager.
    - `Properties` — read-only *Download Properties* window (see below).
 4. **Delete File** (toolbar): deletes the downloaded file of the selected
@@ -125,7 +125,10 @@ Layout (from `main-window.png`):
     WebSocket server accepting download requests from browser extensions.
 11. **Tray behavior**: closing the main window hides to tray; tray menu can
     restore the window (per strings "Quit NeatDownloadManager", "You can hide
-    ... in Notification Area..."). Toolbar and tray-menu `Quit` actions ask
+    ... in Notification Area..."). When started at login through the autostart
+    entry (`swiftdm --autostart`), the main window stays hidden and only the
+    tray icon appears; without a system tray the window is shown as a fallback
+    (0.18.7). Toolbar and tray-menu `Quit` actions ask
     for confirmation before fully exiting; active downloads are paused and can
     be resumed on the next launch, while Cancel keeps the app running (0.18.4).
 12. **About**: version, license tier, support contact, website; update check

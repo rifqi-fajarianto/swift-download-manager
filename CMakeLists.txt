@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.18.5
+    VERSION 0.18.8
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -184,14 +184,15 @@ set(CPACK_GENERATOR "DEB")
 
 # Debian package metadata. Runtime library dependencies are resolved by
 # dpkg-shlibdeps from the built binary; only packages that are loaded at run
-# time (the SVG image plugin behind the icon resources) are listed here.
+# time (the SVG image plugin behind the icon resources) are listed here. The
+# browser extension is optional and works with any Chromium-based browser, so
+# the package must not pull a browser or its printer stack as a dependency.
 set(CPACK_DEBIAN_PACKAGE_NAME "swiftdm")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "SwiftDM contributors")
 set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6svg6, qt6-svg-plugins")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "chromium | chromium-browser | google-chrome-stable")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/swiftdm/swiftdm")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE OFF)

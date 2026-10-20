@@ -34,6 +34,9 @@ class MainWindow : public QMainWindow {
     explicit MainWindow(swiftdm::Settings settings, QWidget* parent = nullptr);
     ~MainWindow() override;
 
+    // True when a tray icon exists, i.e. the window can stay hidden at login.
+    bool has_tray_icon() const { return tray_ != nullptr; }
+
   protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -80,7 +83,6 @@ class MainWindow : public QMainWindow {
     void persist_progress(DownloadTask* task);
     // Re-checks whether a completed item's file is still on disk.
     void refresh_missing_state(int row);
-    void show_missing_files_dialog(const QStringList& paths);
     void show_missing_file_dialog(const DownloadItem& item);
     void open_file_for_row(int row);
     void open_folder_for_row(int row);

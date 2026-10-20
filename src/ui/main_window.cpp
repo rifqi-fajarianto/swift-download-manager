@@ -24,7 +24,6 @@
 #include <QStatusBar>
 #include <QSystemTrayIcon>
 #include <QTableView>
-#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -261,7 +260,7 @@ void MainWindow::restore_history() {
         return;
     }
 
-    QStringList missing_files;
+    int missing_count = 0;
     for (swiftdm::HistoryStore::Entry& entry : entries) {
         swiftdm::HistoryStore::Record& record = entry.record;
         // "Canceled" was a removal request in older builds; do not resurrect it.
@@ -329,7 +328,7 @@ void MainWindow::restore_history() {
             if (item.file_missing) {
                 item.dest_path =
                     QDir(QString::fromStdString(folder)).filePath(item.file_name);
-                missing_files << item.dest_path;
+                ++missing_count;
             } else {
                 item.file_name = QFileInfo(item.dest_path).fileName();
                 if (item.size == 0) {
@@ -378,14 +377,8 @@ void MainWindow::restore_history() {
         }
         model_->add_item(item);
     }
-    if (!missing_files.isEmpty()) {
-        // One summary instead of a dialog per file.
-        QTimer::singleShot(0, this, [this, missing_files] {
-            show_missing_files_dialog(missing_files);
-        });
-    }
     qInfo() << "history: restored" << model_->rowCount() << "row(s),"
-            << missing_files.size() << "missing file(s)";
+            << missing_count << "missing file(s)";
 }
 
 DownloadTask::Options MainWindow::options_from_record(
@@ -1074,29 +1067,6 @@ void MainWindow::refresh_missing_state(int row) {
     if (missing == item->file_missing) return;
     item->file_missing = missing;
     model_->touch_row(row);
-}
-
-void MainWindow::show_missing_files_dialog(const QStringList& paths) {
-    // One summary for the whole restore instead of a dialog per file.
-    auto* box = new QMessageBox(nullptr);
-    box->setAttribute(Qt::WA_DeleteOnClose);
-    box->setWindowModality(Qt::NonModal);
-    box->setWindowTitle(tr("Downloaded Files Missing"));
-    box->setIcon(QMessageBox::Warning);
-    box->setText(tr("Some completed downloads are no longer on disk. "
-                    "They were deleted or moved:"));
-    QStringList shown = paths.mid(0, 10);
-    QString details = shown.join(QLatin1Char('\n'));
-    if (paths.size() > shown.size()) {
-        details += tr("\n... and %1 more").arg(paths.size() - shown.size());
-    }
-    box->setInformativeText(details);
-    box->addButton(QMessageBox::Close);
-    box->adjustSize();
-    box->move(frameGeometry().center() - box->rect().center());
-    box->show();
-    box->raise();
-    box->activateWindow();
 }
 
 void MainWindow::show_missing_file_dialog(const DownloadItem& item) {

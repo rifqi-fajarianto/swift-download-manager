@@ -217,7 +217,7 @@ bool apply_autostart(bool enabled, std::string* error) {
         << "Type=Application\n"
         << "Name=SwiftDM\n"
         << "Comment=Download manager\n"
-        << "Exec=" << exe << "\n"
+        << "Exec=" << exe << " --autostart\n"
         << "Icon=swiftdm\n"
         << "Terminal=false\n"
         << "X-GNOME-Autostart-enabled=true\n";

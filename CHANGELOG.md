@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.18.8 — 2026-10-20
+
+Stop pulling a browser and printer stack when installing the `.deb`.
+
+- Removed the `Recommends` on Chromium from the Debian package. Installing
+  SwiftDM no longer installs Chromium, `chromium-common`, `libminizip1t64`,
+  `libxnvctrl0`, `system-config-printer`, `gir1.2-handy-1`,
+  `gir1.2-packagekitglib-1.0`, or `avahi-utils`.
+- The browser extension remains optional and browser-agnostic: load it from
+  `/usr/share/swiftdm/chromium` in Chrome, Chromium, Edge, Brave, or another
+  Chromium-based browser.
+- Runtime library dependencies (Qt6, libcurl, SQLite) and the explicit SVG
+  plugin dependencies are unchanged.
+
+## 0.18.7 — 2026-10-20
+
+Start silently when SwiftDM is launched at login.
+
+- The XDG autostart entry now runs `swiftdm --autostart`, which starts the app
+  in the system tray without showing the main window.
+- Existing autostart entries are refreshed when the GUI starts with the setting
+  enabled, so entries written by older releases gain the new flag.
+- If the desktop has no system tray, the main window is shown as a fallback so
+  the running application remains reachable.
+- The autostart entry points at the current executable, keeping the silent
+  start working after the binary moves.
+
+## 0.18.6 — 2026-10-20
+
+Missing downloaded files stay quiet at startup.
+
+- Starting SwiftDM no longer opens the "Downloaded Files Missing" summary
+  dialog. Completed rows whose file is gone still show the amber
+  `Complete (file missing)` status and the path tooltip in the download list.
+- The `File Not Found` dialog appears only when the user chooses **Open File**
+  for a missing download, and still offers **Open File Location**.
+- Missing files are still counted in the startup log line.
+
 ## 0.18.5 — 2026-10-20
 
 Fix browser and manual downloads whose URL paths contain spaces.

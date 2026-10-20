@@ -117,7 +117,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.5_amd64.deb
+sudo apt install ./swiftdm_0.18.8_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:
@@ -127,8 +127,9 @@ sudo cmake --install build --prefix /usr/local
 ```
 
 The package installs the executable, desktop launcher, icons, AppStream
-metadata, and Chromium extension source. See [`packaging/README.md`](packaging/README.md)
-for more packaging details.
+metadata, and Chromium extension source. It does not install a browser; load the
+extension in any Chromium-based browser. See
+[`packaging/README.md`](packaging/README.md) for more packaging details.
 
 ## Application data
 

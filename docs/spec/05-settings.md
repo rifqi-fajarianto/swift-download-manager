@@ -69,4 +69,9 @@ the `auths` table and are matched per host/target (E4, E18 Passwords tab).
 
 - Load settings, open DB, mark stale "downloading" rows as `Paused` (resume
   manually), start tray icon and main window.
+- With `--autostart` (used by the login entry), the main window stays hidden
+  and only the tray icon appears. If no system tray is available, the window is
+  shown as a fallback so the application remains reachable.
 - `AppAutoStart`: writes `~/.config/autostart/swiftdm.desktop` when enabled.
+  The entry runs `swiftdm --autostart`; the GUI refreshes an existing entry on
+  launch so entries written by older releases also start silently.

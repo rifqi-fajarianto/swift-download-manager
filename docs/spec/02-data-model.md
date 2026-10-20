@@ -94,8 +94,9 @@ from `downloads` and `headers`.
 
 Completed rows store the actual saved basename, so a file saved as
 `name (1).ext` is found again. If the file is gone, the row shows
-`Complete (file missing)`, a startup summary lists it, and right-click Open File
-explains that the file was deleted or moved (with Open File Location).
+`Complete (file missing)` with a path tooltip; no dialog appears at startup.
+Right-click Open File explains that the file was deleted or moved (with Open
+File Location).
 
 Since 0.18.0 the confirmation dialog resolves the save folder (category folder
 by default, custom override possible) before a row exists, and `folderpath`
