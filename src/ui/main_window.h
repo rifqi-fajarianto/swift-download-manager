@@ -80,7 +80,6 @@ class MainWindow : public QMainWindow {
     void persist_progress(DownloadTask* task);
     // Re-checks whether a completed item's file is still on disk.
     void refresh_missing_state(int row);
-    void show_missing_files_dialog(const QStringList& paths);
     void show_missing_file_dialog(const DownloadItem& item);
     void open_file_for_row(int row);
     void open_folder_for_row(int row);

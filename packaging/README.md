@@ -46,7 +46,7 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.18.5_amd64.deb
+sudo apt install ./build/swiftdm_0.18.6_amd64.deb
 ```
 
 `apt` resolves the runtime dependencies (`libqt6*`, `libcurl4t64`,

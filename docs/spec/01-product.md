@@ -70,8 +70,8 @@ Layout (from `main-window.png`):
      available for every completed row; when the file was deleted or moved it
      shows a warning ("The file has been deleted or moved") with `Open File
      Location` instead of failing silently. A completed row whose file is
-     missing is labelled `Complete (file missing)` in amber, and one summary
-     dialog lists missing files after a restart.
+     missing is labelled `Complete (file missing)` in amber with a tooltip; no
+     dialog appears at startup, only when `Open File` is chosen for that row.
    - `Open File Location` — opens the containing folder in the file manager.
    - `Properties` — read-only *Download Properties* window (see below).
 4. **Delete File** (toolbar): deletes the downloaded file of the selected

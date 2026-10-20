@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.6 — 2026-10-20
+
+Missing downloaded files stay quiet at startup.
+
+- Starting SwiftDM no longer opens the "Downloaded Files Missing" summary
+  dialog. Completed rows whose file is gone still show the amber
+  `Complete (file missing)` status and the path tooltip in the download list.
+- The `File Not Found` dialog appears only when the user chooses **Open File**
+  for a missing download, and still offers **Open File Location**.
+- Missing files are still counted in the startup log line.
+
 ## 0.18.5 — 2026-10-20
 
 Fix browser and manual downloads whose URL paths contain spaces.

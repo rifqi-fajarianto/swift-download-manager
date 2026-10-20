@@ -44,7 +44,7 @@ Status as of 0.18.5.
 
 | Feature | Status |
 |---|---|
-| SQLite download history (`downloads` table) + restore list at startup | Implemented | Rows (incl. `pageurl`/`pagetitle`, POST data, headers, `done`) are written/updated via `src/store/history.cpp`; `MainWindow::restore_history()` rebuilds Complete/Paused/Error rows at startup, and deletes remove rows from `downloads`+`headers`. Missing completed files are flagged (0.17.0) |
+| SQLite download history (`downloads` table) + restore list at startup | Implemented | Rows (incl. `pageurl`/`pagetitle`, POST data, headers, `done`) are written/updated via `src/store/history.cpp`; `MainWindow::restore_history()` rebuilds Complete/Paused/Error rows at startup, and deletes remove rows from `downloads`+`headers`. Missing completed files are flagged in the list (0.17.0); the startup summary dialog was removed in 0.18.6, so the warning appears only on Open File |
 | Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
 | Queue scheduling (manual start, limit simultaneous downloads) | Planned |
