@@ -23,6 +23,7 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
 - [x] 0.18.4 — confirm before fully quitting the application
 - [x] 0.18.5 — preserve/encode URL paths with spaces for browser and manual downloads
 - [x] 0.18.6 — show missing files in the list without a startup dialog
+- [x] 0.18.7 — start silently in the tray when launched at login
 
 ## Versioning
 
@@ -55,7 +56,7 @@ Install as a Debian package (recommended) or with CMake:
 
 ```
 cd build && cpack
-sudo apt install ./swiftdm_0.18.6_amd64.deb
+sudo apt install ./swiftdm_0.18.7_amd64.deb
 
 # or, without a package:
 sudo cmake --install build --prefix /usr/local

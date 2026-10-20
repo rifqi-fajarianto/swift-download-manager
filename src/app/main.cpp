@@ -26,6 +26,7 @@ void print_usage(std::FILE* out) {
         "Usage:\n"
         "  swiftdm                       Start the GUI\n"
         "  swiftdm --gui                 Start the GUI\n"
+        "  swiftdm --autostart           Start in the tray (used at login)\n"
         "  swiftdm get <url> [options]   Download a URL (headless)\n"
         "  swiftdm --version             Print version and exit\n"
         "  swiftdm --help                Print this help and exit\n"
@@ -50,7 +51,7 @@ void print_usage(std::FILE* out) {
 }
 
 #ifdef SWIFTSDM_WITH_GUI
-int run_gui(int argc, char** argv) {
+int run_gui(int argc, char** argv, bool start_hidden) {
     QApplication app(argc, argv);
     // This is a tray application: closing a notification or progress window must
     // not terminate the process while the main window is hidden in the tray.
@@ -70,8 +71,20 @@ int run_gui(int argc, char** argv) {
         std::fprintf(stderr, "warning: %s\n", error.c_str());
     }
 
+    // Older releases wrote an autostart entry without --autostart. Refresh it
+    // whenever the setting is on so the next login starts silently.
+    if (settings.autostart) {
+        std::string autostart_error;
+        if (!swiftdm::apply_autostart(true, &autostart_error)) {
+            std::fprintf(stderr, "warning: cannot refresh autostart entry: %s\n",
+                         autostart_error.c_str());
+        }
+    }
+
     swiftdm::ui::MainWindow window(std::move(settings));
-    window.show();
+    // At login the app stays in the tray. Without a tray icon the window is the
+    // only way to reach the app, so keep it visible as a fallback.
+    if (!start_hidden || !window.has_tray_icon()) window.show();
     return app.exec();
 }
 #endif
@@ -243,7 +256,7 @@ int main(int argc, char** argv) {
 
     if (argc <= 1) {
 #ifdef SWIFTSDM_WITH_GUI
-        return run_gui(argc, argv);
+        return run_gui(argc, argv, false);
 #else
         print_usage(stderr);
         return 2;
@@ -261,7 +274,10 @@ int main(int argc, char** argv) {
     }
 #ifdef SWIFTSDM_WITH_GUI
     if (command == "--gui") {
-        return run_gui(argc, argv);
+        return run_gui(argc, argv, false);
+    }
+    if (command == "--autostart") {
+        return run_gui(argc, argv, true);
     }
 #endif
     if (command == "get") {

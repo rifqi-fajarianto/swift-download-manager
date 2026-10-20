@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.7" date="2026-10-20">
+      <description>
+        <p>SwiftDM starts silently in the system tray when launched at login; the main window is no longer shown at startup.</p>
+      </description>
+    </release>
     <release version="0.18.6" date="2026-10-20">
       <description>
         <p>Missing downloaded files are shown only in the download list; the file-not-found warning appears when the user opens the file.</p>

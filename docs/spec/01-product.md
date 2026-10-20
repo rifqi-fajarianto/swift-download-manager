@@ -125,7 +125,10 @@ Layout (from `main-window.png`):
     WebSocket server accepting download requests from browser extensions.
 11. **Tray behavior**: closing the main window hides to tray; tray menu can
     restore the window (per strings "Quit NeatDownloadManager", "You can hide
-    ... in Notification Area..."). Toolbar and tray-menu `Quit` actions ask
+    ... in Notification Area..."). When started at login through the autostart
+    entry (`swiftdm --autostart`), the main window stays hidden and only the
+    tray icon appears; without a system tray the window is shown as a fallback
+    (0.18.7). Toolbar and tray-menu `Quit` actions ask
     for confirmation before fully exiting; active downloads are paused and can
     be resumed on the next launch, while Cancel keeps the app running (0.18.4).
 12. **About**: version, license tier, support contact, website; update check

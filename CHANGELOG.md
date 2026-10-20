@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.7 — 2026-10-20
+
+Start silently when SwiftDM is launched at login.
+
+- The XDG autostart entry now runs `swiftdm --autostart`, which starts the app
+  in the system tray without showing the main window.
+- Existing autostart entries are refreshed when the GUI starts with the setting
+  enabled, so entries written by older releases gain the new flag.
+- If the desktop has no system tray, the main window is shown as a fallback so
+  the running application remains reachable.
+- The autostart entry points at the current executable, keeping the silent
+  start working after the binary moves.
+
 ## 0.18.6 — 2026-10-20
 
 Missing downloaded files stay quiet at startup.

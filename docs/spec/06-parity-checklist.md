@@ -25,7 +25,7 @@ Status as of 0.18.5.
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |
 | Tray icon + close-to-tray | Replicated | QSystemTrayIcon; hidden when unavailable |
 | Explicit Quit confirmation | Implemented | Toolbar and tray-menu Quit show a confirmation defaulting to Cancel; confirming closes the app, and active downloads are paused for resume on next launch (0.18.4) |
-| Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) |
+| Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) runs `swiftdm --autostart`; the app starts in the tray without showing the main window (0.18.7), with a visible-window fallback when no tray is available |
 | New URL dialog | Replicated | URL field + Download/Cancel; probes first, then one Download Confirmation window (file name + size + Category + Location) before the transfer starts (0.18.0) |
 | Progress window opens when a transfer starts | Replicated | manual adds and browser handoff (both after confirmation), plus toolbar Resume |
 | Download confirmation window | Implemented | shown for manual and browser-sent downloads; independent of main-window visibility; does not restore a hidden/minimized main window; Download Now / Add to queue (placeholder) / Cancel; Cancel creates no row and no database entry |

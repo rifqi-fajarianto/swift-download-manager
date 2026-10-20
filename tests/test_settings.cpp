@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 #include "core/util.h"
@@ -122,6 +123,26 @@ void test_parsing_quirks(const std::string& dir) {
     CHECK(s2.proxy.enabled());
 }
 
+void test_autostart_entry(const std::string& dir) {
+    std::string error;
+    CHECK(apply_autostart(true, &error));
+    CHECK(error.empty());
+
+    const std::string path = dir + "/config/autostart/swiftdm.desktop";
+    std::ifstream in(path);
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    CHECK(content.find("Exec=") != std::string::npos);
+    // The login entry must ask for the silent tray start; older entries lacked
+    // this flag and showed the main window at login.
+    CHECK(content.find(" --autostart\n") != std::string::npos);
+
+    CHECK(apply_autostart(false, &error));
+    CHECK(error.empty());
+    std::ifstream removed(path);
+    CHECK(!removed.good());
+}
+
 void test_bandwidth_toggle(const std::string& dir) {
     // Configs from before the toggle existed used a non-zero BandWidthLimit as
     // "limiter on", so the upgrade must keep them limited.
@@ -159,6 +180,7 @@ int main() {
     test_roundtrip(dir);
     test_missing_file(dir);
     test_parsing_quirks(dir);
+    test_autostart_entry(dir);
     test_bandwidth_toggle(dir);
 
     testutil::cleanup_dir(dir);

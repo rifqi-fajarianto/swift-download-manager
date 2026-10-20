@@ -34,6 +34,9 @@ class MainWindow : public QMainWindow {
     explicit MainWindow(swiftdm::Settings settings, QWidget* parent = nullptr);
     ~MainWindow() override;
 
+    // True when a tray icon exists, i.e. the window can stay hidden at login.
+    bool has_tray_icon() const { return tray_ != nullptr; }
+
   protected:
     void closeEvent(QCloseEvent* event) override;
 
