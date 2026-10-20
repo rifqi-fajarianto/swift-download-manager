@@ -50,10 +50,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit terakhir di `main`**: `c45508d` — dokumentasi lifecycle workspace
-  sementara dan pembersihan file parsial.
-- **Branch kerja saat snapshot**: `ux`.
-- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
+- **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
+- **Branch kerja saat snapshot**: `main`.
+- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
 - **Versi kerja**: 0.18.8. Paket `.deb` tidak lagi mendeklarasikan browser
   sebagai `Recommends`. Autostart login menjalankan `swiftdm --autostart`
   sehingga aplikasi hanya muncul di system tray; tanpa tray, main window
@@ -78,7 +77,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.8 — status branch kerja
+### 0.18.1–0.18.8 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -89,7 +88,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Migrasi kompatibel: config/DB lama dengan limit non-nol dianggap "aktif".
 - Test `test_settings` dan `test_history` diperbarui; dokumentasi 0.18.1 sudah
   ditambahkan ke `CHANGELOG.md`, `README.md`, dan `docs/spec/`.
-- 0.18.1–0.18.2 sudah di-commit pada branch ini (`52f89c6`); 0.18.3 menjaga
+- 0.18.1–0.18.2 sudah di-commit pada branch `ux` (`52f89c6`); 0.18.3 menjaga
   main window tetap tersembunyi saat konfirmasi browser (sudah diverifikasi
   manual user). 0.18.4 meminta konfirmasi sebelum Quit menutup aplikasi.
 - 0.18.5 mempertahankan percent-encoding URL browser/manual hingga libcurl;
@@ -104,7 +103,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.8 menghapus `Recommends` Chromium dari paket Debian; instalasi tidak
   lagi menarik Chromium maupun rantai `system-config-printer`/`avahi-utils`.
   Ekstensi tetap opsional dan kompatibel dengan browser Chromium-based mana
-  pun.
+  pun. Seluruh 0.18.1–0.18.8 sudah masuk `main` lewat merge `dd6b179`.
 
 ### Rencana / gap yang diketahui
 
