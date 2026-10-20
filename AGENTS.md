@@ -293,7 +293,10 @@ Sebuah perubahan dianggap selesai bila:
    logika yang berisiko.
 4. Versi dinaikkan sesuai bagian 5 dan `CHANGELOG.md` diperbarui.
 5. `README.md` dan `docs/spec/06-parity-checklist.md` diperbarui bila status
-   fitur berubah.
+   fitur berubah. Saat menambahkan fitur besar, periksa README root dan
+   tambahkan atau perbarui deskripsi fitur tersebut jika belum tercantum;
+   README adalah ringkasan untuk pengguna, jadi tidak perlu mencatat setiap
+   detail implementasi atau perbaikan kecil di sana.
 6. Untuk perubahan UI, checklist pengujian manual sudah diberikan ke user dan
    feedback-nya sudah diterima.
 7. Bagian 2 (status) di file ini diperbarui bila ada rilis, merge besar, atau
