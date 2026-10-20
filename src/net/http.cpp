@@ -82,6 +82,37 @@ std::string http_error_text(long code) {
     return text;
 }
 
+bool has_supported_url_shape(const std::string& url) {
+    const size_t scheme_end = url.find("://");
+    if (scheme_end == std::string::npos) return false;
+    const std::string scheme = to_lower(url.substr(0, scheme_end));
+    if (scheme != "http" && scheme != "https" && scheme != "ftp" && scheme != "ftps") {
+        return false;
+    }
+
+    const size_t authority_start = scheme_end + 3;
+    const size_t authority_end = url.find_first_of("/?#", authority_start);
+    std::string authority = url.substr(
+        authority_start, authority_end == std::string::npos ? std::string::npos
+                                                            : authority_end - authority_start);
+    const size_t userinfo_end = authority.rfind('@');
+    if (userinfo_end != std::string::npos) authority.erase(0, userinfo_end + 1);
+    if (authority.empty() || authority.find_first_of(" \t\r\n") != std::string::npos) return false;
+
+    if (authority.front() == '[') {
+        const size_t bracket = authority.find(']');
+        return bracket != std::string::npos && bracket > 1;
+    }
+    const size_t colon = authority.find(':');
+    if (colon != std::string::npos) authority.resize(colon);
+    return !authority.empty();
+}
+
+std::string curl_url_error(CURLcode code) {
+    return code == CURLE_URL_MALFORMAT ? std::string(kInvalidUrlError)
+                                       : std::string(curl_easy_strerror(code));
+}
+
 // Failure messages carry the host's own explanation (rate limits, captcha
 // requirements, hotlink protection) instead of a bare "HTTP/1.1 403 Forbidden".
 constexpr size_t kErrorBodyLimit = 1024;   // body bytes kept per request
@@ -97,7 +128,8 @@ curl_slist* build_headers(const std::vector<HttpHeader>& headers) {
 }
 
 void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* headers) {
-    curl_easy_setopt(handle, CURLOPT_URL, o.url.c_str());
+    const std::string request_url = encode_url_for_request(o.url);
+    curl_easy_setopt(handle, CURLOPT_URL, request_url.c_str());
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 15L);
@@ -320,12 +352,12 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
 
     if (!cap.got_status) {
         if (rc == CURLE_OK) error = "no HTTP response";
-        else error = curl_easy_strerror(rc);
+        else error = curl_url_error(rc);
         return false;
     }
     // Writing is aborted intentionally once the body starts.
     if (rc != CURLE_OK && rc != CURLE_WRITE_ERROR) {
-        error = curl_easy_strerror(rc);
+        error = curl_url_error(rc);
         return false;
     }
     error.clear();
@@ -552,7 +584,9 @@ ProbeResult probe_ftp(const HttpOptions& options) {
 
     if (out.effective_url.empty()) out.effective_url = options.url;
     if (rc != CURLE_OK) {
-        out.error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+        out.error = rc == CURLE_URL_MALFORMAT
+                        ? kInvalidUrlError
+                        : (errbuf[0] ? errbuf : curl_easy_strerror(rc));
         return out;
     }
     out.status_code = 0;  // no HTTP status over FTP
@@ -617,6 +651,7 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
     if (rc != CURLE_OK) {
         if (error) {
             if (ctx.overflow) *error = "response is larger than the allowed size";
+            else if (rc == CURLE_URL_MALFORMAT) *error = kInvalidUrlError;
             else *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
         }
         return false;
@@ -731,6 +766,11 @@ ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) 
         HttpOptions next = options;
         // The notice does not repeat the link's account/resource-key handoff.
         next.url = keep_drive_handoff_params(confirm, options.url);
+        if (!has_supported_url_shape(next.url)) {
+            probe.ok = false;
+            probe.error = kConfirmationPendingError;
+            return probe;
+        }
         ProbeResult resolved = probe_url_once(next);  // exactly one confirmation step
         if (resolved.ok && is_web_page(resolved)) {
             resolved.ok = false;
@@ -760,22 +800,30 @@ ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) 
 }  // namespace
 
 ProbeResult probe_url(const HttpOptions& options) {
+    if (!has_supported_url_shape(options.url)) {
+        ProbeResult out;
+        out.error = kInvalidUrlError;
+        return out;
+    }
+
+    HttpOptions target = options;
+    target.url = encode_url_for_request(options.url);
+
     // Drive folder links have no file behind them; fail before any request so
     // the reason reaches the user instead of a saved page named after the id.
-    if (!google_drive_folder_id(options.url).empty()) {
+    if (!google_drive_folder_id(target.url).empty()) {
         ProbeResult out;
         out.error = kDriveFolderError;
         return out;
     }
 
-    HttpOptions target = options;
-    const std::string file_id = google_drive_file_id(options.url);
+    const std::string file_id = google_drive_file_id(target.url);
     if (!file_id.empty()) {
         // Viewer links ("/file/d/<id>/view", "/open?id=", "/drive/u/<n>/…")
         // serve the Drive web app; the direct URL is what the site itself
         // redirects to for "uc?export=download" links.
         target.url =
-            keep_drive_handoff_params(google_drive_download_url(file_id), options.url);
+            keep_drive_handoff_params(google_drive_download_url(file_id), target.url);
     }
 
     ProbeResult out = probe_url_once(target);
@@ -977,10 +1025,12 @@ struct SegmentDownloader::Impl {
             if (code > 0) {
                 error = http_error_with_detail(code, contexts[i].error_body,
                                                contexts[i].content_type);
+            } else if (rc == CURLE_URL_MALFORMAT) {
+                error = kInvalidUrlError;
             } else if (!rt.error_buffer.empty() && rt.error_buffer[0] != '\0') {
                 error = rt.error_buffer.c_str();
             } else {
-                error = curl_easy_strerror(rc);
+                error = curl_url_error(rc);
             }
             return 1;
         }
@@ -1286,7 +1336,11 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
 
     if (rc == CURLE_ABORTED_BY_CALLBACK || ctx.interrupted) return TransferOutcome::Paused;
     if (rc != CURLE_OK) {
-        if (error) *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+        if (error) {
+            *error = rc == CURLE_URL_MALFORMAT
+                         ? kInvalidUrlError
+                         : (errbuf[0] ? errbuf : curl_easy_strerror(rc));
+        }
         return TransferOutcome::Failed;
     }
     if (code >= 400) {

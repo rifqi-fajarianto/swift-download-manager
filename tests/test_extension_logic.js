@@ -251,6 +251,17 @@ async function testSuccessfulHandoff() {
     "scoped cookies are forwarded as structured entries");
 }
 
+async function testSpaceInUrlIsEncodedForHandoff() {
+  const env = createEnvironment();
+  env.onCreated()(downloadItem({
+    url: "https://takeout-download-drive.usercontent.google.com/download/Test SwiftDM-20261020T072809Z-1-001.zip?j=test&i=0",
+  }));
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  const sent = env.calls.sockets[0].sent[0];
+  check(sent.data.url.includes("Test%20SwiftDM"), "space in download path is percent-encoded");
+  check(!sent.data.url.includes(" "), "handoff URL contains no raw spaces");
+}
+
 async function testFallbackWhenAppIsDown() {
   const env = createEnvironment({ webSocketMode: "error" });
   env.onCreated()(downloadItem());
@@ -570,6 +581,7 @@ async function testStatusChannel() {
 
 (async () => {
   await testSuccessfulHandoff();
+  await testSpaceInUrlIsEncodedForHandoff();
   await testFallbackWhenAppIsDown();
   await testTransientConnectionRetry();
   await testNoCookiePermissionSendsEmptyArray();

@@ -11,6 +11,7 @@
 #include "engine/categories.h"
 #include "engine/download_engine.h"
 #include "engine/segment_plan.h"
+#include "core/util.h"
 #include "http_test_server.h"
 #include "net/http.h"
 #include "net/interstitial.h"
@@ -67,6 +68,47 @@ void test_probe(testutil::TestHttpServer& server) {
     CHECK(probe.accept_ranges);
     CHECK_EQ(probe.filename_hint, std::string("sample-1048576.bin"));
     CHECK(probe.etag.find("etag-1048576") != std::string::npos);
+}
+
+void test_url_encoding(testutil::TestHttpServer& server) {
+    CHECK_EQ(encode_url_for_request("https://host/Test SwiftDM.zip?x=1"),
+             std::string("https://host/Test%20SwiftDM.zip?x=1"));
+    CHECK_EQ(encode_url_for_request("https://host/a%20b"),
+             std::string("https://host/a%20b"));
+    CHECK_EQ(encode_url_for_request("https://host/a%zzb"),
+             std::string("https://host/a%25zzb"));
+    CHECK_EQ(encode_url_for_request("https://host/caf\xC3\xA9.zip"),
+             std::string("https://host/caf%C3%A9.zip"));
+    CHECK_EQ(encode_url_for_request("https://host/a+b"),
+             std::string("https://host/a+b"));
+    CHECK_EQ(file_name_from_url("https://host/Test%20SwiftDM.zip?token=x"),
+             std::string("Test SwiftDM.zip"));
+
+    HttpOptions invalid;
+    invalid.url = "drive.google.com/file/d/example";
+    const ProbeResult invalid_probe = probe_url(invalid);
+    CHECK(!invalid_probe.ok);
+    CHECK_EQ(invalid_probe.error, std::string(kInvalidUrlError));
+
+    const std::string raw_url = server.base_url() + "/space-file/Test SwiftDM.zip";
+    HttpOptions options;
+    options.url = raw_url;
+    const ProbeResult probe = probe_url(options);
+    CHECK(probe.ok);
+    CHECK_EQ(probe.content_length, uint64_t(65536));
+    CHECK(probe.download_url.find("Test%20SwiftDM.zip") != std::string::npos);
+    CHECK(probe.download_url.find(' ') == std::string::npos);
+
+    const std::string dir = testutil::make_temp_dir("space-url");
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = raw_url;
+    const auto result = engine.run(request);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(result.size, uint64_t(65536));
+    CHECK(file_matches(result.path, 65536));
+    testutil::cleanup_dir(dir);
 }
 
 void test_browser_cookie_scope(const std::string& dir, testutil::TestHttpServer& server) {
@@ -605,6 +647,7 @@ int main() {
     }
 
     test_probe(server);
+    test_url_encoding(server);
     test_browser_cookie_scope(dir + "/browser-cookie", server);
     test_download_segmented(dir + "/segmented", server);
     test_download_single_connection(dir + "/single", server);

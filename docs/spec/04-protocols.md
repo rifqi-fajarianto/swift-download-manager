@@ -12,6 +12,11 @@
   `Cookie:`, `SetCookie`, `ReadCookie`).
 - User-Agent: per-download `useragent`, else global `DefaultAgent` (E8).
 - TLS: system/OpenSSL via libcurl (original used Schannel, E16).
+- Request URLs are kept fully encoded at UI handoff and unsafe literal bytes
+  in the path/query/fragment (including spaces and control/non-ASCII bytes) are
+  percent-encoded before libcurl; the host is left intact for normal host/IDNA
+  handling. Existing valid `%XX` escapes are preserved. URL-derived fallback
+  filenames decode percent escapes after query/fragment removal.
 - Proxy: HTTP proxy with `CONNECT` tunneling for TLS; SOCKS4/SOCKS5 with and
   without auth (`SocksVersion` setting; strings E15). No proxy mode default.
 

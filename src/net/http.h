@@ -13,6 +13,9 @@
 
 namespace swiftdm {
 
+inline constexpr const char* kInvalidUrlError =
+    "invalid download URL - include the http://, https://, ftp:// or ftps:// prefix";
+
 struct HttpHeader {
     std::string name;
     std::string value;

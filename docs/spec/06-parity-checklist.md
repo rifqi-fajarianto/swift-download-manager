@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.4.
+Status as of 0.18.5.
 
 ## v1 — core engine + GUI
 
@@ -19,6 +19,7 @@ Status as of 0.18.4.
 | HTTP proxy + CONNECT tunnel | Replicated | via libcurl; settings dialog |
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |
 | Custom headers / cookies passthrough | Replicated | CLI `--header`; Chromium extension forwards scoped cookies and same-origin referrer |
+| URLs containing spaces or escaped filename bytes | Fixed (0.18.5) | Browser URLs remain fully encoded and the curl layer encodes unsafe bytes; Drive folder ZIP names containing spaces no longer fail URL parsing |
 | User-Agent setting + reset | Replicated | default UA string (E24) |
 | Download complete dialog | Replicated | toggle in settings; independent top-level window (not attached to the main window) |
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |
@@ -105,7 +106,7 @@ URL (`download`, `view`, or a Drive folder id).
 
 | Behavior | Status |
 |---|---|
-| Viewer/file links (`/file/d/<id>[/view]`, `/open?id=`, `/uc?id=`, `/drive/u/<n>/…`) | Implemented | normalised to `drive.usercontent.google.com/download?id=<id>&export=download`, keeping `authuser`/`resourcekey`/`confirm` (`uuid` dropped) |
+| Viewer/file links (`/file/d/<id>[/view]`, `/open?id=`, `/uc?id=`, `/drive/u/<n>/…`) | Implemented | normalised to `drive.usercontent.google.com/download?id=<id>&export=download`, keeping `authuser`/`resourcekey`/`confirm` (`uuid` dropped); ZIP paths with spaces are percent-encoded before libcurl |
 | Virus-scan notice above Google's scan limit | Implemented | `confirm=t` submitted transparently, exactly one step; `uuid` dropped so the URL stays deterministic |
 | Transfers follow the resolved URL | Implemented | `ProbeResult::download_url`; resume state keeps matching because the resolved URL is stable across runs and link shapes |
 | Drive folder links | Implemented | refused before any request, with the reason |

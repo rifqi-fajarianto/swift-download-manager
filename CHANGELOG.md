@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.5 — 2026-10-20
+
+Fix browser and manual downloads whose URL paths contain spaces.
+
+- Browser handoffs preserve fully encoded URLs instead of decoding `%20` back
+  into a literal space before libcurl receives the URL.
+- Manual URLs are validated and normalized; the network layer also encodes
+  unsafe URL bytes and returns a readable message for malformed URLs.
+- URL-derived fallback filenames decode percent escapes, so encoded names such
+  as `Test%20SwiftDM.zip` are saved as `Test SwiftDM.zip`.
+- Regression coverage includes a raw-space URL through probe and engine, URL
+  encoding edge cases, and Chromium handoff of a Drive ZIP with spaces.
+
 ## 0.18.4 — 2026-10-20
 
 Confirm before fully quitting SwiftDM.

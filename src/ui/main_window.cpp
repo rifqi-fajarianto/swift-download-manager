@@ -611,8 +611,20 @@ void MainWindow::on_new_url() {
 }
 
 void MainWindow::add_download(const QString& url) {
+    const QUrl parsed = QUrl::fromUserInput(url.trimmed());
+    const QString scheme = parsed.scheme().toLower();
+    const bool supported_scheme = scheme == QStringLiteral("http") ||
+                                  scheme == QStringLiteral("https") ||
+                                  scheme == QStringLiteral("ftp") ||
+                                  scheme == QStringLiteral("ftps");
+    if (!parsed.isValid() || !supported_scheme || parsed.host().isEmpty()) {
+        show_error_dialog(url, QString::fromLatin1(swiftdm::kInvalidUrlError));
+        return;
+    }
+    const QString request_url = parsed.toString(QUrl::FullyEncoded);
+
     DownloadTask::Options options;
-    options.url = url;
+    options.url = request_url;
     options.output_dir = QString::fromStdString(settings_.download_dir);
     // New downloads start from the global limiter state; the Options tab can
     // override both the toggle and the value per download.
@@ -620,8 +632,9 @@ void MainWindow::add_download(const QString& url) {
     options.limit_kbps = settings_.bandwidth_limit_kbps;
 
     DownloadItem item;
-    item.url = url;
-    item.file_name = QString::fromStdString(swiftdm::file_name_from_url(url.toStdString()));
+    item.url = request_url;
+    item.file_name = QString::fromStdString(
+        swiftdm::file_name_from_url(request_url.toStdString()));
     item.category =
         QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = options.output_dir;
@@ -638,7 +651,7 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     }
 
     DownloadTask::Options options;
-    options.url = url.toString();
+    options.url = url.toString(QUrl::FullyEncoded);
     options.output_dir = QString::fromStdString(settings_.download_dir);
     options.limit_enabled = settings_.bandwidth_limit_enabled;
     options.limit_kbps = settings_.bandwidth_limit_kbps;

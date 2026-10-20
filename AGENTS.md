@@ -46,21 +46,20 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.4**. Status ini cepat
+> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.5**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit terakhir di `main`**: `c45508d` — dokumentasi lifecycle workspace
   sementara dan pembersihan file parsial.
-- **Branch saat snapshot**: `speed-limit-improvement`.
+- **Branch kerja saat snapshot**: `download-engine`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
-- **Versi kerja**: 0.18.4. Dialog konfirmasi browser 0.18.3 telah diverifikasi
-  manual oleh user; konfirmasi Quit 0.18.4 sedang menunggu verifikasi manual
-  UI di branch `speed-limit-improvement`.
+- **Versi kerja**: 0.18.5. Perbaikan encoding URL untuk nama file dengan spasi
+  telah ditambahkan; verifikasi GUI folder Drive menunggu user.
 - **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi.
 
-### Sudah tersedia sampai 0.18.4
+### Sudah tersedia sampai 0.18.5
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -77,7 +76,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.4 — status branch kerja
+### 0.18.1–0.18.5 — status branch kerja
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -91,6 +90,8 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.1–0.18.2 sudah di-commit pada branch ini (`52f89c6`); 0.18.3 menjaga
   main window tetap tersembunyi saat konfirmasi browser (sudah diverifikasi
   manual user). 0.18.4 meminta konfirmasi sebelum Quit menutup aplikasi.
+- 0.18.5 mempertahankan percent-encoding URL browser/manual hingga libcurl;
+  URL path ber-spasi dan nama fallback dari `%XX` kini ditangani.
 
 ### Rencana / gap yang diketahui
 

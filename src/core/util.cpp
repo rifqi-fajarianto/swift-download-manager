@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -104,6 +105,68 @@ std::string join(const std::vector<std::string>& parts, std::string_view sep) {
     for (size_t i = 0; i < parts.size(); ++i) {
         if (i) out += sep;
         out += parts[i];
+    }
+    return out;
+}
+
+std::string encode_url_for_request(std::string_view url) {
+    constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(url.size());
+
+    size_t component_start = 0;
+    const size_t scheme_end = url.find("://");
+    if (scheme_end != std::string_view::npos) {
+        const size_t authority_end = url.find_first_of("/?#", scheme_end + 3);
+        component_start = authority_end == std::string_view::npos ? url.size() : authority_end;
+    }
+
+    out.append(url.substr(0, component_start));
+    for (size_t i = component_start; i < url.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(url[i]);
+        if (c == '%' && i + 2 < url.size() &&
+            std::isxdigit(static_cast<unsigned char>(url[i + 1])) &&
+            std::isxdigit(static_cast<unsigned char>(url[i + 2]))) {
+            out.append(url.substr(i, 3));
+            i += 2;
+            continue;
+        }
+
+        const bool unsafe = c <= 0x20 || c >= 0x7f || c == '%' || c == '"' || c == '<' ||
+                            c == '>' || c == '`' || c == '{' || c == '|' || c == '}' ||
+                            c == '\\' || c == '^';
+        if (unsafe) {
+            out.push_back('%');
+            out.push_back(kHex[c >> 4]);
+            out.push_back(kHex[c & 0x0f]);
+        } else {
+            out.push_back(static_cast<char>(c));
+        }
+    }
+    return out;
+}
+
+std::string percent_decode(std::string_view text) {
+    const auto hex_value = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '%' && i + 2 < text.size()) {
+            const int high = hex_value(text[i + 1]);
+            const int low = hex_value(text[i + 2]);
+            if (high >= 0 && low >= 0) {
+                out.push_back(static_cast<char>((high << 4) | low));
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(text[i]);
     }
     return out;
 }
@@ -232,7 +295,7 @@ std::string file_name_from_url(std::string_view url) {
     // Strip scheme prefix (e.g. "https:" with no path).
     auto colon = name.find(':');
     if (colon != std::string_view::npos) name = name.substr(colon + 1);
-    return sanitize_filename(name);
+    return sanitize_filename(percent_decode(name));
 }
 
 std::string extension_of(std::string_view filename) {

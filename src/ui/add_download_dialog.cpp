@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace swiftdm::ui {
@@ -23,6 +24,12 @@ AddDownloadDialog::AddDownloadDialog(QWidget* parent) : QDialog(parent) {
     row->addWidget(url_edit_, 1);
     layout->addLayout(row);
 
+    auto* url_hint = new QLabel(
+        tr("Enter an HTTP, HTTPS, FTP or FTPS URL."), this);
+    url_hint->setStyleSheet(QStringLiteral("color: #e0a050"));
+    url_hint->hide();
+    layout->addWidget(url_hint);
+
     auto* buttons = new QHBoxLayout;
     buttons->addStretch(1);
     download_button_ = new QPushButton(tr("Download"), this);
@@ -37,8 +44,18 @@ AddDownloadDialog::AddDownloadDialog(QWidget* parent) : QDialog(parent) {
 
     connect(cancel_button, &QPushButton::clicked, this, &QDialog::reject);
     connect(download_button_, &QPushButton::clicked, this, &QDialog::accept);
-    connect(url_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
-        download_button_->setEnabled(!text.trimmed().isEmpty());
+    connect(url_edit_, &QLineEdit::textChanged, this, [this, url_hint](const QString& text) {
+        const QString value = text.trimmed();
+        const QUrl parsed = QUrl::fromUserInput(value);
+        const QString scheme = parsed.scheme().toLower();
+        const bool supported_scheme = scheme == QStringLiteral("http") ||
+                                      scheme == QStringLiteral("https") ||
+                                      scheme == QStringLiteral("ftp") ||
+                                      scheme == QStringLiteral("ftps");
+        const bool valid = !value.isEmpty() && parsed.isValid() && supported_scheme &&
+                           !parsed.host().isEmpty();
+        download_button_->setEnabled(valid);
+        url_hint->setVisible(!value.isEmpty() && !valid);
     });
     connect(url_edit_, &QLineEdit::returnPressed, this, [this] {
         if (download_button_->isEnabled()) accept();
@@ -48,7 +65,7 @@ AddDownloadDialog::AddDownloadDialog(QWidget* parent) : QDialog(parent) {
 }
 
 QString AddDownloadDialog::url() const {
-    return url_edit_->text().trimmed();
+    return QUrl::fromUserInput(url_edit_->text().trimmed()).toString(QUrl::FullyEncoded);
 }
 
 }  // namespace swiftdm::ui

@@ -3,6 +3,7 @@
 // Minimal HTTP/1.1 test server for CLI/backend integration tests.
 // Routes:
 //   GET/HEAD /file/<size>[?slow=1]  ranges supported, deterministic content
+//   GET/HEAD /space-file/<name>     fixed file; exercises escaped path spaces
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
 //   GET/HEAD /redirect/<size>       302 to /file/<size>
 //   GET/HEAD /forbidden             403 response
@@ -224,6 +225,8 @@ class TestHttpServer {
 
         if (path.rfind("/file/", 0) == 0) {
             serve_file(fd, method, path.substr(6), range, slow);
+        } else if (path.rfind("/space-file/", 0) == 0) {
+            serve_file(fd, method, "65536", range, false);
         } else if (path.rfind("/chunked/", 0) == 0) {
             serve_chunked(fd, method, path.substr(9));
         } else if (path.rfind("/redirect/", 0) == 0) {

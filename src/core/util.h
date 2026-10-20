@@ -31,6 +31,11 @@ std::string to_lower(std::string_view s);
 std::vector<std::string> split(std::string_view s, char delim);
 std::string join(const std::vector<std::string>& parts, std::string_view sep);
 
+// Encode characters that cannot safely appear literally in a request URL,
+// preserving existing percent escapes and URL delimiters.
+std::string encode_url_for_request(std::string_view url);
+std::string percent_decode(std::string_view text);
+
 // Filesystem helpers.
 std::string home_dir();                       // $HOME or empty
 std::string expand_tilde(std::string_view path);

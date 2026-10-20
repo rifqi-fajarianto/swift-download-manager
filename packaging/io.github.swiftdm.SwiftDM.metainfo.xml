@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.5" date="2026-10-20">
+      <description>
+        <p>Fix downloads whose URL paths contain spaces, including Google Drive folder ZIPs.</p>
+      </description>
+    </release>
     <release version="0.18.4" date="2026-10-20">
       <description>
         <p>Quit actions ask for confirmation before closing the application completely.</p>
