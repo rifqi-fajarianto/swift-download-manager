@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.8" date="2026-10-20">
+      <description>
+        <p>The Debian package no longer pulls a browser and printer stack; browser integration remains optional.</p>
+      </description>
+    </release>
     <release version="0.18.7" date="2026-10-20">
       <description>
         <p>SwiftDM starts silently in the system tray when launched at login; the main window is no longer shown at startup.</p>

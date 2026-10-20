@@ -46,14 +46,25 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.18.7_amd64.deb
+sudo apt install ./build/swiftdm_0.18.8_amd64.deb
 ```
 
-`apt` resolves the runtime dependencies (`libqt6*`, `libcurl4t64`,
+`apt` resolves only the runtime dependencies (`libqt6*`, `libcurl4t64`,
 `libsqlite3-0`, `libqt6svg6`, `qt6-svg-plugins`). They are computed from the
 binary by `dpkg-shlibdeps`, so the package stays correct when the build host's
-library versions change. `Recommends: chromium | …` is only a hint for the
-browser integration and does not block installation.
+library versions change. The package declares no browser dependency: browser
+integration is optional, and the extension can be loaded into any
+Chromium-based browser (Chrome, Chromium, Edge, Brave).
+
+Confirm that the generated package has no browser or printer recommendations:
+
+```sh
+dpkg-deb -f build/swiftdm_0.18.8_amd64.deb Depends Recommends Suggests
+```
+
+`Recommends` and `Suggests` should be empty. Use `--no-install-recommends`
+only when you also want to skip recommendations from Qt and other libraries;
+keep desktop platform plugins such as `qt6-wayland` installed.
 
 Remove it again with `sudo apt remove swiftdm` (configuration and download
 history stay in `~/.config/swiftdm` and `~/.local/share/swiftdm`).

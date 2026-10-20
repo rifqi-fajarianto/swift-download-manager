@@ -1,8 +1,10 @@
 # SwiftDM Chromium extension
 
 Initial integration supports Chromium-based browsers (Chrome, Chromium, Edge,
-Brave) using Manifest V3. It adds right-click actions for a link or the current
-page and a popup button for the current page. Automatic HTTP(S) download
+Brave) using Manifest V3. SwiftDM does not depend on a browser package: the
+`.deb` only installs these extension files, and any supported browser can host
+the extension. It adds right-click actions for a link or the current page and a
+popup button for the current page. Automatic HTTP(S) download
 interception is enabled by default and can be switched off from the extension
 popup, which keeps new downloads in the browser while the manual actions still
 work. The toolbar icon is the colored SwiftDM mark while interception is on and

@@ -46,7 +46,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.7**. Status ini cepat
+> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.8**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -54,13 +54,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   sementara dan pembersihan file parsial.
 - **Branch kerja saat snapshot**: `ux`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
-- **Versi kerja**: 0.18.7. Autostart login menjalankan `swiftdm --autostart`
+- **Versi kerja**: 0.18.8. Paket `.deb` tidak lagi mendeklarasikan browser
+  sebagai `Recommends`. Autostart login menjalankan `swiftdm --autostart`
   sehingga aplikasi hanya muncul di system tray; tanpa tray, main window
   ditampilkan sebagai fallback.
 - **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi.
 
-### Sudah tersedia sampai 0.18.7
+### Sudah tersedia sampai 0.18.8
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -77,7 +78,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.7 — status branch kerja
+### 0.18.1–0.18.8 — status branch kerja
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -100,6 +101,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.7 menambahkan `--autostart`: entry login XDG menjalankan flag tersebut
   dan aplikasi start silent di tray. Entry lama di-refresh saat GUI dijalankan
   dengan setting autostart aktif; tanpa system tray, window tetap ditampilkan.
+- 0.18.8 menghapus `Recommends` Chromium dari paket Debian; instalasi tidak
+  lagi menarik Chromium maupun rantai `system-config-printer`/`avahi-utils`.
+  Ekstensi tetap opsional dan kompatibel dengan browser Chromium-based mana
+  pun.
 
 ### Rencana / gap yang diketahui
 

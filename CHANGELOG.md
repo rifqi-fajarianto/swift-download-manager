@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.8 — 2026-10-20
+
+Stop pulling a browser and printer stack when installing the `.deb`.
+
+- Removed the `Recommends` on Chromium from the Debian package. Installing
+  SwiftDM no longer installs Chromium, `chromium-common`, `libminizip1t64`,
+  `libxnvctrl0`, `system-config-printer`, `gir1.2-handy-1`,
+  `gir1.2-packagekitglib-1.0`, or `avahi-utils`.
+- The browser extension remains optional and browser-agnostic: load it from
+  `/usr/share/swiftdm/chromium` in Chrome, Chromium, Edge, Brave, or another
+  Chromium-based browser.
+- Runtime library dependencies (Qt6, libcurl, SQLite) and the explicit SVG
+  plugin dependencies are unchanged.
+
 ## 0.18.7 — 2026-10-20
 
 Start silently when SwiftDM is launched at login.
