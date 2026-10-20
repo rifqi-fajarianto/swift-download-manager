@@ -125,7 +125,9 @@ Layout (from `main-window.png`):
     WebSocket server accepting download requests from browser extensions.
 11. **Tray behavior**: closing the main window hides to tray; tray menu can
     restore the window (per strings "Quit NeatDownloadManager", "You can hide
-    ... in Notification Area...").
+    ... in Notification Area..."). Toolbar and tray-menu `Quit` actions ask
+    for confirmation before fully exiting; active downloads are paused and can
+    be resumed on the next launch, while Cancel keeps the app running (0.18.4).
 12. **About**: version, license tier, support contact, website; update check
     button (we replace this with "no update check").
 

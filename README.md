@@ -19,6 +19,8 @@ behavior is documented in `docs/spec/` first and implemented from that spec.
       Download Now / Cancel)
 - [x] 0.18.1 — speed limiter toggle, presets and active-limit display
 - [x] 0.18.2 — change a download's speed limit while it is running
+- [x] 0.18.3 — keep the main window hidden during browser download confirmation
+- [x] 0.18.4 — confirm before fully quitting the application
 
 ## Versioning
 
@@ -51,7 +53,7 @@ Install as a Debian package (recommended) or with CMake:
 
 ```
 cd build && cpack
-sudo apt install ./swiftdm_0.18.2_amd64.deb
+sudo apt install ./swiftdm_0.18.4_amd64.deb
 
 # or, without a package:
 sudo cmake --install build --prefix /usr/local

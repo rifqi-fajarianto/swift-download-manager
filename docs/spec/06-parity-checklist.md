@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.2.
+Status as of 0.18.4.
 
 ## v1 — core engine + GUI
 
@@ -23,10 +23,11 @@ Status as of 0.18.2.
 | Download complete dialog | Replicated | toggle in settings; independent top-level window (not attached to the main window) |
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |
 | Tray icon + close-to-tray | Replicated | QSystemTrayIcon; hidden when unavailable |
+| Explicit Quit confirmation | Implemented | Toolbar and tray-menu Quit show a confirmation defaulting to Cancel; confirming closes the app, and active downloads are paused for resume on next launch (0.18.4) |
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) |
 | New URL dialog | Replicated | URL field + Download/Cancel; probes first, then one Download Confirmation window (file name + size + Category + Location) before the transfer starts (0.18.0) |
 | Progress window opens when a transfer starts | Replicated | manual adds and browser handoff (both after confirmation), plus toolbar Resume |
-| Download confirmation window | Implemented | shown for manual and browser-sent downloads; Download Now / Add to queue (placeholder) / Cancel; Cancel creates no row and no database entry |
+| Download confirmation window | Implemented | shown for manual and browser-sent downloads; independent of main-window visibility; does not restore a hidden/minimized main window; Download Now / Add to queue (placeholder) / Cancel; Cancel creates no row and no database entry |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
 | Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.18.4 — 2026-10-20
+
+Confirm before fully quitting SwiftDM.
+
+- Toolbar and tray-menu Quit actions now show a confirmation dialog explaining
+  that the app will close completely and active downloads will be paused for a
+  later resume.
+- Cancel leaves the application running; the confirmation defaults to Cancel
+  to prevent accidental exits.
+
+## 0.18.3 — 2026-10-20
+
+Keep the main window hidden while confirming browser-sent downloads.
+
+- Browser handoffs no longer restore or activate the main window before showing
+  the Download Confirmation dialog.
+- The confirmation dialog is a top-level window without the main window as its
+  parent, so it remains visible when the main window is hidden to the tray or
+  minimized.
+
 ## 0.18.2 — 2026-10-20
 
 Speed limits can now be changed while a download is running.

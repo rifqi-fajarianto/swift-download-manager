@@ -46,7 +46,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.2**. Status ini cepat
+> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.4**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -54,13 +54,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   sementara dan pembersihan file parsial.
 - **Branch saat snapshot**: `speed-limit-improvement`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.0.
-- **Versi kerja**: 0.18.2 (limit speed dapat diubah saat download berlangsung).
-  Implementasi dan dokumentasinya sudah di-commit di branch
-  `speed-limit-improvement` (`52f89c6`), **belum di-merge ke `main`**.
+- **Versi kerja**: 0.18.4. Dialog konfirmasi browser 0.18.3 telah diverifikasi
+  manual oleh user; konfirmasi Quit 0.18.4 sedang menunggu verifikasi manual
+  UI di branch `speed-limit-improvement`.
 - **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi.
 
-### Sudah tersedia sampai 0.18.2
+### Sudah tersedia sampai 0.18.4
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -77,7 +77,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.2 — sudah di-commit di branch kerja
+### 0.18.1–0.18.4 — status branch kerja
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -88,6 +88,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Migrasi kompatibel: config/DB lama dengan limit non-nol dianggap "aktif".
 - Test `test_settings` dan `test_history` diperbarui; dokumentasi 0.18.1 sudah
   ditambahkan ke `CHANGELOG.md`, `README.md`, dan `docs/spec/`.
+- 0.18.1–0.18.2 sudah di-commit pada branch ini (`52f89c6`); 0.18.3 menjaga
+  main window tetap tersembunyi saat konfirmasi browser (sudah diverifikasi
+  manual user). 0.18.4 meminta konfirmasi sebelum Quit menutup aplikasi.
 
 ### Rencana / gap yang diketahui
 

@@ -742,16 +742,11 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
                 draft.last_try_epoch = swiftdm::unix_now();
                 draft.state = DownloadItem::State::Queued;
 
-                // A browser handoff can arrive while the app sits in the
-                // notification area; the confirmation must still be visible.
-                if (isHidden()) {
-                    showNormal();
-                    raise();
-                    activateWindow();
-                }
+                // Keep the confirmation independent from the main window: a
+                // browser handoff must not restore a window hidden to the tray.
                 ConfirmDownloadDialog dialog(name, probed_size, options.url,
                                              QString::fromStdString(settings_.download_dir),
-                                             settings_.category_folders, this);
+                                             settings_.category_folders);
                 if (dialog.exec() != QDialog::Accepted) {
                     // Cancel: no list row and no database entry was created.
                     return;
@@ -1330,6 +1325,20 @@ void MainWindow::on_about() {
 }
 
 void MainWindow::on_quit() {
+    // Keep the prompt independent so using Quit from the tray does not restore
+    // the hidden main window just to parent the confirmation dialog.
+    QMessageBox confirmation;
+    confirmation.setIcon(QMessageBox::Question);
+    confirmation.setWindowTitle(tr("Quit SwiftDM"));
+    confirmation.setText(
+        tr("SwiftDM will close completely. Active downloads will be paused and can be "
+           "resumed the next time you start the app. Do you want to quit?"));
+    QPushButton* quit_button = confirmation.addButton(tr("Quit"), QMessageBox::AcceptRole);
+    auto* cancel_button = confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(cancel_button);
+    confirmation.exec();
+    if (confirmation.clickedButton() != quit_button) return;
+
     quitting_ = true;
     QApplication::quit();
 }
