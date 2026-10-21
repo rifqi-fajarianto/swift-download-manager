@@ -13,6 +13,15 @@ a grayscale variant while it is off. The popup shows the app's live status
 current tab: HLS (`.m3u8`) playlists and adaptive video+audio track pairs, each
 downloadable with one click.
 
+The popup layout follows `ext/extension-ui-template.html`, which is kept as the
+design reference only. The shipped popup (`popup.html`) splits that design into
+`popup.css` (styles) and `popup.js` (behavior), because the extension page CSP
+allows only extension scripts, so no inline script may be used. The header
+shows the app version reported by the running app (the extension version when
+the app cannot be reached) and a pill with the connection state; the two
+toggles are switch rows, and the detected media are listed as rows in their own
+group.
+
 ## Install for development
 
 1. Build and start SwiftDM. The app listens on `127.0.0.1:10007` while its GUI

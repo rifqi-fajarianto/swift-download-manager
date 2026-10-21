@@ -233,7 +233,10 @@ async function testSuccessfulHandoff() {
   check(typeof listener === "function", "onCreated listener is registered");
 
   listener(downloadItem());
-  await settle(() => env.calls.cancel.length > 0 && env.calls.erase.length > 0);
+  // Wait for the handoff command itself, not only for the cancel calls: the
+  // WebSocket round trip is asynchronous and can lag behind under load.
+  await settle(() => env.calls.cancel.length > 0 && env.calls.erase.length > 0 &&
+    env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
 
   check(env.calls.cancel[0] === 1, "browser download is canceled");
   check(env.calls.erase[0] === 1, "canceled download is removed from the shelf");

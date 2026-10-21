@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Chromium extension 0.5.1: the popup follows the design in
+  `ext/extension-ui-template.html` (kept as the design reference). The header
+  shows the app mark, the app version reported by the running app and a pill
+  with the connection state; the two settings became switch rows; the
+  "Download this page" button, the detected-media list, the retry button and
+  the collapsible footer note keep their previous behavior. The template is
+  not shipped: the styles live in `popup.css` and the behavior in `popup.js`,
+  as the extension page CSP allows only extension scripts. The popup follows
+  the light and dark color schemes of the browser.
+
 ## 0.18.8 — 2026-10-20
 
 Stop pulling a browser and printer stack when installing the `.deb`.

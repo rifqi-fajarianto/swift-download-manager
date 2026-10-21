@@ -7,27 +7,52 @@
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
-    <main>
-      <h1>SwiftDM</h1>
-      <p id="status" role="status">Checking connection…</p>
-      <p id="app-status" class="hint" hidden></p>
-      <button id="retry" type="button" class="secondary" hidden>Retry connection</button>
-      <label class="toggle">
-        <input id="auto-intercept" type="checkbox" checked>
-        <span>Automatically use SwiftDM for downloads</span>
-      </label>
-      <label class="toggle">
-        <input id="cookies" type="checkbox">
-        <span>Send browser cookies (signed-in downloads)</span>
-      </label>
-      <button id="download" type="button" disabled>Download this page</button>
-      <section id="media" hidden>
-        <h2>Detected media</h2>
-        <div id="media-list"></div>
-        <p class="hint">HLS playlists are downloaded as one file. Video and audio tracks are sent as a pair; muxing into a single MKV is planned for a later release.</p>
-      </section>
-      <p class="hint">Turn off automatic handoff for one-off downloads that should stay in the browser; right-click actions and this popup still send links and pages to SwiftDM. Private or signed-in files (for example a Google Drive share) need <strong>Send browser cookies</strong> so the browser session travels with the request.</p>
-    </main>
+    <div class="popup">
+      <header>
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+        </div>
+        <div class="title">
+          <b>SwiftDM</b>
+          <span id="app-version">v…</span>
+        </div>
+        <div class="pill busy" id="connection" role="status"><i></i><span id="connection-label">Checking…</span></div>
+      </header>
+
+      <main>
+        <p class="status" id="status" role="status">Checking connection…</p>
+
+        <div class="group">
+          <button class="row" id="auto-intercept" type="button" role="switch" aria-checked="true">
+            <span class="txt"><b>Auto-capture downloads</b><small>Hand off browser downloads to SwiftDM</small></span>
+            <span class="sw" aria-hidden="true"></span>
+          </button>
+          <button class="row" id="cookies" type="button" role="switch" aria-checked="false">
+            <span class="txt"><b>Send browser cookies</b><small>Needed for signed-in downloads</small></span>
+            <span class="sw" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="group" id="media" hidden>
+          <p class="group-label">Detected media</p>
+          <div id="media-list"></div>
+        </div>
+
+        <button class="cta" id="download" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+          Download this page
+        </button>
+
+        <button class="retry" id="retry" type="button" hidden>Retry connection</button>
+
+        <p class="status" id="app-status" hidden></p>
+
+        <details class="foot">
+          <summary>When should I turn these off?</summary>
+          <p>Turn off <b>Auto-capture</b> for one-off downloads that should stay in the browser; right-click actions and this popup still send links and pages to SwiftDM. Private or signed-in files (e.g. a Google Drive share) need <b>Send browser cookies</b> so the session travels with the request. Detected HLS playlists and video/audio pairs are sent as ordinary URLs; the app downloads the playlist segments itself.</p>
+        </details>
+      </main>
+    </div>
     <script src="cookie-permission.js"></script>
     <script src="action-icon.js"></script>
     <script src="popup.js"></script>

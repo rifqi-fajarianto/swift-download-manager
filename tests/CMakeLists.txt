@@ -33,6 +33,8 @@ find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_test(NAME extension_logic
         COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_logic.js")
+    add_test(NAME extension_popup
+        COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_popup.js")
 endif()
 
 if(SWIFTSDM_BUILD_UI)

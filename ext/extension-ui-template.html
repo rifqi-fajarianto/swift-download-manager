@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!-- Design reference for the Chromium popup (ext/chromium/popup.html).
+     The live popup keeps this layout but splits the styles into popup.css and
+     the behavior into popup.js, because the extension page CSP only allows
+     scripts from the extension itself. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SwiftDM Popup</title>
+<style>
+:root{
+  --bg:#12151c;--card:#1a1f2a;--card2:#222937;--line:#2b3343;
+  --text:#e8ecf4;--muted:#8d97ab;--accent:#3b82f6;--accent2:#22d3ee;
+  --ok:#34d399;--off:#3a4256;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f3f5f9;--card:#fff;--card2:#eef1f6;--line:#dde2ec;--text:#161b26;--muted:#667085;--off:#c3cad8}
+}
+*{box-sizing:border-box;margin:0}
+body{background:#0b0d12;display:flex;justify-content:center;padding:24px 0;font:13px/1.45 system-ui,"Segoe UI",Ubuntu,sans-serif}
+.popup{width:340px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center}
+.logo svg{width:18px;height:18px}
+.title{flex:1}
+.title b{display:block;font-size:15px;letter-spacing:.2px}
+.title span{font-size:11px;color:var(--muted)}
+.pill{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 9px;border-radius:99px;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.pill i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:p 2s infinite}
+@keyframes p{70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+main{padding:14px 16px;display:grid;gap:12px}
+.group{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.row{display:flex;align-items:center;gap:12px;padding:12px;width:100%;background:none;border:0;color:inherit;text-align:left;font:inherit;cursor:pointer}
+.row+.row{border-top:1px solid var(--line)}
+.row:focus-visible,.cta:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.row .txt{flex:1}
+.row .txt b{display:block;font-weight:600}
+.row .txt small{color:var(--muted);font-size:11px;display:block;margin-top:1px}
+.sw{width:36px;height:20px;border-radius:20px;background:var(--off);position:relative;flex:none;transition:background .18s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .18s}
+.row[aria-checked=true] .sw{background:var(--accent)}
+.row[aria-checked=true] .sw::after{transform:translateX(16px)}
+.cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;border:0;border-radius:10px;font:600 13px inherit;font-family:inherit;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--accent),#2563eb);transition:filter .15s,transform .05s}
+.cta:hover{filter:brightness(1.1)}.cta:active{transform:scale(.99)}
+.cta svg{width:16px;height:16px}
+.foot{font-size:11px;color:var(--muted);line-height:1.5;padding:0 2px}
+.foot b{color:var(--text)}
+.foot summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:2px 0;user-select:none}
+.foot summary::-webkit-details-marker{display:none}
+.foot summary::before{content:"›";display:inline-block;transition:transform .15s;font-size:14px}
+.foot[open] summary::before{transform:rotate(90deg)}
+.foot summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.foot p{margin-top:6px;padding:10px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+</style>
+</head>
+<body>
+<div class="popup">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+    </div>
+    <div class="title"><b>SwiftDM</b><span>v0.18.8</span></div>
+    <div class="pill"><i></i>Connected</div>
+  </header>
+
+  <main>
+
+    <div class="group">
+      <button class="row" role="switch" aria-checked="true">
+        <div class="txt"><b>Auto-capture downloads</b><small>Hand off browser downloads to SwiftDM</small></div>
+        <span class="sw"></span>
+      </button>
+      <button class="row" role="switch" aria-checked="true">
+        <div class="txt"><b>Send browser cookies</b><small>Needed for signed-in downloads</small></div>
+        <span class="sw"></span>
+      </button>
+    </div>
+
+    <button class="cta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+      Download this page
+    </button>
+
+    <details class="foot">
+      <summary>When should I turn these off?</summary>
+      <p>Turn off <b>Auto-capture</b> for one-off downloads that should stay in the browser; right-click actions and this popup still send links and pages to SwiftDM. Private or signed-in files (e.g. a Google Drive share) need <b>Send browser cookies</b> so the session travels with the request.</p>
+    </details>
+  </main>
+</div>
+<script>
+document.querySelectorAll('.row').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.setAttribute('aria-checked', b.getAttribute('aria-checked')==='true' ? 'false' : 'true');
+  });
+});
+</script>
+</body>
+</html>

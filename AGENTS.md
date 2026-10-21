@@ -57,8 +57,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   sebagai `Recommends`. Autostart login menjalankan `swiftdm --autostart`
   sehingga aplikasi hanya muncul di system tray; tanpa tray, main window
   ditampilkan sebagai fallback.
-- **Versi ekstensi Chromium**: 0.5.0 (`ext/chromium/manifest.json`), terpisah
-  dari versi aplikasi.
+- **Versi ekstensi Chromium**: 0.5.1 (`ext/chromium/manifest.json`), terpisah
+  dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
+  (referensi desain, tidak ikut dipaketkan).
 
 ### Sudah tersedia sampai 0.18.8
 

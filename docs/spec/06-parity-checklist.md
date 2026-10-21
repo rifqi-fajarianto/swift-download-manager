@@ -56,7 +56,7 @@ Status as of 0.18.5.
 | Feature | Status |
 |---|---|
 | WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (status, auto-intercept switch, browser cookies), explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
 | Firefox extension | Planned |
