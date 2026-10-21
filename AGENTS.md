@@ -46,22 +46,24 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-20**, versi kerja **0.18.8**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.9**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
-- **Branch kerja saat snapshot**: `main`.
+- **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.8. Paket `.deb` tidak lagi mendeklarasikan browser
-  sebagai `Recommends`. Autostart login menjalankan `swiftdm --autostart`
-  sehingga aplikasi hanya muncul di system tray; tanpa tray, main window
-  ditampilkan sebagai fallback.
+- **Versi kerja**: 0.18.9. Dialog konfirmasi download memakai ukuran tetap
+  (default 640×220, minimum 520×210), nama file di-elide di tengah dengan
+  nama penuh di tooltip, dan ukuran file tampil pada baris `Size` sendiri.
+  Paket `.deb` tidak lagi mendeklarasikan browser sebagai `Recommends`.
+  Autostart login menjalankan `swiftdm --autostart` sehingga aplikasi hanya
+  muncul di system tray; tanpa tray, main window ditampilkan sebagai fallback.
 - **Versi ekstensi Chromium**: 0.5.1 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.8
+### Sudah tersedia sampai 0.18.9
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -78,7 +80,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.8 — riwayat fitur
+### 0.18.1–0.18.9 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -105,6 +107,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   lagi menarik Chromium maupun rantai `system-config-printer`/`avahi-utils`.
   Ekstensi tetap opsional dan kompatibel dengan browser Chromium-based mana
   pun. Seluruh 0.18.1–0.18.8 sudah masuk `main` lewat merge `dd6b179`.
+- 0.18.9 memperbaiki ukuran dialog konfirmasi download: ukuran tetap (default
+  640×220, minimum 520×210) sehingga tidak lagi melebar mengikuti nama file
+  atau URL, nama file di-elide di tengah dengan nama penuh di tooltip, dan
+  ukuran file dipindah ke baris `Size` sendiri. Test headless baru
+  `confirm_dialog` menjaga perilaku ini.
 
 ### Rencana / gap yang diketahui
 

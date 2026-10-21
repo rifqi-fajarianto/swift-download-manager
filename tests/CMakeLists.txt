@@ -59,6 +59,18 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME icons COMMAND test_icons)
     set_tests_properties(icons PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless (offscreen) check of the confirmation dialog geometry; the
+    # dialog is never shown.
+    add_executable(test_confirm_dialog
+        test_confirm_dialog.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
+    )
+    target_include_directories(test_confirm_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_confirm_dialog PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_confirm_dialog PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME confirm_dialog COMMAND test_confirm_dialog)
+    set_tests_properties(confirm_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(test_browser_protocol
         test_browser_protocol.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/browser_integration.cpp"

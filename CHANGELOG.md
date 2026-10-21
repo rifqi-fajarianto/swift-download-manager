@@ -15,6 +15,18 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.9 — 2026-10-21
+
+Keep the download confirmation window at a fixed size.
+
+- The confirmation window now has a default size (640×220) and a minimum size
+  (520×210). It no longer grows with the file name or the URL length, so it
+  cannot end up wider than the screen.
+- The file name is elided in the middle and keeps the full name in its
+  tooltip.
+- The file size moved to its own `Size` row instead of being shown inline
+  with the file name.
+
 ## 0.18.8 — 2026-10-20
 
 Stop pulling a browser and printer stack when installing the `.deb`.

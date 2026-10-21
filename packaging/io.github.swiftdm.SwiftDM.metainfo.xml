@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.9" date="2026-10-21">
+      <description>
+        <p>The download confirmation window keeps a fixed size and shows the file size on its own row.</p>
+      </description>
+    </release>
     <release version="0.18.8" date="2026-10-20">
       <description>
         <p>The Debian package no longer pulls a browser and printer stack; browser integration remains optional.</p>
