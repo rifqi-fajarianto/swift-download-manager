@@ -110,7 +110,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.9 memperbaiki ukuran dialog konfirmasi download: ukuran tetap (default
   640×220, minimum 520×210) sehingga tidak lagi melebar mengikuti nama file
   atau URL, nama file di-elide di tengah dengan nama penuh di tooltip, dan
-  ukuran file dipindah ke baris `Size` sendiri. Test headless baru
+  ukuran file dipindah ke baris `Size` sendiri. Label deskripsi (`File :`,
+  `Size :`, `URL :`, `Category :`, `Location :`) di-center vertikal terhadap
+  widget di sebelahnya supaya semua baris sejajar. Test headless baru
   `confirm_dialog` menjaga perilaku ini.
 
 ### Rencana / gap yang diketahui

@@ -49,7 +49,11 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     grid->setVerticalSpacing(8);
 
     const auto add_label = [this, grid](int row, const QString& text) {
-        grid->addWidget(new QLabel(text, this), row, 0, Qt::AlignLeft | Qt::AlignTop);
+        // The description is centered in its row: the value widgets next to it
+        // are taller and draw their text in the middle, so both must share
+        // the same vertical center.
+        grid->addWidget(new QLabel(text, this), row, 0,
+                        Qt::AlignLeft | Qt::AlignVCenter);
     };
 
     // File: the server-resolved name. It is elided in the middle so a long
@@ -63,6 +67,7 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     // how much room it gets, the elided text fits into it.
     file_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     file_label_->setMinimumWidth(0);
+    file_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     // No alignment: the label fills the grid cell, so its width always
     // matches the space the layout gave it.
     grid->addWidget(file_label_, 0, 1);
@@ -74,6 +79,7 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
                  : tr("Unknown size");
     size_label_ = new QLabel(size_text, this);
     size_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    size_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     grid->addWidget(size_label_, 1, 1);
 
     // URL: full value in a read-only field (selectable and scrollable).

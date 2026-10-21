@@ -3,11 +3,14 @@
 // shown, so this stays within the CLI/backend-only test policy (AGENTS.md §6).
 
 #include <QApplication>
+#include <QComboBox>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
 #include <QStringList>
 
+#include <cmath>
 #include <cstdio>
 
 #include "core/util.h"
@@ -28,6 +31,45 @@ QStringList label_texts(const QWidget* widget) {
     QStringList texts;
     for (const QLabel* label : widget->findChildren<QLabel*>()) texts << label->text();
     return texts;
+}
+
+const QLabel* label_with_text(const QWidget* root, const QString& text) {
+    for (const QLabel* label : root->findChildren<QLabel*>()) {
+        if (label->text() == text) return label;
+    }
+    return nullptr;
+}
+
+// Vertical center of a widget, in the coordinates of the dialog. Widgets
+// inside a container (the location field) are mapped as well.
+double center_y(const QWidget* widget, const QWidget* root) {
+    const QPoint top = widget->mapTo(root, QPoint(0, 0));
+    return top.y() + widget->height() / 2.0;
+}
+
+// The dialog is never shown, so the nested layouts (the location row) are
+// activated by hand: without them the child widgets keep their default
+// geometry and the row measurements are meaningless.
+void activate_layouts(QWidget* widget) {
+    QLayout* layout = widget->layout();
+    if (!layout) return;
+    layout->activate();
+    for (int i = 0; i < layout->count(); ++i) {
+        QLayoutItem* item = layout->itemAt(i);
+        if (!item) continue;
+        if (QWidget* child = item->widget()) {
+            activate_layouts(child);
+            continue;
+        }
+        QLayout* nested = item->layout();
+        if (!nested) continue;
+        nested->activate();
+        for (int j = 0; j < nested->count(); ++j) {
+            QLayoutItem* nested_item = nested->itemAt(j);
+            if (!nested_item) continue;
+            if (QWidget* child = nested_item->widget()) activate_layouts(child);
+        }
+    }
 }
 
 }  // namespace
@@ -101,12 +143,49 @@ int main(int argc, char** argv) {
     }
     check(file_label != nullptr, "the dialog has a file name label");
     if (file_label) {
-        dialog.layout()->activate();
+        activate_layouts(&dialog);
         const QFontMetrics metrics(file_label->font());
         check(metrics.horizontalAdvance(file_label->text()) <= file_label->width() + 1,
               "the shown file name fits into the label width");
         check(file_label->width() <= dialog.width(),
               "the file name label stays inside the window");
+    }
+
+    // Every description shares the vertical center of the widget next to it.
+    const QLabel* size_label = label_with_text(&dialog, size_text);
+    const QComboBox* category_box = dialog.findChild<QComboBox*>();
+    const QLineEdit* url_edit = nullptr;
+    const QLineEdit* location_edit = nullptr;
+    for (const QLineEdit* edit : dialog.findChildren<QLineEdit*>()) {
+        if (edit->isReadOnly()) {
+            url_edit = edit;
+        } else {
+            location_edit = edit;
+        }
+    }
+    struct Row {
+        const char* name;
+        const QWidget* description;
+        const QWidget* value;
+    };
+    const Row rows[] = {
+        {"File", label_with_text(&dialog, "File :"), file_label},
+        {"Size", label_with_text(&dialog, "Size :"), size_label},
+        {"URL", label_with_text(&dialog, "URL :"), url_edit},
+        {"Category", label_with_text(&dialog, "Category :"), category_box},
+        {"Location", label_with_text(&dialog, "Location :"), location_edit},
+    };
+    for (const Row& row : rows) {
+        check(row.description != nullptr && row.value != nullptr,
+              "the dialog has a description and a value for every row");
+        if (!row.description || !row.value) continue;
+        const double description_center = center_y(row.description, &dialog);
+        const double value_center = center_y(row.value, &dialog);
+        if (std::abs(description_center - value_center) > 1.0) {
+            std::fprintf(stderr, "FAIL: the %s row is not aligned (%.1f vs %.1f)\n",
+                         row.name, description_center, value_center);
+            ++failures;
+        }
     }
 
     if (failures == 0) std::printf("confirm_dialog: all checks passed\n");

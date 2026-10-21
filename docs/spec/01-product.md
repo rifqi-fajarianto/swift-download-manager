@@ -52,7 +52,8 @@ Layout (from `main-window.png`):
      the middle and keeps the full name in its tooltip.
    - Rows: `File` (name), `Size` (content length, `Unknown size` when the
      server reports none), `URL` (read-only field), `Category` and `Location`
-     (0.18.9: the size is no longer inline with the file name).
+     (0.18.9: the size is no longer inline with the file name). Every
+     description is vertically centered with the widget next to it (0.18.9).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
    - Fixed default size (560×420, minimum 420×300): the window never grows with

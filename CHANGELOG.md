@@ -26,6 +26,9 @@ Keep the download confirmation window at a fixed size.
   tooltip.
 - The file size moved to its own `Size` row instead of being shown inline
   with the file name.
+- Every description (`File :`, `Size :`, `URL :`, `Category :`, `Location :`)
+  is now vertically centered with the widget next to it, so the rows line up
+  regardless of the field height.
 
 ## 0.18.8 — 2026-10-20
 
