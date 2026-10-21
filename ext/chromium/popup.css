@@ -58,16 +58,9 @@ header {
 .logo {
   width: 32px;
   height: 32px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
   display: grid;
   place-items: center;
   flex: none;
-}
-
-.logo svg {
-  width: 18px;
-  height: 18px;
 }
 
 .title {
