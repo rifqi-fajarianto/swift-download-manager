@@ -34,6 +34,24 @@ Store the new settings sections and keys.
 - The settings store tests cover the new keys, the section fallback and the
   validation of the interface values.
 
+## 0.18.13 — 2026-10-21
+
+Add the app behavior options to the General tab.
+
+- The `General` tab has three new options: "Show System Tray Icon",
+  "Minimize to Tray When Closing the Window" and "Open the Download Folder When
+  a Download Completes".
+- The tray icon can be switched off; the icon disappears right away and the
+  app is closed with the main window instead of hiding into the tray. Without a
+  tray icon the app also starts with the main window visible, even when it was
+  started at login.
+- With "Minimize to Tray" switched off, closing the main window ends the app.
+  The same confirmation as the Quit action is asked first, and cancelling
+  keeps the window open.
+- "Open the Download Folder" opens the folder of a finished download as soon
+  as the transfer is done.
+- The settings dialog test now covers the three new options.
+
 ## 0.18.12 — 2026-10-21
 
 Add the Interface tab with the appearance options.

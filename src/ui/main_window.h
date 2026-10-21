@@ -65,6 +65,8 @@ class MainWindow : public QMainWindow {
     void apply_interface_settings();
     void apply_toolbar_settings();
     void apply_tray_settings();
+    // Creates or removes the tray icon after the setting changed.
+    void apply_tray_visibility();
     // Re-tints the toolbar icons; the neutral tint depends on the theme.
     void refresh_action_icons();
     void add_download(const QString& url);
@@ -78,6 +80,11 @@ class MainWindow : public QMainWindow {
     void on_task_finished(DownloadTask* task, int status, const QString& path,
                           const QString& error);
     void show_completion_dialog(const QString& name, const QString& path);
+    // Opens the folder of a finished download (General tab setting).
+    void open_download_folder(const QString& path);
+    // Asks the user whether the app really closes; shared by the Quit action
+    // and the close event.
+    bool confirm_quit();
     void show_error_dialog(const QString& url, const QString& error,
                            const QString& page_url = QString());
     // Restores the download list from the SQLite history at startup.

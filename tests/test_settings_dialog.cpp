@@ -81,6 +81,9 @@ int main(int argc, char** argv) {
     settings.show_toolbar_text = false;
     settings.theme = "light";
     settings.tray_icon_style = "simple";
+    settings.show_tray_icon = false;
+    settings.close_to_tray = false;
+    settings.open_folder_after_completion = true;
 
     swiftdm::ui::SettingsDialog dialog(settings);
 
@@ -96,17 +99,31 @@ int main(int argc, char** argv) {
         check(tabs->tabText(i) == expected[i], "the tabs keep the expected order");
     }
 
-    // General tab: the completion dialog and the autostart options.
+    // General tab: the completion dialog and the app behavior options.
     const QCheckBox* completion =
         check_box_with_text(&dialog, QStringLiteral("Show Download Completion Dialog"));
     const QCheckBox* autostart =
         check_box_with_text(&dialog, QStringLiteral("Start Application on System Startup"));
+    const QCheckBox* tray_icon =
+        check_box_with_text(&dialog, QStringLiteral("Show System Tray Icon"));
+    const QCheckBox* close_to_tray = check_box_with_text(
+        &dialog, QStringLiteral("Minimize to Tray When Closing the Window"));
+    const QCheckBox* open_folder = check_box_with_text(
+        &dialog, QStringLiteral("Open the Download Folder When a Download Completes"));
     check(completion != nullptr && autostart != nullptr,
           "the general tab has the completion dialog and autostart options");
+    check(tray_icon != nullptr && close_to_tray != nullptr && open_folder != nullptr,
+          "the general tab has the tray, close and folder options");
     check(tab_index_of(tabs, completion) == 0, "the completion dialog sits on the general tab");
     check(tab_index_of(tabs, autostart) == 0, "the autostart option sits on the general tab");
+    check(tab_index_of(tabs, tray_icon) == 0, "the tray option sits on the general tab");
+    check(tab_index_of(tabs, close_to_tray) == 0, "the close option sits on the general tab");
+    check(tab_index_of(tabs, open_folder) == 0, "the folder option sits on the general tab");
     if (completion) check(!completion->isChecked(), "the completion dialog value is loaded");
     if (autostart) check(autostart->isChecked(), "the autostart value is loaded");
+    if (tray_icon) check(!tray_icon->isChecked(), "the tray icon value is loaded");
+    if (close_to_tray) check(!close_to_tray->isChecked(), "the close to tray value is loaded");
+    if (open_folder) check(open_folder->isChecked(), "the open folder value is loaded");
 
     // Download tab: connections, user agent and the directories.
     const QSpinBox* max_connections = spin_box_with_maximum(&dialog, 64);

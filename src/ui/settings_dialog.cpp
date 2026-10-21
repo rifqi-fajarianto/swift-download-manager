@@ -86,8 +86,15 @@ QWidget* SettingsDialog::build_general_tab() {
 
     completion_dialog_ = new QCheckBox(tr("Show Download Completion Dialog"), page);
     autostart_ = new QCheckBox(tr("Start Application on System Startup"), page);
+    show_tray_icon_ = new QCheckBox(tr("Show System Tray Icon"), page);
+    close_to_tray_ = new QCheckBox(tr("Minimize to Tray When Closing the Window"), page);
+    open_folder_after_completion_ =
+        new QCheckBox(tr("Open the Download Folder When a Download Completes"), page);
     layout->addWidget(completion_dialog_);
     layout->addWidget(autostart_);
+    layout->addWidget(show_tray_icon_);
+    layout->addWidget(close_to_tray_);
+    layout->addWidget(open_folder_after_completion_);
     layout->addStretch(1);
     return page;
 }
@@ -266,6 +273,9 @@ void SettingsDialog::update_proxy_enabled() {
 void SettingsDialog::load_from_settings() {
     completion_dialog_->setChecked(settings_.completion_dialog);
     autostart_->setChecked(settings_.autostart);
+    show_tray_icon_->setChecked(settings_.show_tray_icon);
+    close_to_tray_->setChecked(settings_.close_to_tray);
+    open_folder_after_completion_->setChecked(settings_.open_folder_after_completion);
 
     toolbar_size_->setCurrentIndex(settings_.toolbar_size == "small" ? 1 : 0);
     show_toolbar_text_->setChecked(settings_.show_toolbar_text);
@@ -311,6 +321,10 @@ void SettingsDialog::load_from_settings() {
 void SettingsDialog::store_to_settings() {
     settings_.completion_dialog = completion_dialog_->isChecked();
     settings_.autostart = autostart_->isChecked();
+    settings_.show_tray_icon = show_tray_icon_->isChecked();
+    settings_.close_to_tray = close_to_tray_->isChecked();
+    settings_.open_folder_after_completion =
+        open_folder_after_completion_->isChecked();
 
     settings_.toolbar_size = toolbar_size_->currentIndex() == 1 ? "small" : "normal";
     settings_.show_toolbar_text = show_toolbar_text_->isChecked();

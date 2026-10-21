@@ -118,8 +118,10 @@ Layout (from `main-window.png`):
    integration (v1.1 / v2).
 9. **Settings** (`options-window.png`), tabs:
    - *General*: app-wide behavior options — Show Download Completion Dialog;
-     Start Application on System Startup (0.18.10 split the tabs: the download
-     options moved to the `Download` tab).
+     Start Application on System Startup; Show System Tray Icon; Minimize to
+     Tray When Closing the Window; Open the Download Folder When a Download
+     Completes (0.18.10 split the tabs: the download options moved to the
+     `Download` tab).
    - *Interface*: appearance options — toolbar size, toolbar text, theme,
      tray icon style (added in the 0.18.x settings batch; see the parity
      checklist for the current status).

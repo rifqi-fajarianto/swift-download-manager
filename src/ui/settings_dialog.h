@@ -42,6 +42,9 @@ class SettingsDialog : public QDialog {
     // General tab
     QCheckBox* completion_dialog_ = nullptr;
     QCheckBox* autostart_ = nullptr;
+    QCheckBox* show_tray_icon_ = nullptr;
+    QCheckBox* close_to_tray_ = nullptr;
+    QCheckBox* open_folder_after_completion_ = nullptr;
 
     // Interface tab
     QComboBox* toolbar_size_ = nullptr;

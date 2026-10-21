@@ -611,6 +611,8 @@ void MainWindow::build_body() {
 }
 
 void MainWindow::build_tray() {
+    if (tray_) return;
+    if (!settings_.show_tray_icon) return;
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
 
     tray_ = new QSystemTrayIcon(this);
@@ -639,8 +641,21 @@ void MainWindow::build_tray() {
     tray_->show();
 }
 
+// The tray icon can be switched on and off while the app runs.
+void MainWindow::apply_tray_visibility() {
+    if (settings_.show_tray_icon) {
+        build_tray();
+        return;
+    }
+    if (!tray_) return;
+    tray_->hide();
+    tray_->deleteLater();
+    tray_ = nullptr;
+    tray_note_shown_ = false;
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
-    if (!quitting_ && tray_) {
+    if (!quitting_ && tray_ && settings_.close_to_tray) {
         event->ignore();
         hide();
         if (!tray_note_shown_) {
@@ -652,10 +667,35 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         }
         return;
     }
+    // Without a tray to hide into, closing the window ends the app. The same
+    // confirmation as the Quit action is asked first.
+    if (!quitting_ && !confirm_quit()) {
+        event->ignore();
+        show();
+        return;
+    }
     event->accept();
+    quitting_ = true;
     // quitOnLastWindowClosed is disabled for the tray application, so close the
     // process explicitly when there is no tray icon to hide into.
     QApplication::quit();
+}
+
+// Asks whether the app really closes. The prompt is independent of the main
+// window, so using Quit from the tray does not restore a hidden main window
+// just to parent the dialog.
+bool MainWindow::confirm_quit() {
+    QMessageBox confirmation;
+    confirmation.setIcon(QMessageBox::Question);
+    confirmation.setWindowTitle(tr("Quit SwiftDM"));
+    confirmation.setText(
+        tr("SwiftDM will close completely. Active downloads will be paused and can be "
+           "resumed the next time you start the app. Do you want to quit?"));
+    QPushButton* quit_button = confirmation.addButton(tr("Quit"), QMessageBox::AcceptRole);
+    auto* cancel_button = confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(cancel_button);
+    confirmation.exec();
+    return confirmation.clickedButton() == quit_button;
 }
 
 void MainWindow::on_new_url() {
@@ -956,6 +996,9 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
             if (settings_.completion_dialog && item) {
                 show_completion_dialog(item->file_name, path);
             }
+            if (settings_.open_folder_after_completion && !path.isEmpty()) {
+                open_download_folder(path);
+            }
         } else if (status == static_cast<int>(DownloadTask::Status::Failed) && item) {
             show_error_dialog(item->url, error, item->page_url);
         }
@@ -969,8 +1012,20 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
     update_status_bar();
 }
 
-void MainWindow::show_completion_dialog(const QString& name, const QString& path) {
-    // Independent top-level window: no parent/transient hint, so the window
+// Opens the folder that holds the downloaded file; used by the "open the
+// download folder when a download completes" setting.
+void MainWindow::open_download_folder(const QString& path) {
+    const QFileInfo file(path);
+    const QString dir = file.absolutePath();
+    if (!QFileInfo(dir).isDir()) {
+        qWarning() << "completion: the download folder is gone" << dir;
+        return;
+    }
+    qInfo() << "completion: opening folder" << dir;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+}
+
+void MainWindow::show_completion_dialog(const QString& name, const QString& path) {    // Independent top-level window: no parent/transient hint, so the window
     // manager cannot group it with the main window when it is moved. Non-modal,
     // so the main window stays usable while the notification is on screen.
     auto* box = new QMessageBox(nullptr);
@@ -1330,6 +1385,7 @@ void MainWindow::on_settings() {
     if (dialog.exec() != QDialog::Accepted) return;
     // The appearance settings take effect right away; no restart needed.
     apply_interface_settings();
+    apply_tray_visibility();
 }
 
 void MainWindow::on_browsers() {
@@ -1373,20 +1429,7 @@ void MainWindow::on_about() {
 }
 
 void MainWindow::on_quit() {
-    // Keep the prompt independent so using Quit from the tray does not restore
-    // the hidden main window just to parent the confirmation dialog.
-    QMessageBox confirmation;
-    confirmation.setIcon(QMessageBox::Question);
-    confirmation.setWindowTitle(tr("Quit SwiftDM"));
-    confirmation.setText(
-        tr("SwiftDM will close completely. Active downloads will be paused and can be "
-           "resumed the next time you start the app. Do you want to quit?"));
-    QPushButton* quit_button = confirmation.addButton(tr("Quit"), QMessageBox::AcceptRole);
-    auto* cancel_button = confirmation.addButton(QMessageBox::Cancel);
-    confirmation.setDefaultButton(cancel_button);
-    confirmation.exec();
-    if (confirmation.clickedButton() != quit_button) return;
-
+    if (!confirm_quit()) return;
     quitting_ = true;
     QApplication::quit();
 }
