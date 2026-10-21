@@ -46,14 +46,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.13**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.14**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.13. Tab `General` offers Show System Tray Icon,
+- **Versi kerja**: 0.18.14. Tombol Quit di toolbar memakai glyph power dari
+  `ui-assets/quit.svg` (gaya ikon tabler); glyph logout buatan sendiri dihapus.
+  Tab `General` offers Show System Tray Icon,
   Minimize to Tray When Closing the Window and Open the Download Folder When a
   Download Completes; the tray icon can be switched off while the app runs, and
   closing the main window then ends the app (with a confirmation).
@@ -81,7 +83,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.13
+### Sudah tersedia sampai 0.18.14
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -98,7 +100,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.13 — riwayat fitur
+### 0.18.1–0.18.14 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -159,6 +161,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   (ikon tray bisa dimatikan saat aplikasi berjalan), "Minimize to Tray When
   Closing the Window" (jika dimatikan, menutup main window mengakhiri aplikasi
   dengan konfirmasi), dan "Open the Download Folder When a Download Completes".
+- 0.18.14 mengganti ikon Quit di toolbar dengan glyph power dari
+  `ui-assets/quit.svg`; glyph logout buatan sendiri di `src/ui/icons/quit.svg`
+  dihapus. Perilaku tombol tidak berubah.
 
 ### Rencana / gap yang diketahui
 

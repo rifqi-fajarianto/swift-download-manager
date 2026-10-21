@@ -15,6 +15,15 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.14 — 2026-10-21
+
+Use the power glyph for the toolbar Quit button.
+
+- The Quit button in the main window toolbar now uses the power glyph from
+  `ui-assets/quit.svg`, so it matches the style of the other toolbar icons.
+- The hand-drawn logout arrow that was used before was removed; the Quit
+  action itself is unchanged.
+
 ## 0.18.11 — 2026-10-21
 
 Store the new settings sections and keys.
