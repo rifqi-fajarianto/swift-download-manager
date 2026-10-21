@@ -19,7 +19,14 @@ struct ProxySettings {
 // Application settings. Key names follow the original registry values
 // (evidence ledger E8) so the mapping stays traceable.
 struct Settings {
-    // [general]
+    // [general] — app-wide behavior.
+    bool completion_dialog = true;  // CompletionDialog
+    bool autostart = false;         // AppAutoStart
+    bool show_tray_icon = true;     // ShowTrayIcon
+    bool close_to_tray = true;      // CloseToTray
+    bool open_folder_after_completion = false;  // OpenFolderAfterCompletion
+
+    // [download] — download defaults.
     int max_connections = 8;        // MaxConnections, default 8 ("8 recommended")
     int connections_at_once = 0;    // ConnectionsAtOnce: 0 = all at once, 1 = one by one
     // BandWidthLimit + BandWidthLimitEnabled: the toggle decides whether the
@@ -34,8 +41,13 @@ struct Settings {
     bool category_folders = true;   // CategoryFolders
     std::string temp_dir;           // TempDirectory
     bool server_creation_date = false;  // ServerCreationDate
-    bool completion_dialog = true;  // CompletionDialog
-    bool autostart = false;         // AppAutoStart
+
+    // [interface] — appearance. The allowed values are checked by the
+    // is_valid_* helpers below; an unknown value keeps the default.
+    std::string theme = "dark";              // Theme: "system" | "light" | "dark"
+    std::string toolbar_size = "normal";     // ToolbarSize: "normal" | "small"
+    bool show_toolbar_text = true;           // ShowToolbarText
+    std::string tray_icon_style = "colorful";  // TrayIconStyle: "colorful" | "simple"
 
     // [proxy]
     ProxySettings proxy;
@@ -46,6 +58,11 @@ struct Settings {
 
 // Default User-Agent used when the setting is empty. Linux desktop Chrome UA.
 extern const char* const kDefaultUserAgent;
+
+// Allowed values for the interface keys.
+bool is_valid_theme(const std::string& value);            // system | light | dark
+bool is_valid_toolbar_size(const std::string& value);     // normal | small
+bool is_valid_tray_icon_style(const std::string& value);  // colorful | simple
 
 std::string default_config_path();  // $XDG_CONFIG_HOME/swiftdm/swiftdm.ini
 std::string default_temp_dir();     // $XDG_DATA_HOME/swiftdm/tmp

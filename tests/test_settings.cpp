@@ -21,6 +21,13 @@ void test_defaults() {
     CHECK(s.category_folders);
     CHECK(s.completion_dialog);
     CHECK(!s.autostart);
+    CHECK(s.show_tray_icon);
+    CHECK(s.close_to_tray);
+    CHECK(!s.open_folder_after_completion);
+    CHECK_EQ(s.theme, std::string("dark"));
+    CHECK_EQ(s.toolbar_size, std::string("normal"));
+    CHECK(s.show_toolbar_text);
+    CHECK_EQ(s.tray_icon_style, std::string("colorful"));
     CHECK(!s.proxy.enabled());
     CHECK(s.default_agent.find("Mozilla/5.0") == 0);
     CHECK(s.download_dir.find("/Downloads") != std::string::npos);
@@ -42,6 +49,13 @@ void test_roundtrip(const std::string& dir) {
     s.server_creation_date = true;
     s.completion_dialog = false;
     s.autostart = true;
+    s.show_tray_icon = false;
+    s.close_to_tray = false;
+    s.open_folder_after_completion = true;
+    s.theme = "light";
+    s.toolbar_size = "small";
+    s.show_toolbar_text = false;
+    s.tray_icon_style = "simple";
     s.proxy.type = "socks5";
     s.proxy.address = "127.0.0.1";
     s.proxy.port = 1080;
@@ -66,6 +80,13 @@ void test_roundtrip(const std::string& dir) {
     CHECK(loaded.server_creation_date);
     CHECK(!loaded.completion_dialog);
     CHECK(loaded.autostart);
+    CHECK(!loaded.show_tray_icon);
+    CHECK(!loaded.close_to_tray);
+    CHECK(loaded.open_folder_after_completion);
+    CHECK_EQ(loaded.theme, std::string("light"));
+    CHECK_EQ(loaded.toolbar_size, std::string("small"));
+    CHECK(!loaded.show_toolbar_text);
+    CHECK_EQ(loaded.tray_icon_style, std::string("simple"));
     CHECK_EQ(loaded.proxy.type, std::string("socks5"));
     CHECK_EQ(loaded.proxy.address, std::string("127.0.0.1"));
     CHECK_EQ(loaded.proxy.port, 1080);
@@ -167,6 +188,135 @@ void test_bandwidth_toggle(const std::string& dir) {
     CHECK(!disabled.bandwidth_limit_enabled);
 }
 
+// Configs written before the [download] section existed keep the download
+// options in [general]; they must still load.
+void test_legacy_general_section(const std::string& dir) {
+    const std::string path = dir + "/legacy.ini";
+    {
+        std::ofstream out(path);
+        out << "[general]\n"
+            << "MaxConnections = 16\n"
+            << "BandWidthLimit = 256\n"
+            << "BandWidthLimitEnabled = 1\n"
+            << "UseUAgent = 1\n"
+            << "DefaultAgent = LegacyAgent/1.0\n"
+            << "DownloadDirectory = ~/legacy-dl\n"
+            << "CategoryFolders = 0\n"
+            << "TempDirectory = ~/legacy-tmp\n"
+            << "ServerCreationDate = 1\n"
+            << "CompletionDialog = 0\n"
+            << "AppAutoStart = 1\n";
+    }
+    Settings s;
+    std::string err;
+    CHECK(load_settings(path, s, &err));
+    CHECK_EQ(s.max_connections, 16);
+    CHECK_EQ(s.bandwidth_limit_kbps, 256);
+    CHECK(s.bandwidth_limit_enabled);
+    CHECK(s.use_ua_for_browser);
+    CHECK_EQ(s.default_agent, std::string("LegacyAgent/1.0"));
+    CHECK_EQ(s.download_dir, home_dir() + "/legacy-dl");
+    CHECK(!s.category_folders);
+    CHECK_EQ(s.temp_dir, home_dir() + "/legacy-tmp");
+    CHECK(s.server_creation_date);
+    CHECK(!s.completion_dialog);
+    CHECK(s.autostart);
+}
+
+// The dedicated [download] section wins over the legacy location, whatever
+// the order of the sections in the file is.
+void test_download_section_wins(const std::string& dir) {
+    const std::string path = dir + "/sections.ini";
+    {
+        std::ofstream out(path);
+        out << "[download]\n"
+            << "MaxConnections = 32\n"
+            << "DefaultAgent = NewAgent/3.0\n"
+            << "\n[general]\n"
+            << "MaxConnections = 16\n"
+            << "DefaultAgent = OldAgent/1.0\n"
+            << "CompletionDialog = 0\n";
+    }
+    Settings s;
+    std::string err;
+    CHECK(load_settings(path, s, &err));
+    CHECK_EQ(s.max_connections, 32);
+    CHECK_EQ(s.default_agent, std::string("NewAgent/3.0"));
+    // The general options are still read from [general].
+    CHECK(!s.completion_dialog);
+}
+
+// Unknown interface values keep the defaults; known ones are accepted
+// regardless of case.
+void test_interface_values(const std::string& dir) {
+    const std::string path = dir + "/interface.ini";
+    {
+        std::ofstream out(path);
+        out << "[interface]\n"
+            << "Theme = neon\n"
+            << "ToolbarSize = huge\n"
+            << "TrayIconStyle = neon\n"
+            << "ShowToolbarText = 0\n";
+    }
+    Settings s;
+    std::string err;
+    CHECK(load_settings(path, s, &err));
+    CHECK_EQ(s.theme, std::string("dark"));
+    CHECK_EQ(s.toolbar_size, std::string("normal"));
+    CHECK_EQ(s.tray_icon_style, std::string("colorful"));
+    CHECK(!s.show_toolbar_text);
+
+    {
+        std::ofstream out(dir + "/interface-valid.ini");
+        out << "[interface]\n"
+            << "Theme = System\n"
+            << "ToolbarSize = Small\n"
+            << "TrayIconStyle = Simple\n"
+            << "ShowToolbarText = yes\n";
+    }
+    Settings valid;
+    CHECK(load_settings(dir + "/interface-valid.ini", valid, &err));
+    CHECK_EQ(valid.theme, std::string("system"));
+    CHECK_EQ(valid.toolbar_size, std::string("small"));
+    CHECK_EQ(valid.tray_icon_style, std::string("simple"));
+    CHECK(valid.show_toolbar_text);
+
+    CHECK(is_valid_theme("dark"));
+    CHECK(is_valid_theme("light"));
+    CHECK(is_valid_theme("system"));
+    CHECK(!is_valid_theme("neon"));
+    CHECK(is_valid_toolbar_size("normal"));
+    CHECK(is_valid_toolbar_size("small"));
+    CHECK(!is_valid_toolbar_size("huge"));
+    CHECK(is_valid_tray_icon_style("colorful"));
+    CHECK(is_valid_tray_icon_style("simple"));
+    CHECK(!is_valid_tray_icon_style("neon"));
+}
+
+// The written file uses one section per tab.
+void test_written_sections(const std::string& dir) {
+    Settings s = default_settings();
+    s.config_path = dir + "/written.ini";
+    std::string err;
+    CHECK(save_settings(s, &err));
+
+    std::ifstream in(s.config_path);
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    for (const char* section : {"[general]", "[download]", "[interface]", "[proxy]"}) {
+        CHECK(content.find(section) != std::string::npos);
+    }
+    // The download options live in their own section now.
+    const size_t download = content.find("[download]");
+    const size_t interface = content.find("[interface]");
+    CHECK(download != std::string::npos && interface != std::string::npos);
+    if (download != std::string::npos && interface != std::string::npos) {
+        CHECK(download < interface);
+        CHECK(content.find("MaxConnections", download) < interface);
+        CHECK(content.find("Theme", interface) != std::string::npos);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -182,6 +332,10 @@ int main() {
     test_parsing_quirks(dir);
     test_autostart_entry(dir);
     test_bandwidth_toggle(dir);
+    test_legacy_general_section(dir);
+    test_download_section_wins(dir);
+    test_interface_values(dir);
+    test_written_sections(dir);
 
     testutil::cleanup_dir(dir);
     return testutil::finish("test_settings");

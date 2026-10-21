@@ -15,6 +15,25 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.11 — 2026-10-21
+
+Store the new settings sections and keys.
+
+- The configuration file now has one section per settings tab: `[general]`,
+  `[download]`, `[interface]` and `[proxy]`.
+- The download options moved from `[general]` to `[download]`. Configs written
+  by older releases keep working: the loader reads `[general]` first and
+  `[download]` overrides it, so the section order in the file does not matter.
+- New keys in `[general]`: `ShowTrayIcon`, `CloseToTray` and
+  `OpenFolderAfterCompletion`.
+- New section `[interface]`: `Theme` (`system`, `light`, `dark`), `ToolbarSize`
+  (`normal`, `small`), `ShowToolbarText` and `TrayIconStyle` (`colorful`,
+  `simple`). Unknown values keep the default instead of being stored.
+- The keys are documented in `docs/spec/05-settings.md`, including the
+  compatibility rules for older configs.
+- The settings store tests cover the new keys, the section fallback and the
+  validation of the interface values.
+
 ## 0.18.10 — 2026-10-21
 
 Restructure the settings window into five tabs.

@@ -46,14 +46,18 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.10**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.11**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.10. Window Settings dibagi menjadi lima tab
+- **Versi kerja**: 0.18.11. File konfigurasi dipisah per tab settings
+  (`[general]`, `[download]`, `[interface]`, `[proxy]`); config lama dengan
+  opsi unduhan di `[general]` tetap terbaca karena section `[general]`
+  dibaca lebih dulu dan `[download]` menimpanya.
+  Window Settings dibagi menjadi lima tab
   (`General`, `Interface`, `Download`, `Proxy/Socks`, `Passwords`); opsi
   unduhan pindah ke tab `Download`, tab `General` menyimpan opsi perilaku
   aplikasi, dan tab `Interface` masih placeholder hingga opsi tampilan
@@ -69,7 +73,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.10
+### Sudah tersedia sampai 0.18.11
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -86,7 +90,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.10 — riwayat fitur
+### 0.18.1–0.18.11 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -127,6 +131,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Test headless baru `settings_dialog` menjaga urutan tab dan penempatan
   setiap kontrol. Batch sisanya (opsi Interface, opsi General tambahan, dan
   pemisahan section INI) Planned sebagai 0.18.11–0.18.13.
+- 0.18.11 memisahkan file konfigurasi per tab settings: `[general]`,
+  `[download]`, `[interface]`, `[proxy]`. Opsi unduhan pindah ke `[download]`;
+  config lama (opsi unduhan masih di `[general]`) tetap terbaca karena
+  loader membaca `[general]` lebih dulu dan `[download]` menimpanya, tanpa
+  bergantung urutan section di file. Key baru: `ShowTrayIcon`, `CloseToTray`,
+  `OpenFolderAfterCompletion` (general) serta `Theme`, `ToolbarSize`,
+  `ShowToolbarText`, `TrayIconStyle` (interface). Nilai interface yang tidak
+  dikenal ditolak dan kembali ke default.
 
 ### Rencana / gap yang diketahui
 

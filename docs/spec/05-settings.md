@@ -6,6 +6,13 @@ keys (same names, lowercase INI sections) in
 
 ```ini
 [general]
+CompletionDialog = 1
+AppAutoStart = 0
+ShowTrayIcon = 1
+CloseToTray = 1
+OpenFolderAfterCompletion = 0
+
+[download]
 MaxConnections = 8
 ConnectionsAtOnce = 0          ; 0 = add connections all at once, 1 = one by one
 BandWidthLimit = 1024          ; KB/s value used when the limiter is enabled
@@ -16,8 +23,12 @@ DownloadDirectory = ~/Downloads
 CategoryFolders = 1
 TempDirectory = ~/.local/share/swiftdm/tmp
 ServerCreationDate = 0
-CompletionDialog = 1
-AppAutoStart = 0
+
+[interface]
+Theme = dark                   ; system | light | dark
+ToolbarSize = normal           ; normal | small
+ShowToolbarText = 1
+TrayIconStyle = colorful       ; colorful | simple
 
 [proxy]
 SocksVersion = 0               ; 0 = none, 4, 5, or "http"
@@ -32,30 +43,52 @@ FoxPanel = 1
 EdgePanel = 1
 ```
 
+Each INI section matches one tab of the settings window: `general` (General),
+`download` (Download), `interface` (Interface), `proxy` (Proxy/Socks). The
+`browser` section is reserved for the browser panel flags.
+
 ## Key reference (from E8)
 
-| Key | Type | Original default observed | Meaning |
-|---|---|---|---|
-| `MaxConnections` | DWORD | 8 ("8 recommended") | max connections per download |
-| `ConnectionsAtOnce` | DWORD | 0 | 0 = create additional connections all at once; else one by one |
-| `BandWidthLimit` | DWORD | 1024 | per-download limit value in KB/s (kept while the toggle is off) |
-| `BandWidthLimitEnabled` | DWORD | 0 | speed-limiter toggle: 1 = apply `BandWidthLimit`, 0 = unlimited |
-| `UseUAgent` | DWORD | 2 | use configured UA for browser-sent downloads too |
-| `DefaultAgent` | STRING | Chrome-like modern UA | default User-Agent |
-| `DownloadDirectory` | STRING | `%USERPROFILE%\Downloads` | destination root |
-| `CategoryFolders` | DWORD | 2 | create per-category subfolders |
-| `TempDirectory` | STRING | `%APPDATA%\Roaming\NeatDM` | temp/state root |
-| `ServerCreationDate` | DWORD | 2 | derive file creation date from server header |
-| `CompletionDialog` | DWORD | 0 | show completion dialog |
-| `AppAutoStart` | DWORD | 0 | start at login (SwiftDM: XDG autostart entry) |
-| `LastDownloadID` | DWORD | — | last allocated download id (also DB rowid) |
-| `SocksVersion` | DWORD | — | proxy type selector |
-| `ChromePanel`/`FoxPanel`/`EdgePanel`/`IEUser` | DWORD | 1 | browser panel show flags (E9) |
+| Key | Section | Type | Original default observed | Meaning |
+|---|---|---|---|---|
+| `MaxConnections` | download | DWORD | 8 ("8 recommended") | max connections per download |
+| `ConnectionsAtOnce` | download | DWORD | 0 | 0 = create additional connections all at once; else one by one |
+| `BandWidthLimit` | download | DWORD | 1024 | per-download limit value in KB/s (kept while the toggle is off) |
+| `BandWidthLimitEnabled` | download | DWORD | 0 | speed-limiter toggle: 1 = apply `BandWidthLimit`, 0 = unlimited |
+| `UseUAgent` | download | DWORD | 2 | use configured UA for browser-sent downloads too |
+| `DefaultAgent` | download | STRING | Chrome-like modern UA | default User-Agent |
+| `DownloadDirectory` | download | STRING | `%USERPROFILE%\Downloads` | destination root |
+| `CategoryFolders` | download | DWORD | 2 | create per-category subfolders |
+| `TempDirectory` | download | STRING | `%APPDATA%\Roaming\NeatDM` | temp/state root |
+| `ServerCreationDate` | download | DWORD | 2 | derive file creation date from server header |
+| `CompletionDialog` | general | DWORD | 0 | show completion dialog |
+| `AppAutoStart` | general | DWORD | 0 | start at login (SwiftDM: XDG autostart entry) |
+| `ShowTrayIcon` | general | BOOL | 1 (SwiftDM) | show the system tray icon |
+| `CloseToTray` | general | BOOL | 1 (SwiftDM) | hide to the tray when the main window is closed |
+| `OpenFolderAfterCompletion` | general | BOOL | 0 (SwiftDM) | open the target folder after a download completes |
+| `Theme` | interface | STRING | dark (SwiftDM) | app theme: `system`, `light`, `dark` |
+| `ToolbarSize` | interface | STRING | normal (SwiftDM) | toolbar size: `normal`, `small` |
+| `ShowToolbarText` | interface | BOOL | 1 (SwiftDM) | show the text under the toolbar icons |
+| `TrayIconStyle` | interface | STRING | colorful (SwiftDM) | tray icon: `colorful`, `simple` |
+| `LastDownloadID` | — | DWORD | — | last allocated download id (also DB rowid) |
+| `SocksVersion` | proxy | DWORD | — | proxy type selector |
+| `ChromePanel`/`FoxPanel`/`EdgePanel`/`IEUser` | browser | DWORD | 1 | browser panel show flags (E9) |
 
 Observed defaults for the tri-state checkboxes (`2`) map to "unchecked" in the
 original UI; our INI normalizes to `0/1` booleans and records the original raw
 values here for reference. Where the original semantic is ambiguous (E23) we
 store booleans and document the mapping.
+
+## Compatibility with older configs (0.18.11)
+
+Configs written before the tabs were split keep the download options in
+`[general]`. The loader reads the file section by section and applies
+`[general]` first, then `[download]`, so an old config still loads and a
+`[download]` section overrides the legacy values regardless of the order of
+the sections in the file. Unknown keys and unknown sections are ignored.
+
+Unknown interface values (for example `Theme = neon`) keep the default instead
+of being stored, so a typo cannot break the appearance of the app.
 
 ## Per-download overrides
 

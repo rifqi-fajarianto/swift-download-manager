@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <map>
 #include <string>
 
 #include "core/util.h"
@@ -51,32 +53,90 @@ std::string proxy_token_to_type(const std::string& token) {
     return "none";
 }
 
-void apply_key(Settings& s, const std::string& section, const std::string& key,
-               const std::string& value, bool* saw_bandwidth_toggle = nullptr) {
-    const std::string k = to_lower(key);
-    if (section == "general") {
-        if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
-        else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
-        else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
-        else if (k == "bandwidthlimitenabled") {
-            if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
-            s.bandwidth_limit_enabled =
-                parse_bool(value, s.bandwidth_limit_enabled);
+// Returns the value when it is one of the allowed choices, otherwise the
+// fallback. The comparison ignores case and surrounding spaces.
+std::string pick_choice(const std::string& value,
+                        std::initializer_list<const char*> choices,
+                        const std::string& fallback) {
+    const std::string v = to_lower(trim(value));
+    for (const char* choice : choices) {
+        if (v == choice) return v;
+    }
+    return fallback;
+}
+
+// Applies one section of the configuration file. The keys are already lower
+// case. Unknown keys and unknown sections are ignored, so a config written by
+// a newer release still loads.
+void apply_section(Settings& s, const std::string& section,
+                   const std::map<std::string, std::string>& keys,
+                   bool* saw_bandwidth_toggle) {
+    for (const auto& entry : keys) {
+        const std::string& k = entry.first;
+        const std::string& value = entry.second;
+        if (section == "general") {
+            if (k == "completiondialog") {
+                s.completion_dialog = parse_bool(value, s.completion_dialog);
+            } else if (k == "appautostart") {
+                s.autostart = parse_bool(value, s.autostart);
+            } else if (k == "showtrayicon") {
+                s.show_tray_icon = parse_bool(value, s.show_tray_icon);
+            } else if (k == "closetotray") {
+                s.close_to_tray = parse_bool(value, s.close_to_tray);
+            } else if (k == "openfolderaftercompletion") {
+                s.open_folder_after_completion =
+                    parse_bool(value, s.open_folder_after_completion);
+            }
+            // Legacy location of the download options. Configs written before
+            // the [download] section existed keep working; the dedicated
+            // section is applied afterwards and wins.
+            else if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            else if (k == "bandwidthlimitenabled") {
+                if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
+                s.bandwidth_limit_enabled =
+                    parse_bool(value, s.bandwidth_limit_enabled);
+            }
+            else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
+            else if (k == "defaultagent") s.default_agent = value;
+            else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
+            else if (k == "categoryfolders") s.category_folders = parse_bool(value, s.category_folders);
+            else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
+            else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
+        } else if (section == "download") {
+            if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            else if (k == "bandwidthlimitenabled") {
+                if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
+                s.bandwidth_limit_enabled =
+                    parse_bool(value, s.bandwidth_limit_enabled);
+            }
+            else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
+            else if (k == "defaultagent") s.default_agent = value;
+            else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
+            else if (k == "categoryfolders") s.category_folders = parse_bool(value, s.category_folders);
+            else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
+            else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
+        } else if (section == "interface") {
+            if (k == "theme") {
+                s.theme = pick_choice(value, {"system", "light", "dark"}, s.theme);
+            } else if (k == "toolbarsize") {
+                s.toolbar_size = pick_choice(value, {"normal", "small"}, s.toolbar_size);
+            } else if (k == "showtoolbartext") {
+                s.show_toolbar_text = parse_bool(value, s.show_toolbar_text);
+            } else if (k == "trayiconstyle") {
+                s.tray_icon_style =
+                    pick_choice(value, {"colorful", "simple"}, s.tray_icon_style);
+            }
+        } else if (section == "proxy") {
+            if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
+            else if (k == "proxyaddress") s.proxy.address = trim(value);
+            else if (k == "proxyport") parse_int(value, s.proxy.port, s.proxy.port);
+            else if (k == "proxyuser") s.proxy.user = value;
+            else if (k == "proxypassword") s.proxy.password = value;
         }
-        else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
-        else if (k == "defaultagent") s.default_agent = value;
-        else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
-        else if (k == "categoryfolders") s.category_folders = parse_bool(value, s.category_folders);
-        else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
-        else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
-        else if (k == "completiondialog") s.completion_dialog = parse_bool(value, s.completion_dialog);
-        else if (k == "appautostart") s.autostart = parse_bool(value, s.autostart);
-    } else if (section == "proxy") {
-        if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
-        else if (k == "proxyaddress") s.proxy.address = trim(value);
-        else if (k == "proxyport") parse_int(value, s.proxy.port, s.proxy.port);
-        else if (k == "proxyuser") s.proxy.user = value;
-        else if (k == "proxypassword") s.proxy.password = value;
     }
 }
 
@@ -87,6 +147,21 @@ std::string default_config_path() { return xdg_config_home() + "/swiftdm/swiftdm
 std::string default_temp_dir() { return xdg_data_home() + "/swiftdm/tmp"; }
 
 std::string default_database_path() { return xdg_data_home() + "/swiftdm/swiftdm.db"; }
+
+bool is_valid_theme(const std::string& value) {
+    const std::string v = to_lower(trim(value));
+    return v == "system" || v == "light" || v == "dark";
+}
+
+bool is_valid_toolbar_size(const std::string& value) {
+    const std::string v = to_lower(trim(value));
+    return v == "normal" || v == "small";
+}
+
+bool is_valid_tray_icon_style(const std::string& value) {
+    const std::string v = to_lower(trim(value));
+    return v == "colorful" || v == "simple";
+}
 
 Settings default_settings() {
     Settings s;
@@ -107,8 +182,10 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
         return true;
     }
 
+    // The file is read into sections first, so the order of the sections in
+    // the file cannot change the outcome. Keys are stored lower case.
+    std::map<std::string, std::map<std::string, std::string>> sections;
     std::string section = "general";
-    bool saw_bandwidth_toggle = false;
     std::string line;
     while (std::getline(in, line)) {
         std::string t = trim(line);
@@ -122,7 +199,16 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
         const std::string key = trim(t.substr(0, eq));
         const std::string value = trim(t.substr(eq + 1));
         if (key.empty()) continue;
-        apply_key(out, section, key, value, &saw_bandwidth_toggle);
+        sections[section][to_lower(key)] = value;
+    }
+
+    // [general] is applied first because it still holds the download options
+    // of older configs; the dedicated [download] section overrides them.
+    bool saw_bandwidth_toggle = false;
+    for (const char* name : {"general", "download", "interface", "proxy"}) {
+        const auto found = sections.find(name);
+        if (found == sections.end()) continue;
+        apply_section(out, name, found->second, &saw_bandwidth_toggle);
     }
 
     // Configs written before the toggle existed used any non-zero
@@ -155,6 +241,13 @@ bool save_settings(const Settings& settings, std::string* error) {
 
     out << "# SwiftDM configuration (see docs/spec/05-settings.md)\n"
         << "[general]\n"
+        << "CompletionDialog = " << (settings.completion_dialog ? 1 : 0) << "\n"
+        << "AppAutoStart = " << (settings.autostart ? 1 : 0) << "\n"
+        << "ShowTrayIcon = " << (settings.show_tray_icon ? 1 : 0) << "\n"
+        << "CloseToTray = " << (settings.close_to_tray ? 1 : 0) << "\n"
+        << "OpenFolderAfterCompletion = "
+        << (settings.open_folder_after_completion ? 1 : 0) << "\n"
+        << "\n[download]\n"
         << "MaxConnections = " << settings.max_connections << "\n"
         << "ConnectionsAtOnce = " << settings.connections_at_once << "\n"
         << "BandWidthLimit = " << settings.bandwidth_limit_kbps << "\n"
@@ -165,8 +258,11 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "CategoryFolders = " << (settings.category_folders ? 1 : 0) << "\n"
         << "TempDirectory = " << settings.temp_dir << "\n"
         << "ServerCreationDate = " << (settings.server_creation_date ? 1 : 0) << "\n"
-        << "CompletionDialog = " << (settings.completion_dialog ? 1 : 0) << "\n"
-        << "AppAutoStart = " << (settings.autostart ? 1 : 0) << "\n"
+        << "\n[interface]\n"
+        << "Theme = " << settings.theme << "\n"
+        << "ToolbarSize = " << settings.toolbar_size << "\n"
+        << "ShowToolbarText = " << (settings.show_toolbar_text ? 1 : 0) << "\n"
+        << "TrayIconStyle = " << settings.tray_icon_style << "\n"
         << "\n[proxy]\n"
         << "SocksVersion = " << proxy_type_to_token(settings.proxy.type) << "\n"
         << "ProxyAddress = " << settings.proxy.address << "\n"
