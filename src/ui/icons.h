@@ -29,7 +29,8 @@ QIcon application_icon();
 // used by the About window and matching the extension's toolbar icon.
 QIcon extension_icon();
 
-// Monochrome tray mark (ui-assets/app-icon/single-color-icon.svg).
+// Tray mark (colored, ui-assets/app-icon/extension-icon.svg), the same mark
+// the browser integration uses.
 QIcon tray_icon();
 
 }  // namespace swiftdm::ui

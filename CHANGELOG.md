@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The system tray now shows the colored SwiftDM mark (the same artwork as the
+  browser integration) instead of the monochrome variant. The mark keeps its
+  gradients, so it stays readable on light and dark tray panels.
 - Chromium extension 0.5.1: the popup follows the design in
   `ext/extension-ui-template.html` (kept as the design reference). The header
   shows the app mark, the app version reported by the running app and a pill

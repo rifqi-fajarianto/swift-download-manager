@@ -1,11 +1,9 @@
 #include "ui/icons.h"
 
-#include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
 #include <QPainter>
 #include <QPixmap>
-#include <QStyleHints>
 
 namespace swiftdm::ui {
 
@@ -21,9 +19,9 @@ namespace {
 QImage read_svg(const QString& path, int size) {
     QImageReader reader(path);
     if (!reader.canRead()) return QImage();
-    // SVG sources are not always square (the extension/tray marks are
-    // 351x380). Scale the longer side to `size` and center the result on a
-    // transparent square canvas so the mark keeps its proportions.
+    // SVG sources are not always square. Scale the longer side to `size` and
+    // center the result on a transparent square canvas so the mark keeps its
+    // proportions.
     const QSize source = reader.size();
     QSize target(size, size);
     if (source.isValid() && source.width() != source.height()) {
@@ -63,23 +61,6 @@ QIcon rasterized(const QString& resource_path, std::initializer_list<int> sizes)
     return icon;
 }
 
-// Tray panels are drawn by the desktop, not by the app palette, so follow the
-// desktop color scheme: a white mark on dark panels, a near-black one on light
-// panels. The single-color source is already white, so an unknown scheme keeps
-// it as-is instead of guessing wrong.
-QColor tray_foreground() {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    switch (QGuiApplication::styleHints()->colorScheme()) {
-    case Qt::ColorScheme::Light:
-        return QColor(0x1c, 0x1c, 0x1c);
-    case Qt::ColorScheme::Dark:
-    case Qt::ColorScheme::Unknown:
-        break;
-    }
-#endif
-    return QColor(0xff, 0xff, 0xff);
-}
-
 }  // namespace
 
 QIcon tinted_icon(const QString& resource_path, const QColor& color) {
@@ -103,8 +84,10 @@ QIcon extension_icon() {
 }
 
 QIcon tray_icon() {
-    return tinted_icon(QStringLiteral(":/icons/app-icon/single-color-icon.svg"),
-                       tray_foreground());
+    // The tray shows the same colored mark as the browser integration, so the
+    // app is recognizable in the system tray.
+    return rasterized(QStringLiteral(":/icons/app-icon/extension-icon.svg"),
+                      {16, 20, 22, 24, 32, 48});
 }
 
 }  // namespace swiftdm::ui

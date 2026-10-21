@@ -6,6 +6,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QPixmap>
+#include <QSet>
 #include <QStringList>
 
 #include <cstdio>
@@ -22,6 +23,19 @@ int opaque_pixels(const QImage& image) {
         }
     }
     return count;
+}
+
+// Number of distinct opaque colors; a colored mark has more than one, a
+// monochrome one has exactly one.
+int distinct_colors(const QImage& image) {
+    QSet<QRgb> colors;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QRgb pixel = image.pixel(x, y);
+            if (qAlpha(pixel) > 0) colors.insert(pixel | 0xff000000);
+        }
+    }
+    return static_cast<int>(colors.size());
 }
 
 }  // namespace
@@ -69,7 +83,7 @@ int main(int argc, char** argv) {
     }
 
     // The colored extension mark keeps its gradients (more than one hue), and
-    // the tray mark is tinted to one color while keeping the shape.
+    // the tray shows the same colored mark.
     const QImage extension = swiftdm::ui::extension_icon().pixmap(48, 48).toImage();
     if (extension.isNull() || opaque_pixels(extension) == 0) {
         std::printf("FAIL extension icon missing or empty\n");
@@ -81,8 +95,12 @@ int main(int argc, char** argv) {
     if (tray.isNull() || opaque_pixels(tray) == 0) {
         std::printf("FAIL tray icon missing or empty\n");
         ++failures;
+    } else if (distinct_colors(tray) < 2) {
+        std::printf("FAIL tray icon is not the colored mark\n");
+        ++failures;
     } else {
-        std::printf("ok   tray icon (%d px)\n", opaque_pixels(tray));
+        std::printf("ok   tray icon (%d px, %d colors)\n",
+                    opaque_pixels(tray), distinct_colors(tray));
     }
 
     // The extension PNGs must exist at every size the manifest and the
