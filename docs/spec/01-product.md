@@ -122,9 +122,10 @@ Layout (from `main-window.png`):
      Tray When Closing the Window; Open the Download Folder When a Download
      Completes (0.18.10 split the tabs: the download options moved to the
      `Download` tab).
-   - *Interface*: appearance options — toolbar size, toolbar text, theme,
-     tray icon style (added in the 0.18.x settings batch; see the parity
-     checklist for the current status).
+   - *Interface*: appearance options — Toolbar Size (`Normal` / `Small`);
+     Show Toolbar Text; App Theme (`Light` / `Dark` / `Follow System`); Tray
+     Icon Style (`Simple` / `Colorful`). The changes apply immediately after
+     the dialog is confirmed (0.18.12).
    - *Download*: Max Connections per Download (default 8, "8 Connections
      Recommended"); when-start policy (all at once / one by one); Bandwidth
      Limit per Download with an enable toggle and presets (500 KB/s, 1 MB/s,
@@ -144,12 +145,16 @@ Layout (from `main-window.png`):
     restore the window (per strings "Quit NeatDownloadManager", "You can hide
     ... in Notification Area..."). The tray shows the colored SwiftDM mark
     (same artwork as the browser integration), so it stays recognizable on
-    both light and dark panels. When started at login through the autostart
+    both light and dark panels; the `Simple` tray style uses the monochrome
+    mark instead (0.18.12). When started at login through the autostart
     entry (`swiftdm --autostart`), the main window stays hidden and only the
     tray icon appears; without a system tray the window is shown as a fallback
     (0.18.7). Toolbar and tray-menu `Quit` actions ask
     for confirmation before fully exiting; active downloads are paused and can
     be resumed on the next launch, while Cancel keeps the app running (0.18.4).
+    The `General` tab can switch the tray icon off and can turn the
+    close-to-tray behavior off, in which case closing the main window ends the
+    app after the same confirmation (0.18.13).
 12. **About**: version, license tier, support contact, website; update check
     button (we replace this with "no update check").
 

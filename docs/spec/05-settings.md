@@ -108,3 +108,18 @@ the `auths` table and are matched per host/target (E4, E18 Passwords tab).
 - `AppAutoStart`: writes `~/.config/autostart/swiftdm.desktop` when enabled.
   The entry runs `swiftdm --autostart`; the GUI refreshes an existing entry on
   launch so entries written by older releases also start silently.
+- `Theme`: the palette is applied before the windows are created, so a
+  "follow system" theme still reads the desktop preference. The app follows
+  the desktop while it runs when the color scheme changes.
+- `ShowTrayIcon`: with the tray icon switched off there is nothing to hide
+  into, so the main window is shown at startup and closing it ends the app.
+- `CloseToTray`: when switched off, closing the main window ends the app after
+  the same confirmation as the Quit action; the confirmation can be cancelled,
+  which keeps the window open.
+
+## Changing the settings at runtime
+
+The appearance settings take effect as soon as the settings dialog is
+confirmed: the theme is applied to the whole application, the toolbar is
+resized and the tray icon is replaced. The tray icon can also be created or
+removed while the app runs (`ShowTrayIcon`).

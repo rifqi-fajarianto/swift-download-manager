@@ -271,6 +271,12 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
    `packaging/io.github.swiftdm.SwiftDM.metainfo.xml`.
 5. Perubahan dokumentasi murni (tanpa perilaku aplikasi) tidak perlu menaikkan
    versi aplikasi.
+6. **Pengecualian yang disetujui**: batch restrukturisasi window Settings
+   (0.18.10 → 0.18.13) memakai seri patch `0.18.x` atas keputusan maintainer,
+   walaupun isinya perubahan fitur, karena seluruhnya adalah satu batch
+   restrukturisasi yang tidak dirilis terpisah. Penyimpangan ini dicatat di
+   `CHANGELOG.md` (0.18.10) dan di bagian 2 dokumen ini. Batch berikutnya
+   kembali memakai aturan biasa (fitur baru → MINOR +1).
 
 ## 6. Pengujian oleh agen AI (WAJIB)
 

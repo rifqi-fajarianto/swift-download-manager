@@ -20,6 +20,10 @@ taken from the application used as a behavioral reference.
 |---|---|---|
 | ![Download options](screenshots/download-options.png) | ![Download properties](screenshots/download-properties.png) | ![SwiftDM settings](screenshots/options.png) |
 
+> The settings screenshot still shows the window of 0.18.9 (three tabs). Since
+> 0.18.10 the window has the tabs `General`, `Interface`, `Download`,
+> `Proxy/Socks` and `Passwords`.
+
 ## Features
 
 - Download over HTTP, HTTPS, FTP, FTPS, and HLS playlists (`.m3u8`).
@@ -119,7 +123,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.9_amd64.deb
+sudo apt install ./swiftdm_0.18.13_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

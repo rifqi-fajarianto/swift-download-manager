@@ -46,7 +46,7 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.18.9_amd64.deb
+sudo apt install ./build/swiftdm_0.18.13_amd64.deb
 ```
 
 `apt` resolves only the runtime dependencies (`libqt6*`, `libcurl4t64`,
@@ -59,7 +59,7 @@ Chromium-based browser (Chrome, Chromium, Edge, Brave).
 Confirm that the generated package has no browser or printer recommendations:
 
 ```sh
-dpkg-deb -f build/swiftdm_0.18.9_amd64.deb Depends Recommends Suggests
+dpkg-deb -f build/swiftdm_0.18.13_amd64.deb Depends Recommends Suggests
 ```
 
 `Recommends` and `Suggests` should be empty. Use `--no-install-recommends`

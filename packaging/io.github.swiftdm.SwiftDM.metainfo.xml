@@ -34,6 +34,26 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.13" date="2026-10-21">
+      <description>
+        <p>The General tab of the settings window offers a tray icon switch, a close-to-tray switch and an option that opens the download folder when a transfer finishes.</p>
+      </description>
+    </release>
+    <release version="0.18.12" date="2026-10-21">
+      <description>
+        <p>New Interface tab in the settings window: toolbar size, toolbar text, a light, dark or system theme and a simple or colorful tray icon. The changes apply right away.</p>
+      </description>
+    </release>
+    <release version="0.18.11" date="2026-10-21">
+      <description>
+        <p>The configuration file is split into one section per settings tab; older configuration files keep working.</p>
+      </description>
+    </release>
+    <release version="0.18.10" date="2026-10-21">
+      <description>
+        <p>The settings window is split into five tabs: General, Interface, Download, Proxy/Socks and Passwords.</p>
+      </description>
+    </release>
     <release version="0.18.9" date="2026-10-21">
       <description>
         <p>The download confirmation window keeps a fixed size and shows the file size on its own row.</p>

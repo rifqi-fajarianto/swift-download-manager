@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.5.
+Status as of 0.18.13.
 
 ## v1 — core engine + GUI
 
