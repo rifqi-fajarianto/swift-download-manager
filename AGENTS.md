@@ -54,8 +54,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
 - **Versi kerja**: 0.18.9. Dialog konfirmasi download memakai ukuran tetap
-  (default 640×220, minimum 520×210), nama file di-elide di tengah dengan
-  nama penuh di tooltip, dan ukuran file tampil pada baris `Size` sendiri.
+  (default 640×250, minimum 520×230), nama file di-elide di tengah dengan
+  nama penuh di tooltip, ukuran file tampil pada baris `Size` sendiri, dan
+  semua field serta tombol memakai tinggi yang sama.
   Paket `.deb` tidak lagi mendeklarasikan browser sebagai `Recommends`.
   Autostart login menjalankan `swiftdm --autostart` sehingga aplikasi hanya
   muncul di system tray; tanpa tray, main window ditampilkan sebagai fallback.
@@ -108,12 +109,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Ekstensi tetap opsional dan kompatibel dengan browser Chromium-based mana
   pun. Seluruh 0.18.1–0.18.8 sudah masuk `main` lewat merge `dd6b179`.
 - 0.18.9 memperbaiki ukuran dialog konfirmasi download: ukuran tetap (default
-  640×220, minimum 520×210) sehingga tidak lagi melebar mengikuti nama file
+  640×250, minimum 520×230) sehingga tidak lagi melebar mengikuti nama file
   atau URL, nama file di-elide di tengah dengan nama penuh di tooltip, dan
   ukuran file dipindah ke baris `Size` sendiri. Label deskripsi (`File :`,
   `Size :`, `URL :`, `Category :`, `Location :`) di-center vertikal terhadap
-  widget di sebelahnya supaya semua baris sejajar. Test headless baru
-  `confirm_dialog` menjaga perilaku ini.
+  widget di sebelahnya supaya semua baris sejajar, dan semua field serta
+  tombol memakai tinggi yang sama. Test headless baru `confirm_dialog`
+  menjaga perilaku ini.
 
 ### Rencana / gap yang diketahui
 

@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -26,6 +27,18 @@ namespace {
 constexpr int kFileLabelChrome = 120;
 // The file name is never elided below this width, so it stays readable.
 constexpr int kMinFileLabelWidth = 160;
+
+// The style gives buttons more padding than line edits and combos, so the
+// controls would end up with different heights and the rows would look
+// ragged. One common height keeps the dialog even. The height comes from the
+// natural size hints, so no text is clipped on a large font.
+int common_control_height(const QList<QWidget*>& controls) {
+    int height = 0;
+    for (const QWidget* widget : controls) {
+        height = qMax(height, widget->sizeHint().height());
+    }
+    return height;
+}
 
 }  // namespace
 
@@ -145,6 +158,13 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     buttons->addWidget(cancel_button);
     buttons->addStretch(1);
     layout->addLayout(buttons);
+
+    // Every input and button gets the same height.
+    const QList<QWidget*> controls = {url_edit, category_box_, location_edit_,
+                                      browse_button, download_button_, queue_button,
+                                      cancel_button};
+    const int control_height = common_control_height(controls);
+    for (QWidget* widget : controls) widget->setFixedHeight(control_height);
 
     // Fill the default location only after the category box exists.
     use_default_location();

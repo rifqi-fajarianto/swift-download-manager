@@ -47,13 +47,16 @@ Layout (from `main-window.png`):
    default, user overridable). `Download Now` adds the item and starts the
    transfer; `Cancel` leaves no trace; `Add to queue` is a placeholder until
    queue scheduling exists (0.18.0).
-   - Fixed default size (640×220, minimum 520×210): the window never grows with
+   - Fixed default size (640×250, minimum 520×230): the window never grows with
      the file name or the URL length (0.18.9). The file name line is elided in
      the middle and keeps the full name in its tooltip.
    - Rows: `File` (name), `Size` (content length, `Unknown size` when the
      server reports none), `URL` (read-only field), `Category` and `Location`
      (0.18.9: the size is no longer inline with the file name). Every
      description is vertically centered with the widget next to it (0.18.9).
+   - All inputs and buttons (URL field, location field, `Browse...`, category
+     dropdown, `Download Now`, `Add to queue`, `Cancel`) share one height, so
+     the rows look even in every style (0.18.9).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
    - Fixed default size (560×420, minimum 420×300): the window never grows with

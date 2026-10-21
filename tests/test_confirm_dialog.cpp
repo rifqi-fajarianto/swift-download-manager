@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QList>
+#include <QPushButton>
 #include <QStringList>
 
 #include <cmath>
@@ -187,6 +189,22 @@ int main(int argc, char** argv) {
             ++failures;
         }
     }
+
+    // Every input and button shares one height.
+    QList<int> control_heights;
+    for (const QWidget* widget : dialog.findChildren<QWidget*>()) {
+        if (qobject_cast<const QPushButton*>(widget) ||
+            qobject_cast<const QLineEdit*>(widget) ||
+            qobject_cast<const QComboBox*>(widget)) {
+            control_heights << widget->height();
+        }
+    }
+    check(control_heights.size() == 7, "the dialog has seven controls");
+    bool same_height = !control_heights.isEmpty();
+    for (const int height : control_heights) {
+        if (height != control_heights.first()) same_height = false;
+    }
+    check(same_height, "every input and button has the same height");
 
     if (failures == 0) std::printf("confirm_dialog: all checks passed\n");
     return failures == 0 ? 0 : 1;

@@ -25,9 +25,9 @@ class ConfirmDownloadDialog : public QDialog {
   public:
     // Fixed window geometry (see the class comment).
     static constexpr int kDefaultWindowWidth = 640;
-    static constexpr int kDefaultWindowHeight = 220;
+    static constexpr int kDefaultWindowHeight = 250;
     static constexpr int kMinWindowWidth = 520;
-    static constexpr int kMinWindowHeight = 210;
+    static constexpr int kMinWindowHeight = 230;
 
     ConfirmDownloadDialog(const QString& file_name, quint64 size, const QString& url,
                           const QString& download_dir, bool category_folders,

@@ -19,8 +19,8 @@
 
 Keep the download confirmation window at a fixed size.
 
-- The confirmation window now has a default size (640×220) and a minimum size
-  (520×210). It no longer grows with the file name or the URL length, so it
+- The confirmation window now has a default size (640×250) and a minimum size
+  (520×230). It no longer grows with the file name or the URL length, so it
   cannot end up wider than the screen.
 - The file name is elided in the middle and keeps the full name in its
   tooltip.
@@ -29,6 +29,9 @@ Keep the download confirmation window at a fixed size.
 - Every description (`File :`, `Size :`, `URL :`, `Category :`, `Location :`)
   is now vertically centered with the widget next to it, so the rows line up
   regardless of the field height.
+- All inputs and buttons share one height: the style gives buttons more
+  padding than line edits, which made the `Browse...` button and the bottom
+  buttons differ in size.
 
 ## 0.18.8 — 2026-10-20
 
