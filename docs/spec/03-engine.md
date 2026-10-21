@@ -54,6 +54,10 @@ are our own choices where the original is UNKNOWN (E23).
   resume while the item exists (pause, failure, quit) and removed on
   completion or when the user deletes the list row; layout and cleanup paths
   are in `02-data-model.md` §2.
+- **[design: 0.18.18]** File names are shortened to 240 bytes (the limit of a
+  path component on Linux and Windows) before they are written: a long URL
+  path or a long `Content-Disposition` header no longer fails the transfer
+  with "File name too long". The rules are in `02-data-model.md` §2.
 
 ## 4. Rate limiting
 

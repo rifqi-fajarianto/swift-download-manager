@@ -24,6 +24,12 @@ add_executable(test_media test_media.cpp)
 target_link_libraries(test_media PRIVATE swiftdm_core)
 add_test(NAME media COMMAND test_media)
 
+# File name rules: length limit of a path component, Windows device names and
+# the temporary workspace of a download with a very long name.
+add_executable(test_filenames test_filenames.cpp)
+target_link_libraries(test_filenames PRIVATE swiftdm_core)
+add_test(NAME filenames COMMAND test_filenames)
+
 add_executable(test_http test_http.cpp)
 target_link_libraries(test_http PRIVATE swiftdm_core)
 add_test(NAME http COMMAND test_http)

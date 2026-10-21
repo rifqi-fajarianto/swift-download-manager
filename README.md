@@ -37,6 +37,8 @@ taken from the application used as a behavioral reference.
 - Use HTTP, SOCKS4, or SOCKS5 proxies; configure HTTP headers, cookies, referer,
   User-Agent, and POST data.
 - Store download history in SQLite and application settings in an INI file.
+- Handle long file names: a name that does not fit the filesystem is shortened
+  automatically, keeping the beginning of the name and its extension.
 - Adjust the appearance: light, dark, or follow the system theme; toolbar size
   and toolbar text; simple or colorful tray icon. The changes apply right away.
   The message boxes use the app's own icons instead of the platform ones.

@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -25,21 +24,6 @@ namespace {
 int64_t now_ms() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-}
-
-uint64_t fnv1a(const std::string& text) {
-    uint64_t hash = 1469598103934665603ULL;
-    for (unsigned char c : text) {
-        hash ^= c;
-        hash *= 1099511628211ULL;
-    }
-    return hash;
-}
-
-std::string hex64(uint64_t value) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(value));
-    return buf;
 }
 
 std::string pick_filename(const ProbeResult& probe, const std::string& url) {
@@ -343,25 +327,43 @@ DownloadWorkspace make_workspace(const Settings& settings, const std::string& ur
     DownloadWorkspace ws;
     const std::filesystem::path dir =
         std::filesystem::path(settings.temp_dir) /
-        ("download-" + hex64(fnv1a(url + "\n" + filename)));
+        ("download-" + hex_hash64(fnv1a_hash(url + "\n" + filename)));
     ws.dir = dir.string();
-    ws.part_path = (dir / (filename + ".part")).string();
+    // The temporary file is a path component of its own, so it needs the same
+    // length limit as the final name (a long name would fail with
+    // "File name too long").
+    ws.part_path =
+        (dir / limit_filename_length(filename + ".part", kMaxFileNameBytes)).string();
     ws.state_path = (dir / "segments.json").string();
     return ws;
 }
 
 std::string unique_path(const std::string& path) {
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) return path;
-    const std::filesystem::path p(path);
+    const std::filesystem::path original(path);
+    // Guard against a caller that passes a name which was not sanitized.
+    const std::filesystem::path p =
+        original.parent_path() /
+        limit_filename_length(original.filename().string(), kMaxFileNameBytes);
+    if (!std::filesystem::exists(p, ec)) return p.string();
     const std::string stem = p.stem().string();
     const std::string ext = p.extension().string();
     for (int i = 1; i < 10000; ++i) {
-        const std::filesystem::path candidate =
-            p.parent_path() / (stem + " (" + std::to_string(i) + ")" + ext);
+        const std::string tag = " (" + std::to_string(i) + ")";
+        // The " (N)" variant has to stay within the limit as well, so the
+        // stem is shortened instead of the tag.
+        size_t budget = 0;
+        if (kMaxFileNameBytes > tag.size() + ext.size()) {
+            budget = kMaxFileNameBytes - tag.size() - ext.size();
+        }
+        std::string trimmed = stem;
+        if (trimmed.size() > budget) {
+            trimmed = std::string(utf8_truncate(trimmed, budget));
+        }
+        const std::filesystem::path candidate = p.parent_path() / (trimmed + tag + ext);
         if (!std::filesystem::exists(candidate, ec)) return candidate.string();
     }
-    return path;
+    return p.string();
 }
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
@@ -412,6 +414,9 @@ DownloadResult DownloadEngine::run(
 
     std::string filename = request.filename.empty() ? pick_filename(probe, request.url)
                                                     : sanitize_filename(request.filename);
+    // The name becomes a path component on disk, so it has to fit the limit of
+    // the filesystem no matter where it came from.
+    filename = limit_filename_length(sanitize_filename(filename), kMaxFileNameBytes);
     if (filename.empty()) filename = "download.bin";
 
     std::string out_dir =
@@ -446,8 +451,9 @@ DownloadResult DownloadEngine::run(
                        on_progress);
     }
     if (is_hls_url(workspace_key, probe.mime_type)) {
-        return run_hls(options, probe, hls_output_filename(filename), out_dir, ws,
-                       request.resume, bandwidth_limit, on_progress);
+        return run_hls(options, probe,
+                       limit_filename_length(hls_output_filename(filename), kMaxFileNameBytes),
+                       out_dir, ws, request.resume, bandwidth_limit, on_progress);
     }
 
     const bool can_resume = probe.accept_ranges && request.post_data.empty();

@@ -139,6 +139,30 @@ preserving the old layout.
     `finished(Canceled)` signal is processed leaves one `download-*`
     directory behind, because neither cleanup path runs.
 
+### File name rules
+
+A single path component is limited by the filesystem: 255 bytes on Linux
+(`NAME_MAX`) and 255 UTF-16 code units on Windows. The number of UTF-16 code
+units never exceeds the number of UTF-8 bytes, so SwiftDM uses **240 UTF-8
+bytes** as the limit for every name it writes (the final file, the `.part`
+file in the workspace and the `name (N).ext` variant).
+
+- `sanitize_filename()` is the single place where a name is cleaned up:
+  characters a file name may not contain (`/ \ : * ? " < > |` and the control
+  characters) become `_`, leading and trailing dots and spaces are removed,
+  and the Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`,
+  `LPT1-9` and their superscript variants) get a `_` prefix because Windows
+  rejects them even with an extension.
+- `limit_filename_length()` shortens a name that is too long: the extension
+  (at most 16 bytes) is kept, the stem is cut at a UTF-8 boundary and a
+  16-digit hash (FNV-1a 64-bit) of the original name is appended. The result
+  is stable, so a resumed download keeps the same `.part` file, and two
+  different long names never collapse into the same file.
+- The rule is not a requirement for the *full* path: a deep destination
+  folder can still exceed the classic Windows limit of 259 characters. Long
+  paths are a task of the Windows release (manifest `longPathAware`), not of
+  this rule.
+
 SwiftDM design decision (documented divergence): our state file is
 `segments.json` (schema below) — the original's binary `segments.bin` layout is
 not required for a clean-room implementation and stays UNKNOWN.

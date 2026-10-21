@@ -287,7 +287,10 @@ QWidget* DownloadWindow::build_options_tab() {
         // The field shows the exact folder for this download; keep the engine
         // from appending a category subfolder again.
         options.apply_category_folder = false;
-        options.filename = name_edit_->text().trimmed();
+        // The name becomes a file on disk, so it is sanitized and shortened
+        // here as well: the table then shows the name that is really used.
+        options.filename = QString::fromStdString(swiftdm::limit_filename_length(
+            swiftdm::sanitize_filename(name_edit_->text().trimmed().toStdString())));
         options.connections = connections_spin_->value();
         options.limit_enabled = limit_editor_->enabled();
         options.limit_kbps = limit_editor_->kbps();

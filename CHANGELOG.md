@@ -15,6 +15,26 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.18 — 2026-10-21
+
+Shorten file names that are too long for the filesystem.
+
+- A download whose name comes from a very long URL path (a token in the path,
+  for example) or from a long `Content-Disposition` header no longer fails
+  with "cannot create '...': File name too long". The name is shortened to 240
+  bytes: the beginning of the name and the extension are kept, and a hash of
+  the original name is appended so two different long names never end up as
+  the same file. The shortened name stays stable across runs, so a paused
+  download resumes with the same temporary file.
+- The temporary file in the workspace (`<name>.part`) and the de-duplicated
+  name of an existing file (`name (1).ext`) obey the same limit, so both
+  always fit in a single path component.
+- The names of Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`,
+  `LPT1-9`) are sanitized, because Windows rejects them even with an
+  extension. This prepares the app for the Windows release.
+- The name shown in the confirmation dialog, in the list and in the Options
+  tab is the name that is really written to disk.
+
 ## 0.18.16 — 2026-10-21
 
 Use the app's own icons in the message boxes.

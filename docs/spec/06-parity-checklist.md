@@ -20,6 +20,7 @@ Status as of 0.18.17.
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |
 | Custom headers / cookies passthrough | Replicated | CLI `--header`; Chromium extension forwards scoped cookies and same-origin referrer |
 | URLs containing spaces or escaped filename bytes | Fixed (0.18.5) | Browser URLs remain fully encoded and the curl layer encodes unsafe bytes; Drive folder ZIP names containing spaces no longer fail URL parsing |
+| File names longer than a path component | Fixed (0.18.18) | A name from a long URL path or `Content-Disposition` no longer fails with "File name too long": it is shortened to 240 bytes (extension kept, hash of the original name appended), and the Windows device names are sanitized |
 | User-Agent setting + reset | Replicated | default UA string (E24) |
 | Download complete dialog | Replicated | toggle in settings; independent top-level window (not attached to the main window) |
 | Error dialog | Replicated | message format `Error : HTTP/1.1 ...`; independent top-level window |

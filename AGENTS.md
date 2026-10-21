@@ -46,15 +46,18 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.17**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.18**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.17. Tab `General` punya opsi "Show Download Confirmation
-  Dialog"; saat dimatikan, unduhan (manual maupun dari browser) langsung jalan
+- **Versi kerja**: 0.18.18. Nama file yang melebihi batas komponen path
+  (240 byte UTF-8) dipotong otomatis: awal nama dan extension dipertahankan,
+  hash FNV-1a 64-bit ditambahkan; nama device Windows disanitasi. Lihat
+  0.18.17 untuk opsi "Show Download Confirmation Dialog" di tab `General`;
+  saat dimatikan, unduhan (manual maupun dari browser) langsung jalan
   tanpa dialog konfirmasi, memakai kategori bawaan dan folder default, dengan
   window progress tetap dibuka. Note di bawah opsi menjelaskan hal ini dan
   hanya tampil saat opsi dimatikan. Key: `ShowDownloadConfirmationDialog`
@@ -95,7 +98,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.17
+### Sudah tersedia sampai 0.18.18
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -113,7 +116,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.17 — riwayat fitur
+### 0.18.1–0.18.18 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -192,6 +195,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   kategori bawaan serta lokasi default lewat helper
   `default_download_location()` di `src/ui/confirm_download_dialog.*`; window
   progress tetap dibuka. Note di bawah opsi hanya tampil saat opsi dimatikan.
+- 0.18.18 memperbaiki error "File name too long" saat nama file dari URL atau
+  `Content-Disposition` lebih panjang dari batas komponen path. Nama dipotong
+  di `sanitize_filename()` (`src/core/util.*`) memakai helper baru
+  `limit_filename_length()`: batas 240 byte UTF-8, extension (maks 16 byte)
+  dipertahankan, stem dipotong pada batas UTF-8, dan hash FNV-1a 64-bit
+  (16 hex) dari nama asli ditambahkan. Nama device Windows (`CON`, `PRN`,
+  `AUX`, `NUL`, `COM1-9`, `LPT1-9`) disanitasi dengan prefix `_`.
+  `make_workspace()` dan `unique_path()` juga menjamin komponennya masuk
+  batas. Test baru `filenames`. Batas full path (259 karakter Windows) dan
+  `longPathAware` ditunda ke milestone port Windows.
 
 ### Rencana / gap yang diketahui
 
@@ -267,7 +280,7 @@ Menjalankan aplikasi:
 ```
 
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
-`media`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
+`media`, `filenames`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
 `confirm_dialog` (offscreen), `settings_dialog` (offscreen), `theme` (offscreen), dan
 `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai server lokal di
 `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
