@@ -5,7 +5,7 @@
 - The system tray now shows the colored SwiftDM mark (the same artwork as the
   browser integration) instead of the monochrome variant. The mark keeps its
   gradients, so it stays readable on light and dark tray panels.
-- Chromium extension 0.5.1: the popup follows the design in
+- Chromium extension 0.5.2: the popup follows the design in
   `ext/extension-ui-template.html` (kept as the design reference). The header
   shows the app mark, the app version reported by the running app and a pill
   with the connection state; the two settings became switch rows; the
@@ -14,6 +14,35 @@
   not shipped: the styles live in `popup.css` and the behavior in `popup.js`,
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
+
+- The extension reuses its command WebSocket between handoffs and opens the
+  command channel while browser cookie metadata is being gathered. The status
+  subscription remains a separate socket.
+
+## 0.18.19 — 2026-10-22
+
+Reduce the wait before browser confirmation and the first transfer progress.
+
+- The confirmation dialog opens immediately while the server probe runs in a
+  worker. It initially shows the browser/URL fallback name and `Checking…`;
+  Download Now stays disabled until the resolved metadata is ready. The file
+  name, size and default category are then updated without replacing any
+  category or location the user already selected. Cancel still creates no row
+  or history record.
+- The successful confirmation probe is passed through the GUI task into the
+  engine. The initial transfer no longer repeats the same HEAD/range probe;
+  resume continues to perform a fresh probe to validate saved state. Resolved
+  URLs (including Drive interstitial results), validators and range metadata
+  are retained.
+- The Chromium service worker reuses a command WebSocket for successive
+  requests and correlates replies by request id; failed/closed sockets reject
+  pending requests and are recreated on retry or the next handoff. Handoff and
+  application latency milestones are logged for diagnosis.
+- Regression tests cover engine probe reuse, pending confirmation metadata and
+  command-socket reuse. This behavior/UX change is versioned as 0.18.19 by the
+  maintainer's decision rather than the usual MINOR bump.
+- The extension was bumped independently to 0.5.2 for the command-channel
+  reuse and handoff warm-up.
 
 ## 0.18.18 — 2026-10-21
 

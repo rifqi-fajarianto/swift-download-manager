@@ -184,11 +184,13 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     connect(category_box_, &QComboBox::currentTextChanged, this, [this] {
         if (!location_custom_) use_default_location();
     });
+    connect(category_box_, &QComboBox::activated, this,
+            [this](int) { category_custom_ = true; });
     connect(location_edit_, &QLineEdit::textEdited, this, [this] {
         location_custom_ = true;
     });
     connect(location_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
-        download_button_->setEnabled(!text.trimmed().isEmpty());
+        download_button_->setEnabled(probe_ready_ && !text.trimmed().isEmpty());
     });
     connect(browse_button, &QPushButton::clicked, this,
             &ConfirmDownloadDialog::choose_location);
@@ -215,6 +217,32 @@ QString ConfirmDownloadDialog::location() const {
     if (text.isEmpty()) return {};
     text = QString::fromStdString(swiftdm::expand_tilde(text.toStdString()));
     return QDir::cleanPath(text);
+}
+
+void ConfirmDownloadDialog::set_probe_pending() {
+    probe_ready_ = false;
+    size_label_->setText(tr("Checking…"));
+    download_button_->setEnabled(false);
+}
+
+void ConfirmDownloadDialog::set_probe_result(const QString& file_name, quint64 size) {
+    probe_ready_ = true;
+    file_name_ = file_name.isEmpty() ? tr("(from URL)") : file_name;
+    file_label_->setToolTip(file_name_);
+    update_file_label();
+    size_label_->setText(size > 0 ? QString::fromStdString(swiftdm::format_bytes(size, 3))
+                                  : tr("Unknown size"));
+
+    if (!category_custom_) {
+        const QString category = QString::fromStdString(
+            swiftdm::category_folder_for(file_name.toStdString()));
+        const QString selected = swiftdm::is_category_name(category.toStdString())
+                                     ? category
+                                     : QStringLiteral("Misc");
+        category_box_->setCurrentText(selected);
+        if (!location_custom_) use_default_location();
+    }
+    download_button_->setEnabled(!location_edit_->text().trimmed().isEmpty());
 }
 
 QString ConfirmDownloadDialog::default_location() const {

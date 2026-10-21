@@ -81,10 +81,17 @@ downloader does not retain.
 
 - HTTP and HTTPS links/pages; automatic interception is enabled by default.
 - Every handoff goes through SwiftDM's Download Confirmation window (0.18.0):
-  the app probes the URL without touching the list or database, then the user
-  picks Download Now, Cancel (nothing is stored) or Add to queue (placeholder).
-  If the main window is hidden, SwiftDM shows it so the confirmation is
-  visible.
+  the app displays it immediately while probing the URL without touching the
+  list or database. A fallback filename and `Checking…` appear first, and
+  Download Now becomes available when metadata arrives. The user can choose
+  Download Now, Cancel (nothing is stored) or Add to queue (placeholder). The
+  successful probe is reused for the initial transfer; Resume checks the server
+  again (0.18.19). If the main window is hidden, SwiftDM keeps it hidden and
+  shows the independent confirmation window.
+- Successive extension commands reuse one WebSocket while it remains open; a
+  closed connection is recreated for the next attempt. The command socket is
+  separate from the status subscription socket and is warmed while optional
+  browser cookie metadata is being gathered (extension 0.5.2 / app 0.18.19).
 - The toolbar icon mirrors that switch: colored while automatic handoff is on,
   grayscale while it is off (the popup and the worker both apply it, so it also
   survives a worker restart). The PNGs in `icons/` are rendered from

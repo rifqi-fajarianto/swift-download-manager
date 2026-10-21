@@ -51,12 +51,18 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
   let attempts = 0;
 
   class MockWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+
     constructor(url, protocol) {
       this.url = url;
       this.protocol = protocol;
       this.listeners = new Map();
       this.sent = [];
       this.attempt = ++attempts;
+      this.readyState = 0;
       calls.sockets.push(this);
       setTimeout(() => {
         if (webSocketMode === "error" ||
@@ -64,6 +70,7 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
           this.emit("error", {});
           return;
         }
+        this.readyState = 1;
         this.emit("open", {});
       }, 0);
     }
@@ -88,6 +95,7 @@ function createEnvironment({ autoIntercept = true, legacyBypass = false,
       }), 0);
     }
     close() {
+      this.readyState = 3;
       this.emit("close", { code: 1000 });
     }
   }
@@ -241,12 +249,15 @@ async function testSuccessfulHandoff() {
   check(env.calls.cancel[0] === 1, "browser download is canceled");
   check(env.calls.erase[0] === 1, "canceled download is removed from the shelf");
   check(env.calls.download.length === 0, "no browser fallback after SwiftDM accepts");
-  check(env.calls.sockets.length === 1, "one WebSocket is opened");
-  check(env.calls.sockets[0].url === "ws://127.0.0.1:10007/",
+  check(env.calls.sockets.length === 1, "one persistent command WebSocket is opened");
+  const commandSocket = env.calls.sockets.find((socket) =>
+    socket.sent.some((message) => message.cmd === "addDownload")
+  );
+  check(commandSocket?.url === "ws://127.0.0.1:10007/",
     "WebSocket targets the local SwiftDM port");
-  check(env.calls.sockets[0].protocol === "swiftdm.v1",
+  check(commandSocket?.protocol === "swiftdm.v1",
     "WebSocket uses the swiftdm.v1 subprotocol");
-  const sent = env.calls.sockets[0].sent[0];
+  const sent = commandSocket?.sent[0];
   check(sent.cmd === "addDownload", "service worker sends addDownload");
   check(sent.data.url === "https://example.com/file.bin", "download URL is forwarded");
   check(sent.data.referer === "https://example.com/page", "same-origin referrer is forwarded");
@@ -263,6 +274,22 @@ async function testSpaceInUrlIsEncodedForHandoff() {
   const sent = env.calls.sockets[0].sent[0];
   check(sent.data.url.includes("Test%20SwiftDM"), "space in download path is percent-encoded");
   check(!sent.data.url.includes(" "), "handoff URL contains no raw spaces");
+}
+
+async function testCommandSocketIsReused() {
+  const env = createEnvironment();
+  const listener = env.onCreated();
+  listener(downloadItem({ id: 21 }));
+  await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
+  listener(downloadItem({ id: 22, url: "https://example.com/second.bin" }));
+  await settle(() => env.calls.sockets[0].sent.length === 2);
+  check(env.calls.sockets.length === 1,
+    "sequential handoffs reuse the open command socket");
+  const commandSocket = env.calls.sockets.find((socket) =>
+    socket.sent.some((message) => message.cmd === "addDownload")
+  );
+  check(commandSocket?.sent.filter((message) => message.cmd === "addDownload").length === 2,
+    "both handoffs are sent as addDownload commands");
 }
 
 async function testFallbackWhenAppIsDown() {
@@ -542,7 +569,10 @@ async function testPairedHandoffSharesTheGroupToken() {
     await settle(() => response !== null && env.calls.sockets.length > 0 &&
                         env.calls.sockets[env.calls.sockets.length - 1].sent.length > 0);
     check(response?.ok === true, "detected media handoff is accepted");
-    const sent = env.calls.sockets[env.calls.sockets.length - 1].sent[0];
+    const commandSocket = env.calls.sockets.find((socket) =>
+      socket.sent.some((message) => message.cmd === "addDownload" && message.data.url === url)
+    );
+    const sent = commandSocket?.sent.find((message) => message.data.url === url);
     check(sent.cmd === "addDownload" && sent.data.url === url,
       "the handoff uses addDownload with the detected URL");
     check(sent.data.group === pair.group, "both halves share the pair token");
@@ -585,6 +615,7 @@ async function testStatusChannel() {
 (async () => {
   await testSuccessfulHandoff();
   await testSpaceInUrlIsEncodedForHandoff();
+  await testCommandSocketIsReused();
   await testFallbackWhenAppIsDown();
   await testTransientConnectionRetry();
   await testNoCookiePermissionSendsEmptyArray();

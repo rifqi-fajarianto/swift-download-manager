@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 
 #include "core/util.h"
 #include "engine/categories.h"
@@ -819,15 +820,72 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
     // names stay as a fallback for servers without Content-Disposition.
     probe_options.filename.clear();
 
+    struct ProbeFlow {
+        DownloadTask::Options options;
+        DownloadItem item;
+        QPointer<ConfirmDownloadDialog> dialog;
+        QPointer<DownloadTask> probe_task;
+        swiftdm::ProbeResult probe_result;
+        QString resolved_name;
+        quint64 resolved_size = 0;
+        bool resumable = false;
+        bool ready = false;
+        bool canceled = false;
+        qint64 started_ms = 0;
+        std::function<void()> start_download;
+    };
+
+    auto flow = std::make_shared<ProbeFlow>();
+    flow->options = std::move(options);
+    flow->item = std::move(item);
+    flow->started_ms = now_ms();
+
+    const bool show_confirmation = settings_.show_download_confirmation;
+    if (show_confirmation) {
+        QString fallback_name = flow->options.filename.isEmpty()
+                                    ? flow->item.file_name
+                                    : flow->options.filename;
+        if (fallback_name.isEmpty()) fallback_name = QStringLiteral("download.bin");
+        auto* dialog = new ConfirmDownloadDialog(
+            fallback_name, 0, flow->options.url,
+            QString::fromStdString(settings_.download_dir), settings_.category_folders);
+        dialog->set_probe_pending();
+        flow->dialog = dialog;
+        connect(dialog, &QDialog::finished, this, [flow](int result) {
+            if (result != QDialog::Accepted) {
+                flow->canceled = true;
+                if (flow->probe_task) flow->probe_task->cancel();
+                if (flow->dialog) flow->dialog->deleteLater();
+            } else if (flow->ready && flow->start_download) {
+                flow->start_download();
+            }
+        });
+        dialog->setModal(true);
+        // Top-level dialog intentionally has no parent: browser handoffs must
+        // not restore a main window that is hidden to the tray.
+    }
+
     auto* probe = new DownloadTask(settings_, probe_options, this);
+    flow->probe_task = probe;
+    qInfo() << "download latency: probe started";
     connect(probe, &DownloadTask::probe_completed, this,
-            [this, probe, options, item](bool ok, const QString& error) {
+            [this, probe, flow, show_confirmation](bool ok, const QString& error) {
+                if (flow->canceled) {
+                    probe->deleteLater();
+                    return;
+                }
                 const QString probed_name = probe->resolved_filename();
                 const quint64 probed_size = probe->resolved_size();
                 const bool resumable = probe->resumable();
-                probe->deleteLater();
+                const swiftdm::ProbeResult probe_result = probe->probe_result();
+                const qint64 probe_ms = now_ms() - flow->started_ms;
+                qInfo() << "download latency: probe completed" << probe_ms << "ms";
+
                 if (!ok) {
-                    if (!error.isEmpty()) show_error_dialog(options.url, error, item.page_url);
+                    if (flow->dialog) flow->dialog->reject();
+                    if (!error.isEmpty())
+                        show_error_dialog(flow->options.url, error, flow->item.page_url);
+                    probe->deleteLater();
                     return;
                 }
 
@@ -835,59 +893,80 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
                     swiftdm::sanitize_filename(probed_name.toStdString()));
                 if (name.isEmpty()) {
                     name = QString::fromStdString(
-                        swiftdm::sanitize_filename(item.file_name.toStdString()));
+                        swiftdm::sanitize_filename(flow->item.file_name.toStdString()));
                 }
                 if (name.isEmpty()) name = QStringLiteral("download.bin");
 
-                DownloadItem draft = item;
-                draft.url = options.url;
-                draft.file_name = name;
-                draft.category = QString::fromStdString(
-                    swiftdm::category_folder_for(name.toStdString()));
-                draft.size = probed_size;
-                draft.resumable = resumable;
-                draft.output_dir = QString::fromStdString(settings_.download_dir);
-                draft.last_try = now_stamp();
-                draft.last_try_epoch = swiftdm::unix_now();
-                draft.state = DownloadItem::State::Queued;
-
-                DownloadTask::Options start_options = options;
-                start_options.filename = name;
-                start_options.category = draft.category;
-
-                if (settings_.show_download_confirmation) {
-                    // Keep the confirmation independent from the main window: a
-                    // browser handoff must not restore a window hidden to the
-                    // tray.
-                    ConfirmDownloadDialog dialog(name, probed_size, options.url,
-                                                 QString::fromStdString(settings_.download_dir),
-                                                 settings_.category_folders);
-                    if (dialog.exec() != QDialog::Accepted) {
-                        // Cancel: no list row and no database entry was created.
-                        return;
+                if (show_confirmation) {
+                    if (!flow->dialog) {
+                        probe->deleteLater();
+                        return;  // user canceled while the probe was in flight
                     }
-
-                    draft.category = dialog.category();
-                    draft.output_dir = dialog.location();
-                    start_options.category = draft.category;
-                    start_options.apply_category_folder = false;
-                    start_options.output_dir = draft.output_dir;
-                } else {
-                    // Without the confirmation the download starts right away
-                    // with the default category and folder.
-                    draft.output_dir = default_download_location(
-                        QString::fromStdString(settings_.download_dir), draft.category,
-                        settings_.category_folders);
-                    start_options.output_dir = draft.output_dir;
-                    start_options.apply_category_folder = false;
+                    flow->dialog->set_probe_result(name, probed_size);
+                    qInfo() << "download latency: confirmation metadata ready"
+                            << now_ms() - flow->started_ms << "ms";
                 }
 
-                start_confirmed_download(std::move(draft), std::move(start_options));
+                flow->resolved_name = name;
+                flow->resolved_size = probed_size;
+                flow->resumable = resumable;
+                flow->probe_result = probe_result;
+                flow->ready = true;
+                probe->deleteLater();
+                if (!show_confirmation && flow->start_download) flow->start_download();
             });
+
+    const std::weak_ptr<ProbeFlow> weak_flow = flow;
+    flow->start_download = [this, weak_flow] {
+        const std::shared_ptr<ProbeFlow> flow = weak_flow.lock();
+        if (!flow) return;
+        if (flow->canceled || !flow->ready) return;
+        qInfo() << "download latency: download accepted"
+                << now_ms() - flow->started_ms << "ms";
+        DownloadItem draft = flow->item;
+        draft.url = flow->options.url;
+        draft.file_name = flow->resolved_name;
+        draft.category = QString::fromStdString(
+            swiftdm::category_folder_for(flow->resolved_name.toStdString()));
+        draft.size = flow->resolved_size;
+        draft.resumable = flow->resumable;
+        draft.output_dir = QString::fromStdString(settings_.download_dir);
+        draft.last_try = now_stamp();
+        draft.last_try_epoch = swiftdm::unix_now();
+        draft.state = DownloadItem::State::Queued;
+
+        DownloadTask::Options start_options = flow->options;
+        start_options.filename = flow->resolved_name;
+        start_options.category = draft.category;
+        if (flow->dialog) {
+            draft.category = flow->dialog->category();
+            draft.output_dir = flow->dialog->location();
+            start_options.category = draft.category;
+            start_options.apply_category_folder = false;
+            start_options.output_dir = draft.output_dir;
+            flow->dialog->deleteLater();
+            flow->dialog = nullptr;
+        } else {
+            draft.output_dir = default_download_location(
+                QString::fromStdString(settings_.download_dir), draft.category,
+                settings_.category_folders);
+            start_options.output_dir = draft.output_dir;
+            start_options.apply_category_folder = false;
+        }
+        start_confirmed_download(std::move(draft), std::move(start_options),
+                                 flow->probe_result);
+    };
+
+    if (flow->dialog) {
+        qInfo() << "download latency: confirmation shown" << now_ms() - flow->started_ms
+                << "ms";
+        flow->dialog->open();
+    }
     probe->start_probe();
 }
 
-void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options) {
+void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options,
+                                          const swiftdm::ProbeResult& probe) {
     item.bandwidth_limit_enabled = options.limit_enabled;
     item.bandwidth_limit_kbps = options.limit_kbps;
     const int row = model_->add_item(item);
@@ -897,11 +976,12 @@ void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Optio
         added->history_id = history_.insert(history_record_for(*added, &options));
     }
     const int id = added->id;
-    start_task_at_row(row, &options);
+    start_task_at_row(row, &options, &probe);
     open_download_window(id);
 }
 
-void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options_override) {
+void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options_override,
+                                   const swiftdm::ProbeResult* probe) {
     DownloadItem* item = model_->item_at(row);
     if (!item) return;
 
@@ -939,6 +1019,7 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     options.apply_category_folder = false;
 
     auto* task = new DownloadTask(settings_, options, model_);
+    if (probe) task->set_cached_probe(*probe);
     item->task = task;
     item->bandwidth_limit_enabled = options.limit_enabled;
     item->bandwidth_limit_kbps = options.limit_kbps;

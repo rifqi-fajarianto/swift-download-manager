@@ -27,6 +27,9 @@ const tabStreams = new Map();
 
 let statusSocket = null;
 let statusReconnectTimer = null;
+let commandSocket = null;
+let commandSocketReady = null;
+const commandRequests = new Map();
 
 // The toolbar mark follows the automatic-handoff switch: the colored mark while
 // it is on, the grayscale one while it is off. The worker applies the stored
@@ -330,6 +333,7 @@ chrome.downloads.onCreated.addListener((item) => {
 });
 
 async function interceptDownload(item) {
+  const handoffStartedAt = Date.now();
   const { autoIntercept = true } = await chrome.storage.local.get(["autoIntercept"]);
   if (!autoIntercept) return;
 
@@ -351,6 +355,9 @@ async function interceptDownload(item) {
     await sendDownloadWithRetry(item.url, item.referrer ?? "", "", {
       useGrantedCookiePermission: true,
       ...observed
+    });
+    console.info("SwiftDM handoff accepted", {
+      elapsedMs: Date.now() - handoffStartedAt
     });
     clearActionError();
   } catch (error) {
@@ -380,6 +387,12 @@ async function sendDownloadWithRetry(...args) {
 async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
   const url = validHttpUrl(rawUrl);
   if (!url) throw new Error("Only HTTP and HTTPS URLs can be sent to SwiftDM.");
+
+  // Establish the local command channel while Chrome's cookie API is being
+  // queried. On a cold handoff this overlaps the WebSocket handshake with the
+  // browser metadata work instead of adding those latencies in series.
+  const commandSocketWarmup = getCommandSocket();
+  commandSocketWarmup.catch(() => {});
 
   let granted = false;
   if (options.requestCookiePermission) {
@@ -431,7 +444,7 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
   // without inventing a second protocol command.
   const group = sanitizeGroup(options.group);
   if (group) data.group = group;
-  return sendCommand("addDownload", data);
+  return sendCommand("addDownload", data, commandSocketWarmup);
 }
 
 function sanitizeGroup(value) {
@@ -502,53 +515,100 @@ function validHttpUrl(value) {
   }
 }
 
-function sendCommand(cmd, data) {
+function sendCommand(cmd, data, socketPromise = null) {
+  const id = crypto.randomUUID();
   return new Promise((resolve, reject) => {
-    let settled = false;
-    const id = crypto.randomUUID();
-    let socket;
-    const timeout = setTimeout(() => finish(new Error(
-      "SwiftDM did not respond on 127.0.0.1:10007. Check that SwiftDM is running and the port is free."
-    )), 5000);
+    const timeout = setTimeout(() => {
+      finishCommandRequest(id, new Error(
+        "SwiftDM did not respond on 127.0.0.1:10007. Check that SwiftDM is running and the port is free."
+      ));
+    }, 5000);
+    commandRequests.set(id, { resolve, reject, timeout });
 
-    function finish(error, response) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      try { socket?.close(); } catch { /* already closed */ }
-      if (error) reject(error);
-      else if (!response.ok) reject(new Error(response.error ?? "SwiftDM rejected the request."));
-      else resolve(response.data ?? {});
-    }
+    (socketPromise ?? getCommandSocket()).then((socket) => {
+      if (!commandRequests.has(id)) return;
+      try {
+        socket.send(JSON.stringify({ v: 1, cmd, id, data }));
+      } catch (error) {
+        finishCommandRequest(id, new Error(`Cannot send the request to SwiftDM: ${errorText(error)}`));
+        dropCommandSocket(socket, new Error("SwiftDM command connection closed."));
+      }
+    }).catch((error) => {
+      finishCommandRequest(id, error);
+    });
+  });
+}
 
-    try {
-      socket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
-    } catch (error) {
-      finish(new Error(`Cannot create the SwiftDM connection: ${errorText(error)}`));
-      return;
-    }
+function getCommandSocket() {
+  if (commandSocket?.readyState === WebSocket.OPEN) return Promise.resolve(commandSocket);
+  if (commandSocket?.readyState === WebSocket.CONNECTING && commandSocketReady) {
+    return commandSocketReady;
+  }
 
+  let socket;
+  try {
+    socket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
+  } catch (error) {
+    return Promise.reject(new Error(`Cannot create the SwiftDM connection: ${errorText(error)}`));
+  }
+  commandSocket = socket;
+  commandSocketReady = new Promise((resolve, reject) => {
+    let opened = false;
     socket.addEventListener("open", () => {
-      socket.send(JSON.stringify({ v: 1, cmd, id, data }));
+      opened = true;
+      resolve(socket);
     }, { once: true });
     socket.addEventListener("message", (event) => {
       try {
         const response = JSON.parse(event.data);
-        if (response.id !== id) return;
-        finish(null, response);
+        if (typeof response.id !== "string") return;
+        if (!response.ok) {
+          finishCommandRequest(response.id,
+            new Error(response.error ?? "SwiftDM rejected the request."));
+        } else {
+          finishCommandRequest(response.id, null, response.data ?? {});
+        }
       } catch {
-        finish(new Error("SwiftDM sent an invalid response."));
+        dropCommandSocket(socket, new Error("SwiftDM sent an invalid response."));
       }
     });
-    socket.addEventListener("error", () => finish(new Error(
-      "Cannot connect to SwiftDM. Make sure SwiftDM is running and check its Extensions dialog for the status."
-    )), { once: true });
+    socket.addEventListener("error", () => {
+      const error = new Error(
+        "Cannot connect to SwiftDM. Make sure SwiftDM is running and check its Extensions dialog for the status."
+      );
+      if (!opened) reject(error);
+      dropCommandSocket(socket, error);
+    });
     socket.addEventListener("close", (event) => {
-      if (settled) return;
       const detail = event.code && event.code !== 1005 ? ` (close ${event.code})` : "";
-      finish(new Error(`SwiftDM closed the connection${detail}.`));
-    }, { once: true });
+      const error = new Error(`SwiftDM closed the connection${detail}.`);
+      if (!opened) reject(error);
+      dropCommandSocket(socket, error);
+    });
+  }).finally(() => {
+    if (commandSocket === socket) commandSocketReady = null;
   });
+  return commandSocketReady;
+}
+
+function finishCommandRequest(id, error, response) {
+  const pending = commandRequests.get(id);
+  if (!pending) return;
+  commandRequests.delete(id);
+  clearTimeout(pending.timeout);
+  if (error) pending.reject(error);
+  else pending.resolve(response ?? {});
+}
+
+function dropCommandSocket(socket, error) {
+  if (commandSocket === socket) {
+    commandSocket = null;
+    commandSocketReady = null;
+  }
+  for (const [id] of commandRequests) finishCommandRequest(id, error);
+  try {
+    if (socket.readyState !== WebSocket.CLOSED) socket.close();
+  } catch { /* already closed */ }
 }
 
 function errorText(error) {

@@ -43,6 +43,8 @@ class ConfirmDownloadDialog : public QDialog {
     QString category() const;
     // Exact destination folder, tilde-expanded and cleaned.
     QString location() const;
+    void set_probe_pending();
+    void set_probe_result(const QString& file_name, quint64 size);
 
   protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -62,6 +64,8 @@ class ConfirmDownloadDialog : public QDialog {
     // True once the user edited or picked a location: category changes must no
     // longer move it.
     bool location_custom_ = false;
+    bool category_custom_ = false;
+    bool probe_ready_ = true;
     // Full file name; the label shows an elided form of it.
     QString file_name_;
 

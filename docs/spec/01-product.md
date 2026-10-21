@@ -40,13 +40,16 @@ Layout (from `main-window.png`):
 ## 3. Core user flows
 
 1. **New download (manual)**: `New URL` toolbar button opens a small dialog
-   with a URL field and `Download`/`Cancel`. On accept, the app probes the URL
-   (no list row, no database entry), then shows the *Download Confirmation*
-   window: full URL, server-resolved file name and size, a `Category` dropdown
-   (file-type default, user overridable) and `Location` (category folder by
-   default, user overridable). `Download Now` adds the item and starts the
+   with a URL field and `Download`/`Cancel`. On accept, the app starts probing
+   the URL and immediately shows the *Download Confirmation* window (no list
+   row or database entry yet): full URL, server-resolved file name and size, a
+   `Category` dropdown (file-type default, user overridable) and `Location`
+   (category folder by default, user overridable). `Download Now` adds the item and starts the
    transfer; `Cancel` leaves no trace; `Add to queue` is a placeholder until
-   queue scheduling exists (0.18.0).
+   queue scheduling exists (0.18.0). While probing, the fallback filename and
+   `Checking…` size are shown and Download Now is disabled; server metadata
+   replaces them when ready. The successful probe is reused by the initial
+   transfer, while Resume probes again (0.18.19).
    - Fixed default size (640×250, minimum 520×230): the window never grows with
      the file name or the URL length (0.18.9). The file name line is elided in
      the middle and keeps the full name in its tooltip.

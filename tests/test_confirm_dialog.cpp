@@ -122,6 +122,29 @@ int main(int argc, char** argv) {
     check(label_texts(&unknown).contains(QStringLiteral("Unknown size")),
           "an unknown size is shown");
 
+    ConfirmDownloadDialog pending(QStringLiteral("fallback.bin"), 0,
+                                  QStringLiteral("https://example.com/fallback.bin"),
+                                  QStringLiteral("/tmp"), true);
+    pending.set_probe_pending();
+    QPushButton* download_button = nullptr;
+    for (QPushButton* button : pending.findChildren<QPushButton*>()) {
+        if (button->text() == QStringLiteral("Download Now")) download_button = button;
+    }
+    check(label_texts(&pending).contains(QStringLiteral("Checking…")),
+          "pending probe shows a checking status");
+    check(download_button && !download_button->isEnabled(),
+          "Download Now is disabled while the probe is pending");
+    pending.set_probe_result(QStringLiteral("movie.mp4"), 1500000);
+    check(download_button && download_button->isEnabled(),
+          "Download Now is enabled after probe metadata arrives");
+    check(label_texts(&pending).contains(size_text),
+          "probe result replaces the pending size");
+    bool resolved_name_shown = false;
+    for (const QLabel* label : pending.findChildren<QLabel*>()) {
+        if (label->toolTip() == QStringLiteral("movie.mp4")) resolved_name_shown = true;
+    }
+    check(resolved_name_shown, "probe result replaces the fallback filename");
+
     // A long file name or URL never widens the window.
     ConfirmDownloadDialog long_dialog(long_name, 1500000, long_url, QStringLiteral("/tmp"),
                                       true);

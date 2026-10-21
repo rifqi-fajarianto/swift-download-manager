@@ -23,6 +23,11 @@ are our own choices where the original is UNKNOWN (E23).
 - **Resume**: restore segment table from `segments.json`; re-probe to validate
   file identity (size and ETag/Last-Modified); if changed → restart (original
   keeps `urla`/`hittitle` for this; strings reference re-download paths).
+- **Initial confirmed transfer [design: 0.18.19]**: the fresh probe that filled
+  the confirmation dialog is passed into `DownloadTask` and `DownloadEngine`;
+  do not repeat it before transferring. The result includes the resolved URL,
+  effective URL, size, range support and validators. It is consumed once, not
+  stored in task options, so Resume always performs a fresh validation probe.
 
 ## 2. Segmentation
 

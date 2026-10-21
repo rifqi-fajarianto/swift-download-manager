@@ -5,6 +5,8 @@
 #include "net/http.h"
 
 #include <algorithm>
+#include <QDebug>
+#include <QElapsedTimer>
 
 namespace swiftdm::ui {
 
@@ -86,6 +88,17 @@ bool DownloadTask::resumable() const {
     return resumable_;
 }
 
+swiftdm::ProbeResult DownloadTask::probe_result() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return probe_result_;
+}
+
+void DownloadTask::set_cached_probe(const swiftdm::ProbeResult& probe) {
+    if (active() || !probe.ok) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    cached_probe_ = probe;
+}
+
 QString DownloadTask::workspace_dir() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return workspace_dir_;
@@ -130,6 +143,7 @@ void DownloadTask::run_probe() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        probe_result_ = probe;
         resolved_filename_ = options_.filename.isEmpty()
                                  ? QString::fromStdString(probe.filename_hint)
                                  : options_.filename;
@@ -179,9 +193,19 @@ void DownloadTask::cancel() {
 }
 
 void DownloadTask::run() {
-    // Probe first so the UI can show the resolved name/size immediately.
+    // A confirmation probe is fresh and can be shared with the initial
+    // transfer. Resumes do not carry one, and therefore validate the remote
+    // file before using their saved segment state.
+    std::optional<swiftdm::ProbeResult> cached_probe;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        cached_probe = std::move(cached_probe_);
+        cached_probe_.reset();
+    }
     const swiftdm::ProbeResult probe =
-        swiftdm::probe_url(http_options_for(settings_, options_));
+        cached_probe && cached_probe->ok
+            ? *cached_probe
+            : swiftdm::probe_url(http_options_for(settings_, options_));
     if (!probe.ok) {
         active_ = false;
         const QString message =
@@ -191,6 +215,7 @@ void DownloadTask::run() {
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        probe_result_ = probe;
         resolved_filename_ = options_.filename.isEmpty()
                                  ? QString::fromStdString(probe.filename_hint)
                                  : options_.filename;
@@ -214,10 +239,23 @@ void DownloadTask::run() {
     request.headers = options_.headers;
     request.post_data.assign(options_.post_data.constData(),
                              static_cast<size_t>(options_.post_data.size()));
+    // `probe` is either the confirmation result or a fresh result from this
+    // run. In both cases DownloadEngine must use it instead of probing again.
+    request.probe = probe;
 
     swiftdm::DownloadEngine engine(settings_);
+    QElapsedTimer transfer_timer;
+    transfer_timer.start();
+    bool first_progress_logged = false;
+    qInfo() << "download latency: engine transfer entered";
     const swiftdm::DownloadResult result =
-        engine.run(request, [this](const swiftdm::ProgressInfo& info) {
+        engine.run(request, [this, &transfer_timer, &first_progress_logged](
+                                const swiftdm::ProgressInfo& info) {
+            if (!first_progress_logged && info.done > 0) {
+                first_progress_logged = true;
+                qInfo() << "download latency: first progress reported"
+                        << transfer_timer.elapsed() << "ms";
+            }
             if (cancel_requested_.load() || pause_requested_.load()) {
                 if (live_limit_) live_limit_->interrupt();
                 return false;

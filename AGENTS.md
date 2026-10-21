@@ -46,14 +46,20 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.18**. Status ini cepat
+> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.19**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
-- **Branch kerja saat snapshot**: `ui`.
+- **Branch kerja saat snapshot**: `engine`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.18. Nama file yang melebihi batas komponen path
+- **Versi kerja**: 0.18.19. Konfirmasi unduhan langsung muncul saat probe
+  berjalan di background; tombol Download Now aktif setelah metadata tersedia,
+  dan probe sukses dipakai ulang untuk transfer awal (Resume tetap probe ulang).
+  Extension Chromium mempertahankan WebSocket perintah selama koneksi aktif.
+  Batch UX/perbaikan latensi ini memakai patch 0.18.19 atas keputusan
+  maintainer, meskipun kebijakan normal untuk UX adalah MINOR +1.
+  Nama file yang melebihi batas komponen path
   (240 byte UTF-8) dipotong otomatis: awal nama dan extension dipertahankan,
   hash FNV-1a 64-bit ditambahkan; nama device Windows disanitasi. Lihat
   0.18.17 untuk opsi "Show Download Confirmation Dialog" di tab `General`;
@@ -94,11 +100,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Semua message box memakai ikon aplikasi sendiri (filled) alih-alih ikon
   bawaan platform: info untuk Browser Extensions, question untuk konfirmasi
   quit, check untuk Download Complete, alert untuk semua peringatan.
-- **Versi ekstensi Chromium**: 0.5.1 (`ext/chromium/manifest.json`), terpisah
-  dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
+- **Versi ekstensi Chromium**: 0.5.2 (`ext/chromium/manifest.json`), terpisah
+  dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.18
+### Sudah tersedia sampai 0.18.19
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -111,12 +117,15 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - CLI headless `swiftdm get` dan GUI Qt6 lengkap dengan tray, kategori,
   properties, konfirmasi download, serta pemulihan riwayat dari SQLite.
 - Integrasi Chromium MV3: handoff otomatis/manual, cookie opsional, deteksi
-  HLS dan pasangan video+audio, status push lewat WebSocket.
+  HLS dan pasangan video+audio, status push lewat WebSocket; socket command
+  dipakai ulang untuk handoff berurutan selama masih terbuka.
+- Dialog konfirmasi tampil saat probe berjalan dan memakai ulang hasil probe
+  untuk transfer awal; resume selalu validasi ulang server.
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.18 — riwayat fitur
+### 0.18.1–0.18.19 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -205,6 +214,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `make_workspace()` dan `unique_path()` juga menjamin komponennya masuk
   batas. Test baru `filenames`. Batas full path (259 karakter Windows) dan
   `longPathAware` ditunda ke milestone port Windows.
+- 0.18.19 mengurangi latensi konfirmasi dan awal transfer: dialog tampil saat
+  probe berlangsung, metadata diperbarui saat siap, dan hasil probe dipakai
+  ulang untuk transfer awal (resume tetap probe ulang). Extension memakai ulang
+  WebSocket command dan mencatat timing handoff. Test baru menjaga reuse probe,
+  status dialog pending, dan reuse socket. Seri patch 0.18.x dipilih maintainer
+  untuk batch ini meski mencakup perubahan UX.
 
 ### Rencana / gap yang diketahui
 

@@ -402,7 +402,9 @@ DownloadResult DownloadEngine::run(
         options.proxy_password = settings_.proxy.password;
     }
 
-    const ProbeResult probe = probe_url(options);
+    const ProbeResult probe = request.probe && request.probe->ok
+                                  ? *request.probe
+                                  : probe_url(options);
     if (!probe.ok) {
         result.status = DownloadResult::Status::Failed;
         result.error = probe.error.empty() ? "probe failed" : probe.error;

@@ -70,6 +70,27 @@ void test_probe(testutil::TestHttpServer& server) {
     CHECK(probe.etag.find("etag-1048576") != std::string::npos);
 }
 
+void test_engine_reuses_confirmation_probe(const std::string& dir,
+                                           testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    const std::string url = server.base_url() + "/file/1048576";
+    HttpOptions options;
+    options.url = url;
+    const ProbeResult probe = probe_url(options);
+    CHECK(probe.ok);
+    const int heads_after_confirmation = server.head_requests();
+
+    DownloadRequest request;
+    request.url = url;
+    request.probe = probe;
+    const DownloadResult result = engine.run(request);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(server.head_requests(), heads_after_confirmation);
+    CHECK_EQ(result.size, uint64_t(1048576));
+    CHECK(file_matches(result.path, 1048576));
+}
+
 void test_url_encoding(testutil::TestHttpServer& server) {
     CHECK_EQ(encode_url_for_request("https://host/Test SwiftDM.zip?x=1"),
              std::string("https://host/Test%20SwiftDM.zip?x=1"));
@@ -647,6 +668,7 @@ int main() {
     }
 
     test_probe(server);
+    test_engine_reuses_confirmation_probe(dir + "/probe-reuse", server);
     test_url_encoding(server);
     test_browser_cookie_scope(dir + "/browser-cookie", server);
     test_download_segmented(dir + "/segmented", server);

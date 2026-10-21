@@ -45,6 +45,8 @@ taken from the application used as a behavioral reference.
 - Download from the command line without opening the GUI.
 - Preview integration with the Chromium extension: send links or pages,
   intercept HTTP(S) downloads, and detect playlists/media pairs.
+- Browser download confirmations appear while link metadata is checked; the
+  initial transfer reuses that probe instead of repeating network checks.
 - Resolve supported Google Drive download link formats.
 
 > Note: queue scheduling, a Firefox extension, and muxing paired audio/video
@@ -126,7 +128,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.16_amd64.deb
+sudo apt install ./swiftdm_0.18.19_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

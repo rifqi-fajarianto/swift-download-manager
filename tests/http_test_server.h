@@ -42,6 +42,7 @@ namespace testutil {
 
 inline std::atomic<int> g_cookie_requests{0};
 inline std::atomic<int> g_non_matching_cookie_requests{0};
+inline std::atomic<int> g_head_requests{0};
 inline std::atomic<int> g_limited_active{0};
 inline std::atomic<int> g_limited_refusals{0};
 
@@ -125,6 +126,7 @@ class TestHttpServer {
     int cookie_requests() const { return g_cookie_requests.load(); }
     int non_matching_cookie_requests() const { return g_non_matching_cookie_requests.load(); }
     int limited_refusals() const { return g_limited_refusals.load(); }
+    int head_requests() const { return g_head_requests.load(); }
     void reset_limited_refusals() { g_limited_refusals.store(0); }
 
   private:
@@ -184,6 +186,7 @@ class TestHttpServer {
         }
         const std::string method = first.substr(0, sp1);
         const std::string target = first.substr(sp1 + 1, sp2 - sp1 - 1);
+        if (method == "HEAD") g_head_requests.fetch_add(1);
 
         // Range header (case-insensitive lookup).
         std::string range;

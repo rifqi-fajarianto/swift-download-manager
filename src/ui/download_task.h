@@ -9,6 +9,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #include "net/http.h"
@@ -59,11 +60,15 @@ class DownloadTask : public QObject {
     const Options& options() const { return options_; }
     void set_options(const Options& options);
     void set_live_limit(bool enabled, int kbps);
+    // Used only for the initial run after the confirmation probe. The cached
+    // result is consumed once; a later resume always probes again.
+    void set_cached_probe(const swiftdm::ProbeResult& probe);
 
     bool active() const { return active_.load(); }
     QString resolved_filename() const;
     quint64 resolved_size() const;
     bool resumable() const;
+    swiftdm::ProbeResult probe_result() const;
     QString workspace_dir() const;
     Snapshot snapshot() const;
 
@@ -103,6 +108,8 @@ class DownloadTask : public QObject {
     QString resolved_filename_;
     quint64 resolved_size_ = 0;
     bool resumable_ = false;
+    swiftdm::ProbeResult probe_result_;
+    std::optional<swiftdm::ProbeResult> cached_probe_;
     QString workspace_dir_;
 };
 

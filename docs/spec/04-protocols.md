@@ -106,9 +106,15 @@ cookies" switch requests it for the current site, the context-menu action for
 its target origin, and later automatic handoffs reuse the grant. Scoped cookie
 attributes are passed to libcurl so cookies follow domain/path/secure rules
 across redirects. `addDownload` does not start a transfer directly: the app
-probes the URL and shows the independent Download Confirmation window before
-the transfer starts. The main window stays hidden or minimized if it was not
-visible when the browser handoff arrived (0.18.3).
+immediately shows the independent Download Confirmation window while probing
+the URL in the background. The fallback name and `Checking…` are shown until
+metadata arrives; Download Now is disabled in that interval. After acceptance,
+the successful probe is reused for the initial transfer (no duplicate preflight
+requests), while Resume still re-probes. The main window stays hidden or
+minimized if it was not visible when the browser handoff arrived (0.18.3,
+latency improvement 0.18.19). The extension reuses its command WebSocket for
+successive requests; the socket is separate from the long-lived status
+subscription.
 The server rejects unsafe URLs, malformed messages, oversized frames, bodies or
 headers over the caps above, and cookies scoped to a different host. Firefox
 support and a production extension-store ID pin remain future work. The original

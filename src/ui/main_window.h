@@ -74,8 +74,10 @@ class MainWindow : public QMainWindow {
     // Probes the URL (no list row, no database entry) and shows the download
     // confirmation dialog. Only Download Now inserts the item and starts it.
     void probe_and_confirm(DownloadTask::Options options, DownloadItem item);
-    void start_confirmed_download(DownloadItem item, DownloadTask::Options options);
-    void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr);
+    void start_confirmed_download(DownloadItem item, DownloadTask::Options options,
+                                  const swiftdm::ProbeResult& probe);
+    void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr,
+                           const swiftdm::ProbeResult* probe = nullptr);
     void open_download_window(int id);
     void on_task_finished(DownloadTask* task, int status, const QString& path,
                           const QString& error);

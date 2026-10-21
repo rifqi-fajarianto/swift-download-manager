@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,9 @@ struct DownloadRequest {
     std::string referer;
     std::string user_agent;
     std::string post_data;
+    // A recent UI probe can be reused for the first transfer attempt. Resume
+    // callers leave this empty so the engine validates the remote file again.
+    std::optional<ProbeResult> probe;
 };
 
 struct ProgressInfo {
