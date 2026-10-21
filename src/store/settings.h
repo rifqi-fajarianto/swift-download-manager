@@ -25,6 +25,9 @@ struct Settings {
     bool show_tray_icon = true;     // ShowTrayIcon
     bool close_to_tray = true;      // CloseToTray
     bool open_folder_after_completion = false;  // OpenFolderAfterCompletion
+    // Ask before every transfer starts. When it is off the download starts
+    // right away with the default category and folder.
+    bool show_download_confirmation = true;  // ShowDownloadConfirmationDialog
 
     // [download] — download defaults.
     int max_connections = 8;        // MaxConnections, default 8 ("8 recommended")

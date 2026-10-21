@@ -32,6 +32,23 @@ Use the app's own icons in the message boxes.
 - The icons come from `ui-assets/info-filled.svg`, `allert-filled.svg`,
   `question-filled.svg` and `complete-filled.svg`.
 
+## 0.18.17 — 2026-10-21
+
+Add a switch for the download confirmation dialog.
+
+- The `General` tab has a new option: "Show Download Confirmation Dialog".
+  While it is on, every transfer asks for confirmation with the file name, the
+  size, the category and the destination folder, exactly as before.
+- With the option off, the confirmation is skipped: the download starts right
+  away with the category from the file extension and the default folder (the
+  download root, plus the category folder when the category folders are
+  enabled). The progress window still opens, so an automatic download behaves
+  like a confirmed one apart from the question.
+- A note under the option explains this; it is shown while the option is off.
+- The setting is stored in the `[general]` section as
+  `ShowDownloadConfirmationDialog`. A configuration file without the key keeps
+  asking for the confirmation, so an upgrade does not change the behavior.
+
 ## 0.18.15 — 2026-10-21
 
 Render the launcher icons at build time.

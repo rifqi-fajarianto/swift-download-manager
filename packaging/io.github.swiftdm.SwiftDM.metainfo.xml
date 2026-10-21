@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.17" date="2026-10-21">
+      <description>
+        <p>The General tab of the settings window can switch the download confirmation dialog off; the downloads then start automatically.</p>
+      </description>
+    </release>
     <release version="0.18.16" date="2026-10-21">
       <description>
         <p>The message boxes of the app use their own icons: information, warning, question and completion.</p>

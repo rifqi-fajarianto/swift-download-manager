@@ -24,6 +24,7 @@ void test_defaults() {
     CHECK(s.show_tray_icon);
     CHECK(s.close_to_tray);
     CHECK(!s.open_folder_after_completion);
+    CHECK(s.show_download_confirmation);
     CHECK_EQ(s.theme, std::string("dark"));
     CHECK_EQ(s.toolbar_size, std::string("normal"));
     CHECK(s.show_toolbar_text);
@@ -52,6 +53,7 @@ void test_roundtrip(const std::string& dir) {
     s.show_tray_icon = false;
     s.close_to_tray = false;
     s.open_folder_after_completion = true;
+    s.show_download_confirmation = false;
     s.theme = "light";
     s.toolbar_size = "small";
     s.show_toolbar_text = false;
@@ -83,6 +85,7 @@ void test_roundtrip(const std::string& dir) {
     CHECK(!loaded.show_tray_icon);
     CHECK(!loaded.close_to_tray);
     CHECK(loaded.open_folder_after_completion);
+    CHECK(!loaded.show_download_confirmation);
     CHECK_EQ(loaded.theme, std::string("light"));
     CHECK_EQ(loaded.toolbar_size, std::string("small"));
     CHECK(!loaded.show_toolbar_text);
@@ -221,6 +224,9 @@ void test_legacy_general_section(const std::string& dir) {
     CHECK(s.server_creation_date);
     CHECK(!s.completion_dialog);
     CHECK(s.autostart);
+    // The confirmation option did not exist in this config: the confirmation
+    // stays on, so an old config keeps asking before a transfer starts.
+    CHECK(s.show_download_confirmation);
 }
 
 // The dedicated [download] section wins over the legacy location, whatever
@@ -315,6 +321,41 @@ void test_written_sections(const std::string& dir) {
         CHECK(content.find("MaxConnections", download) < interface);
         CHECK(content.find("Theme", interface) != std::string::npos);
     }
+    // The confirmation option belongs to the general section.
+    const size_t general = content.find("[general]");
+    CHECK(general != std::string::npos);
+    if (general != std::string::npos && download != std::string::npos) {
+        CHECK(content.find("ShowDownloadConfirmationDialog", general) < download);
+    }
+}
+
+// The confirmation option can be switched off; a config without the key keeps
+// the confirmation on.
+void test_confirmation_option(const std::string& dir) {
+    {
+        std::ofstream out(dir + "/confirmation-off.ini");
+        out << "[general]\nShowDownloadConfirmationDialog = 0\n";
+    }
+    Settings off;
+    std::string err;
+    CHECK(load_settings(dir + "/confirmation-off.ini", off, &err));
+    CHECK(!off.show_download_confirmation);
+
+    {
+        std::ofstream out(dir + "/confirmation-on.ini");
+        out << "[general]\nShowDownloadConfirmationDialog = 1\n";
+    }
+    Settings on;
+    CHECK(load_settings(dir + "/confirmation-on.ini", on, &err));
+    CHECK(on.show_download_confirmation);
+
+    {
+        std::ofstream out(dir + "/confirmation-missing.ini");
+        out << "[general]\nCompletionDialog = 1\n";
+    }
+    Settings missing;
+    CHECK(load_settings(dir + "/confirmation-missing.ini", missing, &err));
+    CHECK(missing.show_download_confirmation);
 }
 
 }  // namespace
@@ -336,6 +377,7 @@ int main() {
     test_download_section_wins(dir);
     test_interface_values(dir);
     test_written_sections(dir);
+    test_confirmation_option(dir);
 
     testutil::cleanup_dir(dir);
     return testutil::finish("test_settings");

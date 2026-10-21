@@ -91,12 +91,28 @@ QWidget* SettingsDialog::build_general_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
 
+    show_download_confirmation_ =
+        new QCheckBox(tr("Show Download Confirmation Dialog"), page);
+    // The note explains what happens without the confirmation, so it is only
+    // shown while the option is off.
+    confirmation_note_ = new QLabel(
+        tr("When this option is off, every file is downloaded automatically "
+           "without asking for confirmation."),
+        page);
+    confirmation_note_->setWordWrap(true);
+    confirmation_note_->setStyleSheet(QStringLiteral("color:#8a8a8a;"));
+    confirmation_note_->setVisible(false);
+    connect(show_download_confirmation_, &QCheckBox::toggled, this,
+            [this](bool checked) { confirmation_note_->setVisible(!checked); });
+
     completion_dialog_ = new QCheckBox(tr("Show Download Completion Dialog"), page);
     autostart_ = new QCheckBox(tr("Start Application on System Startup"), page);
     show_tray_icon_ = new QCheckBox(tr("Show System Tray Icon"), page);
     close_to_tray_ = new QCheckBox(tr("Minimize to Tray When Closing the Window"), page);
     open_folder_after_completion_ =
         new QCheckBox(tr("Open the Download Folder When a Download Completes"), page);
+    layout->addWidget(show_download_confirmation_);
+    layout->addWidget(confirmation_note_);
     layout->addWidget(completion_dialog_);
     layout->addWidget(autostart_);
     layout->addWidget(show_tray_icon_);
@@ -278,6 +294,10 @@ void SettingsDialog::update_proxy_enabled() {
 }
 
 void SettingsDialog::load_from_settings() {
+    show_download_confirmation_->setChecked(settings_.show_download_confirmation);
+    // setChecked() only emits toggled() when the state changes, so the note is
+    // updated explicitly for the stored value.
+    confirmation_note_->setVisible(!settings_.show_download_confirmation);
     completion_dialog_->setChecked(settings_.completion_dialog);
     autostart_->setChecked(settings_.autostart);
     show_tray_icon_->setChecked(settings_.show_tray_icon);
@@ -326,6 +346,7 @@ void SettingsDialog::load_from_settings() {
 }
 
 void SettingsDialog::store_to_settings() {
+    settings_.show_download_confirmation = show_download_confirmation_->isChecked();
     settings_.completion_dialog = completion_dialog_->isChecked();
     settings_.autostart = autostart_->isChecked();
     settings_.show_tray_icon = show_tray_icon_->isChecked();

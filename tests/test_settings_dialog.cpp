@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
     settings.show_tray_icon = false;
     settings.close_to_tray = false;
     settings.open_folder_after_completion = true;
+    settings.show_download_confirmation = false;
 
     swiftdm::ui::SettingsDialog dialog(settings);
 
@@ -99,7 +100,10 @@ int main(int argc, char** argv) {
         check(tabs->tabText(i) == expected[i], "the tabs keep the expected order");
     }
 
-    // General tab: the completion dialog and the app behavior options.
+    // General tab: the confirmation dialog, the completion dialog and the app
+    // behavior options.
+    const QCheckBox* confirmation = check_box_with_text(
+        &dialog, QStringLiteral("Show Download Confirmation Dialog"));
     const QCheckBox* completion =
         check_box_with_text(&dialog, QStringLiteral("Show Download Completion Dialog"));
     const QCheckBox* autostart =
@@ -112,14 +116,47 @@ int main(int argc, char** argv) {
         &dialog, QStringLiteral("Open the Download Folder When a Download Completes"));
     check(completion != nullptr && autostart != nullptr,
           "the general tab has the completion dialog and autostart options");
+    check(confirmation != nullptr, "the general tab has the confirmation option");
     check(tray_icon != nullptr && close_to_tray != nullptr && open_folder != nullptr,
           "the general tab has the tray, close and folder options");
+    check(tab_index_of(tabs, confirmation) == 0, "the confirmation option sits on the general tab");
     check(tab_index_of(tabs, completion) == 0, "the completion dialog sits on the general tab");
     check(tab_index_of(tabs, autostart) == 0, "the autostart option sits on the general tab");
     check(tab_index_of(tabs, tray_icon) == 0, "the tray option sits on the general tab");
     check(tab_index_of(tabs, close_to_tray) == 0, "the close option sits on the general tab");
     check(tab_index_of(tabs, open_folder) == 0, "the folder option sits on the general tab");
     if (completion) check(!completion->isChecked(), "the completion dialog value is loaded");
+    if (confirmation) check(!confirmation->isChecked(), "the confirmation value is loaded");
+
+    // The note under the confirmation option explains the automatic download
+    // and is only visible while the option is off.
+    const QLabel* note = nullptr;
+    for (const QLabel* label : dialog.findChildren<QLabel*>()) {
+        if (label->text().contains(QStringLiteral("downloaded automatically"))) note = label;
+    }
+    check(note != nullptr, "the general tab explains the automatic download");
+    if (note) {
+        check(tab_index_of(tabs, note) == 0, "the note sits on the general tab");
+        // The dialog is never shown, so the explicit hidden state is checked
+        // instead of the visible one.
+        check(!note->isHidden(), "the note is shown while the option is off");
+    }
+    {
+        // Toggling the option shows and hides the note again.
+        QCheckBox* box = nullptr;
+        for (QCheckBox* candidate : dialog.findChildren<QCheckBox*>()) {
+            if (candidate->text() == QStringLiteral("Show Download Confirmation Dialog")) {
+                box = candidate;
+            }
+        }
+        check(box != nullptr, "the confirmation option can be toggled");
+        if (box && note) {
+            box->setChecked(true);
+            check(note->isHidden(), "the note is hidden while the option is on");
+            box->setChecked(false);
+            check(!note->isHidden(), "the note is shown again while the option is off");
+        }
+    }
     if (autostart) check(autostart->isChecked(), "the autostart value is loaded");
     if (tray_icon) check(!tray_icon->isChecked(), "the tray icon value is loaded");
     if (close_to_tray) check(!close_to_tray->isChecked(), "the close to tray value is loaded");

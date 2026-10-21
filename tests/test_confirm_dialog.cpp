@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QLayout>
@@ -205,6 +206,21 @@ int main(int argc, char** argv) {
         if (height != control_heights.first()) same_height = false;
     }
     check(same_height, "every input and button has the same height");
+
+    // The default location is shared with the automatic download path: the
+    // download root plus the category folder when category folders are on.
+    using swiftdm::ui::default_download_location;
+    check(default_download_location(QStringLiteral("/tmp/downloads"),
+                                   QStringLiteral("Video"), true) ==
+              QStringLiteral("/tmp/downloads/Video"),
+          "the default location holds the category folder");
+    check(default_download_location(QStringLiteral("/tmp/downloads"),
+                                   QStringLiteral("Video"), false) ==
+              QStringLiteral("/tmp/downloads"),
+          "the default location is the download root without category folders");
+    check(default_download_location(QStringLiteral("  "), QStringLiteral("Video"),
+                                   false) == QDir::homePath(),
+          "an empty download root falls back to the home folder");
 
     if (failures == 0) std::printf("confirm_dialog: all checks passed\n");
     return failures == 0 ? 0 : 1;

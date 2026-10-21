@@ -117,7 +117,9 @@ Layout (from `main-window.png`):
    URL/Page Title/Browser and `Log File` depend on history / browser
    integration (v1.1 / v2).
 9. **Settings** (`options-window.png`), tabs:
-   - *General*: app-wide behavior options — Show Download Completion Dialog;
+   - *General*: app-wide behavior options — Show Download Confirmation Dialog
+     (with a note that all files are downloaded automatically without
+     confirmation while it is off, 0.18.17); Show Download Completion Dialog;
      Start Application on System Startup; Show System Tray Icon; Minimize to
      Tray When Closing the Window; Open the Download Folder When a Download
      Completes (0.18.10 split the tabs: the download options moved to the

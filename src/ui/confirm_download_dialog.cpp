@@ -43,6 +43,17 @@ int common_control_height(const QList<QWidget*>& controls) {
 
 }  // namespace
 
+QString default_download_location(const QString& download_dir, const QString& category,
+                                  bool category_folders) {
+    QString base = download_dir.trimmed();
+    if (base.isEmpty()) base = QDir::homePath();
+    base = QString::fromStdString(swiftdm::expand_tilde(base.toStdString()));
+    if (category_folders && !category.trimmed().isEmpty()) {
+        return QDir::cleanPath(QDir(base).filePath(category.trimmed()));
+    }
+    return QDir::cleanPath(base);
+}
+
 ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 size,
                                              const QString& url,
                                              const QString& download_dir,
@@ -207,13 +218,8 @@ QString ConfirmDownloadDialog::location() const {
 }
 
 QString ConfirmDownloadDialog::default_location() const {
-    QString base = download_dir_.trimmed();
-    if (base.isEmpty()) base = QDir::homePath();
-    base = QString::fromStdString(swiftdm::expand_tilde(base.toStdString()));
-    if (category_folders_) {
-        return QDir::cleanPath(QDir(base).filePath(category_box_->currentText()));
-    }
-    return QDir::cleanPath(base);
+    return default_download_location(download_dir_, category_box_->currentText(),
+                                     category_folders_);
 }
 
 void ConfirmDownloadDialog::use_default_location() {

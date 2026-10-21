@@ -10,6 +10,13 @@ class QPushButton;
 
 namespace swiftdm::ui {
 
+// Default destination folder of a download: the download root plus the
+// category folder when the category folders are enabled. The dialog and the
+// automatic download path share it, so a download that skips the confirmation
+// ends up in the same place as a confirmed one.
+QString default_download_location(const QString& download_dir, const QString& category,
+                                  bool category_folders);
+
 // Confirmation step shown before any transfer starts (manual "New URL" and
 // browser handoff): the server-resolved file name and size, the category
 // (extension-based default, user overridable) and the destination folder

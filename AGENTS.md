@@ -46,14 +46,20 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.16**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.17**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.16. Ikon launcher (hicolor PNG) dirender otomatis saat
+- **Versi kerja**: 0.18.17. Tab `General` punya opsi "Show Download Confirmation
+  Dialog"; saat dimatikan, unduhan (manual maupun dari browser) langsung jalan
+  tanpa dialog konfirmasi, memakai kategori bawaan dan folder default, dengan
+  window progress tetap dibuka. Note di bawah opsi menjelaskan hal ini dan
+  hanya tampil saat opsi dimatikan. Key: `ShowDownloadConfirmationDialog`
+  (section `[general]`, default 1).
+  Ikon launcher (hicolor PNG) dirender otomatis saat
   build dari `ui-assets/app-icon/main-icon.svg` ke `build/generated/icons/`;
   PNG lama yang disimpan di `packaging/icons/` dihapus.
   Tombol Quit di toolbar memakai glyph power dari
@@ -89,7 +95,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.16
+### Sudah tersedia sampai 0.18.17
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -107,7 +113,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.15 — riwayat fitur
+### 0.18.1–0.18.17 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -180,6 +186,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dialog, judul baris tetap memakai ikon aplikasi. Helper baru
   `dialog_info_pixmap()`, `dialog_warning_pixmap()`,
   `dialog_question_pixmap()`, `dialog_complete_pixmap()` di `src/ui/icons.*`.
+- 0.18.17 menambahkan opsi "Show Download Confirmation Dialog" di tab
+  `General` (key `ShowDownloadConfirmationDialog`, default 1). Saat dimatikan,
+  `MainWindow::probe_and_confirm` melewati dialog konfirmasi dan memakai
+  kategori bawaan serta lokasi default lewat helper
+  `default_download_location()` di `src/ui/confirm_download_dialog.*`; window
+  progress tetap dibuka. Note di bawah opsi hanya tampil saat opsi dimatikan.
 
 ### Rencana / gap yang diketahui
 

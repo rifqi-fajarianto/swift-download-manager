@@ -8,6 +8,7 @@
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
+class QLabel;
 class QLineEdit;
 class QRadioButton;
 class QSpinBox;
@@ -40,6 +41,8 @@ class SettingsDialog : public QDialog {
     swiftdm::Settings& settings_;
 
     // General tab
+    QCheckBox* show_download_confirmation_ = nullptr;
+    QLabel* confirmation_note_ = nullptr;
     QCheckBox* completion_dialog_ = nullptr;
     QCheckBox* autostart_ = nullptr;
     QCheckBox* show_tray_icon_ = nullptr;

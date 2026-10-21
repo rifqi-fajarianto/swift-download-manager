@@ -851,23 +851,37 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
                 draft.last_try_epoch = swiftdm::unix_now();
                 draft.state = DownloadItem::State::Queued;
 
-                // Keep the confirmation independent from the main window: a
-                // browser handoff must not restore a window hidden to the tray.
-                ConfirmDownloadDialog dialog(name, probed_size, options.url,
-                                             QString::fromStdString(settings_.download_dir),
-                                             settings_.category_folders);
-                if (dialog.exec() != QDialog::Accepted) {
-                    // Cancel: no list row and no database entry was created.
-                    return;
-                }
-
-                draft.category = dialog.category();
-                draft.output_dir = dialog.location();
                 DownloadTask::Options start_options = options;
                 start_options.filename = name;
                 start_options.category = draft.category;
-                start_options.apply_category_folder = false;
-                start_options.output_dir = draft.output_dir;
+
+                if (settings_.show_download_confirmation) {
+                    // Keep the confirmation independent from the main window: a
+                    // browser handoff must not restore a window hidden to the
+                    // tray.
+                    ConfirmDownloadDialog dialog(name, probed_size, options.url,
+                                                 QString::fromStdString(settings_.download_dir),
+                                                 settings_.category_folders);
+                    if (dialog.exec() != QDialog::Accepted) {
+                        // Cancel: no list row and no database entry was created.
+                        return;
+                    }
+
+                    draft.category = dialog.category();
+                    draft.output_dir = dialog.location();
+                    start_options.category = draft.category;
+                    start_options.apply_category_folder = false;
+                    start_options.output_dir = draft.output_dir;
+                } else {
+                    // Without the confirmation the download starts right away
+                    // with the default category and folder.
+                    draft.output_dir = default_download_location(
+                        QString::fromStdString(settings_.download_dir), draft.category,
+                        settings_.category_folders);
+                    start_options.output_dir = draft.output_dir;
+                    start_options.apply_category_folder = false;
+                }
+
                 start_confirmed_download(std::move(draft), std::move(start_options));
             });
     probe->start_probe();

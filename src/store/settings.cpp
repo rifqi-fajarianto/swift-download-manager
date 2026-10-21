@@ -86,6 +86,9 @@ void apply_section(Settings& s, const std::string& section,
             } else if (k == "openfolderaftercompletion") {
                 s.open_folder_after_completion =
                     parse_bool(value, s.open_folder_after_completion);
+            } else if (k == "showdownloadconfirmationdialog") {
+                s.show_download_confirmation =
+                    parse_bool(value, s.show_download_confirmation);
             }
             // Legacy location of the download options. Configs written before
             // the [download] section existed keep working; the dedicated
@@ -247,6 +250,8 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "CloseToTray = " << (settings.close_to_tray ? 1 : 0) << "\n"
         << "OpenFolderAfterCompletion = "
         << (settings.open_folder_after_completion ? 1 : 0) << "\n"
+        << "ShowDownloadConfirmationDialog = "
+        << (settings.show_download_confirmation ? 1 : 0) << "\n"
         << "\n[download]\n"
         << "MaxConnections = " << settings.max_connections << "\n"
         << "ConnectionsAtOnce = " << settings.connections_at_once << "\n"

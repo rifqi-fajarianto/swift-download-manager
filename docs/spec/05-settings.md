@@ -66,6 +66,7 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `ShowTrayIcon` | general | BOOL | 1 (SwiftDM) | show the system tray icon |
 | `CloseToTray` | general | BOOL | 1 (SwiftDM) | hide to the tray when the main window is closed |
 | `OpenFolderAfterCompletion` | general | BOOL | 0 (SwiftDM) | open the target folder after a download completes |
+| `ShowDownloadConfirmationDialog` | general | BOOL | 1 (SwiftDM) | ask for confirmation before every transfer starts; off starts the download right away |
 | `Theme` | interface | STRING | dark (SwiftDM) | app theme: `system`, `light`, `dark` |
 | `ToolbarSize` | interface | STRING | normal (SwiftDM) | toolbar size: `normal`, `small` |
 | `ShowToolbarText` | interface | BOOL | 1 (SwiftDM) | show the text under the toolbar icons |
@@ -116,6 +117,12 @@ the `auths` table and are matched per host/target (E4, E18 Passwords tab).
 - `CloseToTray`: when switched off, closing the main window ends the app after
   the same confirmation as the Quit action; the confirmation can be cancelled,
   which keeps the window open.
+- `ShowDownloadConfirmationDialog`: while it is on, every transfer (manual and
+  browser-sent) shows the Download Confirmation window. With it off, the
+  confirmation is skipped and the transfer starts right away with the category
+  from the file extension and the default folder: the download root, plus the
+  category folder when the category folders are enabled. The progress window
+  still opens. A configuration file without the key keeps the confirmation on.
 
 ## Changing the settings at runtime
 
