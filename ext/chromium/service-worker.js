@@ -541,7 +541,7 @@ function sendCommand(cmd, data) {
       }
     });
     socket.addEventListener("error", () => finish(new Error(
-      "Cannot connect to SwiftDM on 127.0.0.1:10007. Make sure SwiftDM is running and check its Extensions dialog for the listen status or a rejected-handshake reason."
+      "Cannot connect to SwiftDM. Make sure SwiftDM is running and check its Extensions dialog for the status."
     )), { once: true });
     socket.addEventListener("close", (event) => {
       if (settled) return;
