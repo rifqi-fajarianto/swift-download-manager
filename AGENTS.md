@@ -46,14 +46,19 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.19**. Status ini cepat
+> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.20**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `engine`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.19. Konfirmasi unduhan langsung muncul saat probe
+- **Versi kerja**: 0.18.20. Window Settings memakai section berlabel di kelima
+  tab (General, Interface, Download, Proxy/Socks, Passwords) agar opsi lebih
+  mudah dipindai; hanya layout/teks yang berubah, tanpa perubahan key, default,
+  atau perilaku. Batch layout ini memakai patch 0.18.20 atas keputusan
+  maintainer, meskipun kebijakan normal untuk UX adalah MINOR +1.
+  Konfirmasi unduhan langsung muncul saat probe
   berjalan di background; tombol Download Now aktif setelah metadata tersedia,
   dan probe sukses dipakai ulang untuk transfer awal (Resume tetap probe ulang).
   Extension Chromium mempertahankan WebSocket perintah selama koneksi aktif.
@@ -104,7 +109,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.19
+### Sudah tersedia sampai 0.18.20
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -125,7 +130,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.19 — riwayat fitur
+### 0.18.1–0.18.20 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -220,6 +225,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   WebSocket command dan mencatat timing handoff. Test baru menjaga reuse probe,
   status dialog pending, dan reuse socket. Seri patch 0.18.x dipilih maintainer
   untuk batch ini meski mencakup perubahan UX.
+- 0.18.20 menata ulang window Settings menjadi section berlabel di kelima tab
+  (`General`: Downloads, Startup, System tray; `Interface`: Toolbar,
+  Appearance, System tray; `Download`: Connections, Bandwidth, User-Agent,
+  Files and folders; `Proxy/Socks`: Proxy type, Server, Authentication;
+  `Passwords`: Saved passwords). Label memakai sentence case, spasi/punctuation
+  lama dirapikan, dan hint "8 connections recommended" mengikuti warna link
+  tema aktif. Ukuran dialog menjadi 720×580 dan minimumnya mengikuti layout
+  section. Tidak ada key,
+  default, atau perilaku yang berubah; test `settings_dialog` diperluas untuk
+  menjaga judul/urutan section dan penempatan kontrol.
 
 ### Rencana / gap yang diketahui
 

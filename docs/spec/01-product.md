@@ -120,6 +120,11 @@ Layout (from `main-window.png`):
    URL/Page Title/Browser and `Log File` depend on history / browser
    integration (v1.1 / v2).
 9. **Settings** (`options-window.png`), tabs:
+   Every tab groups its options into labeled sections (0.18.20): `General`
+   (Downloads, Startup, System tray), `Interface` (Toolbar, Appearance, System
+   tray), `Download` (Connections, Bandwidth, User-Agent, Files and folders),
+   `Proxy/Socks` (Proxy type, Server, Authentication) and `Passwords` (Saved
+   passwords).
    - *General*: app-wide behavior options — Show Download Confirmation Dialog
      (with a note that all files are downloaded automatically without
      confirmation while it is off, 0.18.17); Show Download Completion Dialog;

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.20" date="2026-10-22">
+      <description>
+        <p>The settings window groups its options into labeled sections on every tab.</p>
+      </description>
+    </release>
     <release version="0.18.19" date="2026-10-22">
       <description>
         <p>The download confirmation appears while file metadata is checked, and the initial transfer reuses the probe instead of repeating it.</p>

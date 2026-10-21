@@ -19,6 +19,30 @@
   command channel while browser cookie metadata is being gathered. The status
   subscription remains a separate socket.
 
+## 0.18.20 — 2026-10-22
+
+Group the settings window into labeled sections so the options are easier to
+scan.
+
+- Every settings tab now uses the same section layout: `General` (Downloads,
+  Startup, System tray), `Interface` (Toolbar, Appearance, System tray),
+  `Download` (Connections, Bandwidth, User-Agent, Files and folders),
+  `Proxy/Socks` (Proxy type, Server, Authentication) and `Passwords` (Saved
+  passwords).
+- Labels use sentence case and consistent punctuation; the leftover spaces in
+  the connection-policy and category-folder labels are gone. The "8 connections
+  recommended" hint follows the active theme's link color instead of a fixed
+  dark-theme blue.
+- The dialog opens slightly larger (720×580) and its minimum size follows the
+  section layout, so a short window cannot squeeze the directory fields down to
+  an invisible row.
+- No setting key, default, stored value or behavior changed. This layout-only
+  UX change is versioned as 0.18.20 by the maintainer's decision rather than
+  the usual MINOR bump.
+- The headless settings test now checks the section titles and order, that
+  every interactive control sits inside a section, and that the dialog leaves
+  its minimum size to the layout so the rows cannot be squeezed.
+
 ## 0.18.19 — 2026-10-22
 
 Reduce the wait before browser confirmation and the first transfer progress.

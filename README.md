@@ -22,7 +22,8 @@ taken from the application used as a behavioral reference.
 
 > The settings screenshot still shows the window of 0.18.9 (three tabs). Since
 > 0.18.10 the window has the tabs `General`, `Interface`, `Download`,
-> `Proxy/Socks` and `Passwords`.
+> `Proxy/Socks` and `Passwords`; since 0.18.20 each tab groups its options into
+> labeled sections.
 
 ## Features
 
@@ -128,7 +129,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.19_amd64.deb
+sudo apt install ./swiftdm_0.18.20_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

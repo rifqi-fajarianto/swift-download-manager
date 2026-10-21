@@ -34,9 +34,11 @@ class SettingsDialog : public QDialog {
     QWidget* build_passwords_tab();
 
     // Adds a directory picker row to `layout`; returns the line edit. The row
-    // widgets are parented to `parent` so they stay inside the owning tab page.
+    // widgets are parented to `parent` so they stay inside the owning section.
+    // `dialog_title` names the folder chooser and defaults to `label`.
     QLineEdit* add_directory_row(QFormLayout* layout, QWidget* parent,
-                                 const QString& title);
+                                 const QString& label,
+                                 const QString& dialog_title = QString());
 
     swiftdm::Settings& settings_;
 

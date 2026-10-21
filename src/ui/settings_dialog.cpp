@@ -5,6 +5,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -21,10 +22,46 @@
 
 namespace swiftdm::ui {
 
+namespace {
+
+// Consistent spacing between the sections of every tab.
+constexpr int kSectionSpacing = 8;
+
+// Adds an empty section to a tab page and returns the layout of its body.
+QVBoxLayout* add_section(QVBoxLayout* page_layout, QWidget* page, const QString& title) {
+    auto* box = new QGroupBox(title, page);
+    auto* body = new QVBoxLayout(box);
+    body->setContentsMargins(10, 4, 10, 8);
+    body->setSpacing(6);
+    page_layout->addWidget(box);
+    return body;
+}
+
+// Adds a label/field section. All forms share the same alignment and spacing so
+// the rows line up across sections and tabs.
+QFormLayout* add_form_section(QVBoxLayout* page_layout, QWidget* page,
+                              const QString& title) {
+    auto* box = new QGroupBox(title, page);
+    auto* form = new QFormLayout(box);
+    form->setContentsMargins(10, 4, 10, 8);
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->setHorizontalSpacing(12);
+    form->setVerticalSpacing(6);
+    page_layout->addWidget(box);
+    return form;
+}
+
+}  // namespace
+
 SettingsDialog::SettingsDialog(swiftdm::Settings& settings, QWidget* parent)
     : QDialog(parent), settings_(settings) {
     setWindowTitle(tr("SwiftDM Settings"));
-    resize(640, 540);
+    // The sections need more room than the previous flat form. The layout also
+    // provides the minimum size, so a shorter window would compress the rows
+    // instead of scrolling; do not override it with setMinimumSize().
+    resize(720, 580);
 
     auto* tabs = new QTabWidget(this);
     tabs->addTab(build_general_tab(), tr("General"));
@@ -66,22 +103,27 @@ SettingsDialog::SettingsDialog(swiftdm::Settings& settings, QWidget* parent)
 }
 
 // Adds a directory picker row to `layout`; returns the line edit. The row
-// widgets are parented to `parent` so they stay inside the tab page that owns
-// the form layout.
+// widgets are parented to `parent` so they stay inside the section that owns
+// the form layout. `dialog_title` labels the folder chooser; it defaults to
+// the row label, which carries a trailing colon for the form.
 QLineEdit* SettingsDialog::add_directory_row(QFormLayout* layout, QWidget* parent,
-                                             const QString& title) {
+                                             const QString& label,
+                                             const QString& dialog_title) {
     auto* container = new QWidget(parent);
     auto* row = new QHBoxLayout(container);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(6);
     auto* edit = new QLineEdit(container);
     auto* browse = new QPushButton("...", container);
     browse->setFixedWidth(32);
     row->addWidget(edit, 1);
     row->addWidget(browse);
-    layout->addRow(title, container);
-    connect(browse, &QPushButton::clicked, this, [this, edit, title] {
+    layout->addRow(label, container);
+    const QString chooser_title = dialog_title.isEmpty() ? label : dialog_title;
+    connect(browse, &QPushButton::clicked, this, [this, edit, chooser_title] {
         const QString start =
             QString::fromStdString(swiftdm::expand_tilde(edit->text().toStdString()));
-        const QString dir = QFileDialog::getExistingDirectory(this, title, start);
+        const QString dir = QFileDialog::getExistingDirectory(this, chooser_title, start);
         if (!dir.isEmpty()) edit->setText(dir);
     });
     return edit;
@@ -90,9 +132,12 @@ QLineEdit* SettingsDialog::add_directory_row(QFormLayout* layout, QWidget* paren
 QWidget* SettingsDialog::build_general_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
+    auto* downloads = add_section(layout, page, tr("Downloads"));
     show_download_confirmation_ =
-        new QCheckBox(tr("Show Download Confirmation Dialog"), page);
+        new QCheckBox(tr("Show download confirmation dialog"), page);
     // The note explains what happens without the confirmation, so it is only
     // shown while the option is off.
     confirmation_note_ = new QLabel(
@@ -105,19 +150,26 @@ QWidget* SettingsDialog::build_general_tab() {
     connect(show_download_confirmation_, &QCheckBox::toggled, this,
             [this](bool checked) { confirmation_note_->setVisible(!checked); });
 
-    completion_dialog_ = new QCheckBox(tr("Show Download Completion Dialog"), page);
-    autostart_ = new QCheckBox(tr("Start Application on System Startup"), page);
-    show_tray_icon_ = new QCheckBox(tr("Show System Tray Icon"), page);
-    close_to_tray_ = new QCheckBox(tr("Minimize to Tray When Closing the Window"), page);
+    completion_dialog_ =
+        new QCheckBox(tr("Show download completion dialog"), page);
     open_folder_after_completion_ =
-        new QCheckBox(tr("Open the Download Folder When a Download Completes"), page);
-    layout->addWidget(show_download_confirmation_);
-    layout->addWidget(confirmation_note_);
-    layout->addWidget(completion_dialog_);
-    layout->addWidget(autostart_);
-    layout->addWidget(show_tray_icon_);
-    layout->addWidget(close_to_tray_);
-    layout->addWidget(open_folder_after_completion_);
+        new QCheckBox(tr("Open the download folder when a download completes"), page);
+    downloads->addWidget(show_download_confirmation_);
+    downloads->addWidget(confirmation_note_);
+    downloads->addWidget(completion_dialog_);
+    downloads->addWidget(open_folder_after_completion_);
+
+    auto* startup = add_section(layout, page, tr("Startup"));
+    autostart_ = new QCheckBox(tr("Start application on system startup"), page);
+    startup->addWidget(autostart_);
+
+    auto* system_tray = add_section(layout, page, tr("System tray"));
+    show_tray_icon_ = new QCheckBox(tr("Show system tray icon"), page);
+    close_to_tray_ =
+        new QCheckBox(tr("Minimize to tray when closing the window"), page);
+    system_tray->addWidget(show_tray_icon_);
+    system_tray->addWidget(close_to_tray_);
+
     layout->addStretch(1);
     return page;
 }
@@ -125,26 +177,26 @@ QWidget* SettingsDialog::build_general_tab() {
 QWidget* SettingsDialog::build_interface_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
-    auto* form = new QFormLayout;
-    form->setLabelAlignment(Qt::AlignLeft);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    layout->addLayout(form);
-
+    auto* toolbar = add_form_section(layout, page, tr("Toolbar"));
     toolbar_size_ = new QComboBox(page);
     toolbar_size_->addItems({tr("Normal"), tr("Small")});
-    form->addRow(tr("Toolbar Size"), toolbar_size_);
+    toolbar->addRow(tr("Toolbar size:"), toolbar_size_);
 
-    show_toolbar_text_ = new QCheckBox(tr("Show Toolbar Text"), page);
-    form->addRow(QString(), show_toolbar_text_);
+    show_toolbar_text_ = new QCheckBox(tr("Show toolbar text"), page);
+    toolbar->addRow(QString(), show_toolbar_text_);
 
+    auto* appearance = add_form_section(layout, page, tr("Appearance"));
     theme_ = new QComboBox(page);
     theme_->addItems({tr("Light"), tr("Dark"), tr("Follow System")});
-    form->addRow(tr("App Theme"), theme_);
+    appearance->addRow(tr("App theme:"), theme_);
 
+    auto* system_tray = add_form_section(layout, page, tr("System tray"));
     tray_icon_style_ = new QComboBox(page);
     tray_icon_style_->addItems({tr("Simple"), tr("Colorful")});
-    form->addRow(tr("Tray Icon Style"), tray_icon_style_);
+    system_tray->addRow(tr("Tray icon style:"), tray_icon_style_);
 
     layout->addStretch(1);
     return page;
@@ -153,69 +205,76 @@ QWidget* SettingsDialog::build_interface_tab() {
 QWidget* SettingsDialog::build_download_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
-    // The sub-forms are plain layouts: they are installed into the page layout
-    // below, so they must not take over the page layout themselves.
-    auto* form = new QFormLayout;
-    form->setLabelAlignment(Qt::AlignLeft);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    layout->addLayout(form);
-
+    auto* connections = add_form_section(layout, page, tr("Connections"));
     auto* connections_row = new QHBoxLayout;
+    connections_row->setContentsMargins(0, 0, 0, 0);
     max_connections_ = new QSpinBox(page);
     max_connections_->setRange(1, 64);
     connections_row->addWidget(max_connections_);
-    auto* recommended = new QLabel(tr("8 Connections Recommended"), page);
-    recommended->setStyleSheet("color:#4da3ff;");
+    auto* recommended = new QLabel(tr("8 connections recommended"), page);
+    // Use the theme link color so the hint stays readable on both palettes.
+    QPalette hint_palette = recommended->palette();
+    hint_palette.setColor(QPalette::WindowText,
+                          hint_palette.color(QPalette::Link));
+    recommended->setPalette(hint_palette);
     connections_row->addSpacing(12);
     connections_row->addWidget(recommended);
     connections_row->addStretch(1);
     auto* connections_container = new QWidget(page);
     connections_container->setLayout(connections_row);
-    form->addRow(tr("Max Connections per Download"), connections_container);
+    connections->addRow(tr("Max connections per download:"), connections_container);
 
-    layout->addSpacing(6);
+    all_at_once_ =
+        new QRadioButton(tr("Create additional connections all at once"), page);
+    one_by_one_ =
+        new QRadioButton(tr("Create additional connections one by one"), page);
+    auto* policy = new QWidget(page);
+    auto* policy_layout = new QVBoxLayout(policy);
+    policy_layout->setContentsMargins(0, 0, 0, 0);
+    policy_layout->setSpacing(4);
+    policy_layout->addWidget(all_at_once_);
+    policy_layout->addWidget(one_by_one_);
+    connections->addRow(tr("When first connection starts downloading:"), policy);
 
-    layout->addWidget(new QLabel(tr("When first Connection Starts Downloading , : "), page));
-    all_at_once_ = new QRadioButton(tr("Create Additional Connections All at Once"), page);
-    one_by_one_ = new QRadioButton(tr("Create Additional Connections One by One"), page);
-    layout->addWidget(all_at_once_);
-    layout->addWidget(one_by_one_);
-    layout->addSpacing(6);
-
-    auto* form2 = new QFormLayout;
-    form2->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    layout->addLayout(form2);
-
+    auto* bandwidth = add_form_section(layout, page, tr("Bandwidth"));
     limit_editor_ = new SpeedLimitEditor(page);
-    form2->addRow(tr("Bandwidth Limit per Download"), limit_editor_);
+    bandwidth->addRow(tr("Bandwidth limit per download:"), limit_editor_);
 
+    auto* user_agent = add_form_section(layout, page, tr("User-Agent"));
     auto* ua_row = new QHBoxLayout;
+    ua_row->setContentsMargins(0, 0, 0, 0);
     default_agent_ = new QLineEdit(page);
     auto* reset_ua = new QPushButton(tr("Reset"), page);
     ua_row->addWidget(default_agent_, 1);
     ua_row->addWidget(reset_ua);
     auto* ua_container = new QWidget(page);
     ua_container->setLayout(ua_row);
-    form2->addRow(tr("Default User-Agent"), ua_container);
+    user_agent->addRow(tr("Default user-agent:"), ua_container);
     connect(reset_ua, &QPushButton::clicked, this, [this] {
         default_agent_->setText(QString::fromUtf8(swiftdm::kDefaultUserAgent));
     });
 
     use_ua_browser_ = new QCheckBox(
-        tr("Use this UA for both Manual and Browser-Sent Downloads ( Be Careful )"), page);
-    form2->addRow(QString(), use_ua_browser_);
+        tr("Use this UA for both manual and browser-sent downloads (be careful)"),
+        page);
+    user_agent->addRow(QString(), use_ua_browser_);
 
-    download_dir_ = add_directory_row(form2, page, tr("Download Directory"));
-    category_folders_ =
-        new QCheckBox(tr("Create Category Folders ( e.g. Video, Document, ... )"), page);
-    form2->addRow(QString(), category_folders_);
-
-    temp_dir_ = add_directory_row(form2, page, tr("Temporary Directory"));
-    server_creation_date_ = new QCheckBox(tr("Get File Creation Date From Server"), page);
+    auto* files = add_form_section(layout, page, tr("Files and folders"));
+    download_dir_ = add_directory_row(files, page, tr("Download directory:"),
+                                      tr("Download Directory"));
+    category_folders_ = new QCheckBox(
+        tr("Create category folders (e.g. Video, Document, ...)"), page);
+    files->addRow(QString(), category_folders_);
+    temp_dir_ = add_directory_row(files, page, tr("Temporary directory:"),
+                                  tr("Temporary Directory"));
+    server_creation_date_ =
+        new QCheckBox(tr("Get file creation date from server"), page);
     server_creation_date_->setToolTip(
-        tr("Belum diimplementasikan di SwiftDM (disimpan sebagai setelan)."));
-    form2->addRow(QString(), server_creation_date_);
+        tr("Not implemented in SwiftDM yet; the value is only stored."));
+    files->addRow(QString(), server_creation_date_);
 
     layout->addStretch(1);
     return page;
@@ -224,42 +283,44 @@ QWidget* SettingsDialog::build_download_tab() {
 QWidget* SettingsDialog::build_proxy_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
+    auto* proxy_type = add_section(layout, page, tr("Proxy type"));
     proxy_none_ = new QRadioButton(tr("No Proxy/Socks"), page);
     proxy_http_ = new QRadioButton(tr("HTTP Proxy"), page);
-    proxy_socks_ = new QRadioButton(tr("Socks Proxy"), page);
-    layout->addWidget(proxy_none_);
-    layout->addWidget(proxy_http_);
+    proxy_type->addWidget(proxy_none_);
+    proxy_type->addWidget(proxy_http_);
 
     auto* socks_row = new QHBoxLayout;
+    socks_row->setContentsMargins(0, 0, 0, 0);
+    proxy_socks_ = new QRadioButton(tr("Socks Proxy"), page);
     socks_row->addWidget(proxy_socks_);
     socks_version_ = new QComboBox(page);
     socks_version_->addItems({tr("V4"), tr("V5")});
     socks_row->addWidget(socks_version_);
     socks_row->addStretch(1);
-    layout->addLayout(socks_row);
-    layout->addSpacing(8);
+    proxy_type->addLayout(socks_row);
 
-    auto* form = new QFormLayout;
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    layout->addLayout(form);
-
-    proxy_address_ = new QLineEdit(page);
-    proxy_port_ = new QSpinBox(page);
-    proxy_port_->setRange(0, 65535);
-    proxy_user_ = new QLineEdit(page);
-    proxy_password_ = new QLineEdit(page);
-    proxy_password_->setEchoMode(QLineEdit::Password);
-    form->addRow(tr("Address"), proxy_address_);
-    form->addRow(tr("Port"), proxy_port_);
-    form->addRow(tr("User"), proxy_user_);
-    form->addRow(tr("Password"), proxy_password_);
-
-    layout->addSpacing(8);
     auto* note = new QLabel(
         tr("For https addresses the proxy handles the CONNECT tunnel."), page);
     note->setWordWrap(true);
-    layout->addWidget(note);
+    proxy_type->addWidget(note);
+
+    auto* server = add_form_section(layout, page, tr("Server"));
+    proxy_address_ = new QLineEdit(page);
+    proxy_port_ = new QSpinBox(page);
+    proxy_port_->setRange(0, 65535);
+    server->addRow(tr("Address:"), proxy_address_);
+    server->addRow(tr("Port:"), proxy_port_);
+
+    auto* authentication = add_form_section(layout, page, tr("Authentication"));
+    proxy_user_ = new QLineEdit(page);
+    proxy_password_ = new QLineEdit(page);
+    proxy_password_->setEchoMode(QLineEdit::Password);
+    authentication->addRow(tr("User:"), proxy_user_);
+    authentication->addRow(tr("Password:"), proxy_password_);
+
     layout->addStretch(1);
 
     connect(proxy_none_, &QRadioButton::toggled, this, [this] { update_proxy_enabled(); });
@@ -271,13 +332,17 @@ QWidget* SettingsDialog::build_proxy_tab() {
 QWidget* SettingsDialog::build_passwords_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
+
+    auto* saved = add_section(layout, page, tr("Saved passwords"));
     auto* note = new QLabel(
         tr("Saved server credentials (Basic/Digest) will live here in a later\n"
            "milestone; the storage layout is specified in docs/spec/02-data-model.md\n"
            "(auths table)."),
         page);
     note->setWordWrap(true);
-    layout->addWidget(note);
+    saved->addWidget(note);
     layout->addStretch(1);
     return page;
 }
