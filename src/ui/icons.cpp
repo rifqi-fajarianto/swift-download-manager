@@ -5,6 +5,8 @@
 #include <QPainter>
 #include <QPixmap>
 
+#include "ui/theme.h"
+
 namespace swiftdm::ui {
 
 namespace colors {
@@ -12,6 +14,11 @@ const QColor kActionBlue(0x5a, 0xa9, 0xe6);
 const QColor kDanger(0xe0, 0x5a, 0x5a);
 const QColor kNeutral(0xd6, 0xd6, 0xd6);
 const QColor kOkGreen(0x7e, 0xc8, 0x7e);
+
+QColor neutral_tint() {
+    // The light gray of the dark theme is unreadable on a light background.
+    return is_dark_theme() ? kNeutral : QColor(0x4a, 0x4a, 0x4a);
+}
 }  // namespace colors
 
 namespace {
@@ -83,11 +90,23 @@ QIcon extension_icon() {
                       {16, 24, 32, 48, 64, 128});
 }
 
-QIcon tray_icon() {
+QIcon tray_icon(TrayIconStyle style) {
+    if (style == TrayIconStyle::Simple) {
+        // The monochrome mark, tinted so it stays visible on both light and
+        // dark tray panels.
+        return tinted_icon(QStringLiteral(":/icons/app-icon/single-color-icon.svg"),
+                           colors::neutral_tint());
+    }
     // The tray shows the same colored mark as the browser integration, so the
     // app is recognizable in the system tray.
     return rasterized(QStringLiteral(":/icons/app-icon/extension-icon.svg"),
                       {16, 20, 22, 24, 32, 48});
+}
+
+TrayIconStyle tray_icon_style_from_string(const QString& value) {
+    const QString v = value.trimmed().toLower();
+    if (v == QStringLiteral("simple")) return TrayIconStyle::Simple;
+    return TrayIconStyle::Colorful;
 }
 
 }  // namespace swiftdm::ui

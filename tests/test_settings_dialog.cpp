@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QRadioButton>
@@ -76,6 +77,10 @@ int main(int argc, char** argv) {
     settings.proxy.port = 3128;
     settings.default_agent = "TestAgent/2.0";
     settings.download_dir = "/tmp/swiftdm-dialog-downloads";
+    settings.toolbar_size = "small";
+    settings.show_toolbar_text = false;
+    settings.theme = "light";
+    settings.tray_icon_style = "simple";
 
     swiftdm::ui::SettingsDialog dialog(settings);
 
@@ -120,13 +125,26 @@ int main(int argc, char** argv) {
     check(tab_index_of(tabs, download_dir) == 2,
           "the download directory field sits on the download tab");
 
-    // Interface tab: still a placeholder, but it must not hold download
-    // controls and must not be empty.
+    // Interface tab: the appearance options.
     const QWidget* interface_page = tabs->widget(1);
     check(interface_page != nullptr, "the interface tab exists");
     if (interface_page) {
-        check(!interface_page->findChildren<QLabel*>().isEmpty(),
-              "the interface tab shows a placeholder");
+        const auto combos = interface_page->findChildren<QComboBox*>();
+        const auto boxes = interface_page->findChildren<QCheckBox*>();
+        check(combos.size() == 3, "the interface tab has three selectors");
+        check(boxes.size() == 1, "the interface tab has one checkbox");
+
+        QStringList texts;
+        for (const QComboBox* combo : combos) texts << combo->currentText();
+        check(texts.contains(QStringLiteral("Small")),
+              "the toolbar size selector shows the stored value");
+        check(texts.contains(QStringLiteral("Light")),
+              "the theme selector shows the stored value");
+        check(texts.contains(QStringLiteral("Simple")),
+              "the tray icon selector shows the stored value");
+        for (const QCheckBox* box : boxes) {
+            check(!box->isChecked(), "the toolbar text checkbox shows the stored value");
+        }
     }
     check(tab_index_of(tabs, max_connections) != 1,
           "the interface tab holds no download controls");

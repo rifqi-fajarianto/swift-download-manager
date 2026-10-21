@@ -38,7 +38,9 @@ Status as of 0.18.5.
 | Update check to vendor server | Dropped | intentionally not implemented |
 | Windows registry storage | Diverges | INI in `~/.config/swiftdm` |
 | `segments.bin` binary format | Diverges | `segments.json` |
-| Hidden/dark custom theming | Diverges | Qt Fusion + dark palette, own icons |
+| Hidden/dark custom theming | Diverges | Qt Fusion + own icons; the palette follows the Interface tab (light, dark, or follow the system) instead of a custom hidden theme (0.18.12) |
+| Toolbar size / toolbar text | Implemented | Interface tab: `Normal` or `Small` toolbar, with or without the text under the icons; applied without a restart (0.18.12) |
+| Tray icon style | Implemented | Interface tab: the colored browser-integration mark or the monochrome mark, tinted for the current theme (0.18.12) |
 
 ## v1.1 — GUI completion (planned)
 

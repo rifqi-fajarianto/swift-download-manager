@@ -95,14 +95,27 @@ QWidget* SettingsDialog::build_general_tab() {
 QWidget* SettingsDialog::build_interface_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
-    // The appearance options (toolbar size, toolbar text, theme, tray icon
-    // style) arrive with a later patch release of this batch.
-    interface_placeholder_ = new QLabel(
-        tr("The appearance options (toolbar size, toolbar text, theme and tray\n"
-           "icon style) are added in a later release of this batch."),
-        page);
-    interface_placeholder_->setWordWrap(true);
-    layout->addWidget(interface_placeholder_);
+
+    auto* form = new QFormLayout;
+    form->setLabelAlignment(Qt::AlignLeft);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    layout->addLayout(form);
+
+    toolbar_size_ = new QComboBox(page);
+    toolbar_size_->addItems({tr("Normal"), tr("Small")});
+    form->addRow(tr("Toolbar Size"), toolbar_size_);
+
+    show_toolbar_text_ = new QCheckBox(tr("Show Toolbar Text"), page);
+    form->addRow(QString(), show_toolbar_text_);
+
+    theme_ = new QComboBox(page);
+    theme_->addItems({tr("Light"), tr("Dark"), tr("Follow System")});
+    form->addRow(tr("App Theme"), theme_);
+
+    tray_icon_style_ = new QComboBox(page);
+    tray_icon_style_->addItems({tr("Simple"), tr("Colorful")});
+    form->addRow(tr("Tray Icon Style"), tray_icon_style_);
+
     layout->addStretch(1);
     return page;
 }
@@ -254,6 +267,17 @@ void SettingsDialog::load_from_settings() {
     completion_dialog_->setChecked(settings_.completion_dialog);
     autostart_->setChecked(settings_.autostart);
 
+    toolbar_size_->setCurrentIndex(settings_.toolbar_size == "small" ? 1 : 0);
+    show_toolbar_text_->setChecked(settings_.show_toolbar_text);
+    if (settings_.theme == "light") {
+        theme_->setCurrentIndex(0);
+    } else if (settings_.theme == "system") {
+        theme_->setCurrentIndex(2);
+    } else {
+        theme_->setCurrentIndex(1);
+    }
+    tray_icon_style_->setCurrentIndex(settings_.tray_icon_style == "simple" ? 0 : 1);
+
     max_connections_->setValue(settings_.max_connections);
     if (settings_.connections_at_once != 0) {
         one_by_one_->setChecked(true);
@@ -287,6 +311,18 @@ void SettingsDialog::load_from_settings() {
 void SettingsDialog::store_to_settings() {
     settings_.completion_dialog = completion_dialog_->isChecked();
     settings_.autostart = autostart_->isChecked();
+
+    settings_.toolbar_size = toolbar_size_->currentIndex() == 1 ? "small" : "normal";
+    settings_.show_toolbar_text = show_toolbar_text_->isChecked();
+    if (theme_->currentIndex() == 0) {
+        settings_.theme = "light";
+    } else if (theme_->currentIndex() == 2) {
+        settings_.theme = "system";
+    } else {
+        settings_.theme = "dark";
+    }
+    settings_.tray_icon_style =
+        tray_icon_style_->currentIndex() == 0 ? "simple" : "colorful";
 
     settings_.max_connections = max_connections_->value();
     settings_.connections_at_once = one_by_one_->isChecked() ? 1 : 0;

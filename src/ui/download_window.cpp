@@ -26,6 +26,7 @@
 #include "ui/download_task.h"
 #include "ui/icons.h"
 #include "ui/speed_limit_editor.h"
+#include "ui/theme.h"
 
 namespace swiftdm::ui {
 
@@ -72,9 +73,12 @@ void SegmentBar::set_segments(const QVector<QPair<quint64, quint64>>& segments) 
 
 void SegmentBar::paintEvent(QPaintEvent*) {
     QPainter painter(this);
-    painter.fillRect(rect(), QColor(0x1c, 0x1c, 0x1c));
+    // The bar is drawn by hand, so it has to follow the theme itself.
+    const bool dark = is_dark_theme();
+    painter.fillRect(rect(), dark ? QColor(0x1c, 0x1c, 0x1c) : QColor(0xe4, 0xe4, 0xe4));
+    const QColor border = dark ? QColor(0x55, 0x55, 0x55) : QColor(0xa8, 0xa8, 0xa8);
     if (segments_.isEmpty()) {
-        painter.setPen(QColor(0x55, 0x55, 0x55));
+        painter.setPen(border);
         painter.drawRect(rect().adjusted(0, 0, -1, -1));
         return;
     }
@@ -93,17 +97,17 @@ void SegmentBar::paintEvent(QPaintEvent*) {
         const double slice_width = usable * static_cast<double>(length) /
                                    static_cast<double>(total);
         const QRectF slice(x, 0, std::max(1.0, slice_width), height());
-        painter.fillRect(slice, QColor(0x2a, 0x5b, 0x8a));
+        painter.fillRect(slice, dark ? QColor(0x2a, 0x5b, 0x8a) : QColor(0x3a, 0x74, 0xb0));
         if (done > 0) {
             const double fraction = static_cast<double>(done) /
                                     static_cast<double>(length);
             painter.fillRect(QRectF(slice.x(), slice.y(), slice.width() * fraction,
                                     slice.height()),
-                             QColor(0x6d, 0xbf, 0x6d));
+                             dark ? QColor(0x6d, 0xbf, 0x6d) : QColor(0x3f, 0x8f, 0x3f));
         }
         x += slice_width + gap;
     }
-    painter.setPen(QColor(0x55, 0x55, 0x55));
+    painter.setPen(border);
     painter.drawRect(rect().adjusted(0, 0, -1, -1));
 }
 

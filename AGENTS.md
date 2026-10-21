@@ -46,14 +46,19 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.11**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.12**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.11. File konfigurasi dipisah per tab settings
+- **Versi kerja**: 0.18.12. Tab `Interface` offers toolbar size (Normal/Small),
+  "Show Toolbar Text", app theme (Light/Dark/Follow System) and tray icon style
+  (Simple/Colorful); the changes apply immediately after the settings dialog is
+  confirmed. Warna yang sebelumnya hardcoded untuk tema gelap (ikon toolbar
+  netral, status tabel, segment bar) mengikuti tema aktif.
+  File konfigurasi dipisah per tab settings
   (`[general]`, `[download]`, `[interface]`, `[proxy]`); config lama dengan
   opsi unduhan di `[general]` tetap terbaca karena section `[general]`
   dibaca lebih dulu dan `[download]` menimpanya.
@@ -73,7 +78,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.11
+### Sudah tersedia sampai 0.18.12
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -90,7 +95,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.11 — riwayat fitur
+### 0.18.1–0.18.12 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -139,6 +144,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `OpenFolderAfterCompletion` (general) serta `Theme`, `ToolbarSize`,
   `ShowToolbarText`, `TrayIconStyle` (interface). Nilai interface yang tidak
   dikenal ditolak dan kembali ke default.
+- 0.18.12 menambahkan tab `Interface`: toolbar size (Normal/Small), "Show
+  Toolbar Text", app theme (Light/Dark/Follow System), tray icon style
+  (Simple/Colorful). Perubahan langsung diterapkan saat dialog Settings
+  dikonfirmasi. Tema terang memakai palet terang; mode "Follow System"
+  memakai color scheme desktop dan mengikuti perubahannya saat aplikasi
+  berjalan. Ikon toolbar netral, warna status tabel, dan segment bar ikut
+  mengikuti tema aktif. Test headless baru `theme` menjaga nilai setelan,
+  kedua palet, dan resolusi mode sistem.
 
 ### Rencana / gap yang diketahui
 
@@ -215,7 +228,7 @@ Menjalankan aplikasi:
 
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
 `media`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
-`confirm_dialog` (offscreen), `settings_dialog` (offscreen), dan
+`confirm_dialog` (offscreen), `settings_dialog` (offscreen), `theme` (offscreen), dan
 `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai server lokal di
 `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
 

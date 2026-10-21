@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QImage>
+#include <QList>
 #include <QPixmap>
 #include <QSet>
 #include <QStringList>
@@ -25,14 +26,38 @@ int opaque_pixels(const QImage& image) {
     return count;
 }
 
-// Number of distinct opaque colors; a colored mark has more than one, a
-// monochrome one has exactly one.
-int distinct_colors(const QImage& image) {
-    QSet<QRgb> colors;
+// The icons are stored premultiplied, so the color of a pixel has to be
+// unpremultiplied before the hues can be compared.
+QRgb unpremultiply(QRgb pixel) {
+    const int alpha = qAlpha(pixel);
+    if (alpha == 0) return 0;
+    const int r = qMin(255, qRed(pixel) * 255 / alpha);
+    const int g = qMin(255, qGreen(pixel) * 255 / alpha);
+    const int b = qMin(255, qBlue(pixel) * 255 / alpha);
+    return qRgba(r, g, b, alpha);
+}
+
+// Number of distinct hues among the opaque pixels; a colored mark has more
+// than one, a monochrome one has exactly one. The antialiased edge pixels are
+// skipped and nearby colors are merged, because the rounding of the alpha
+// blending shifts their values a little.
+int distinct_colors(const QImage& image, int tolerance = 12) {
+    QList<QRgb> colors;
     for (int y = 0; y < image.height(); ++y) {
         for (int x = 0; x < image.width(); ++x) {
             const QRgb pixel = image.pixel(x, y);
-            if (qAlpha(pixel) > 0) colors.insert(pixel | 0xff000000);
+            if (qAlpha(pixel) < 128) continue;
+            const QRgb color = unpremultiply(pixel) | 0xff000000;
+            bool known = false;
+            for (const QRgb other : colors) {
+                if (qAbs(qRed(color) - qRed(other)) <= tolerance &&
+                    qAbs(qGreen(color) - qGreen(other)) <= tolerance &&
+                    qAbs(qBlue(color) - qBlue(other)) <= tolerance) {
+                    known = true;
+                    break;
+                }
+            }
+            if (!known) colors << color;
         }
     }
     return static_cast<int>(colors.size());
@@ -101,6 +126,21 @@ int main(int argc, char** argv) {
     } else {
         std::printf("ok   tray icon (%d px, %d colors)\n",
                     opaque_pixels(tray), distinct_colors(tray));
+    }
+
+    // The "simple" tray icon is the monochrome mark: one color only.
+    const QImage simple_tray = swiftdm::ui::tray_icon(
+        swiftdm::ui::TrayIconStyle::Simple).pixmap(22, 22).toImage();
+    if (simple_tray.isNull() || opaque_pixels(simple_tray) == 0) {
+        std::printf("FAIL simple tray icon missing or empty\n");
+        ++failures;
+    } else if (distinct_colors(simple_tray) != 1) {
+        std::printf("FAIL simple tray icon is not monochrome (%d colors)\n",
+                    distinct_colors(simple_tray));
+        ++failures;
+    } else {
+        std::printf("ok   simple tray icon (%d px, monochrome)\n",
+                    opaque_pixels(simple_tray));
     }
 
     // The extension PNGs must exist at every size the manifest and the

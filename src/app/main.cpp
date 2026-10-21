@@ -62,7 +62,6 @@ int run_gui(int argc, char** argv, bool start_hidden) {
     QApplication::setApplicationVersion(QString::fromLatin1(swiftdm::kVersionString));
     QApplication::setOrganizationName(QStringLiteral("SwiftDM"));
     QApplication::setWindowIcon(swiftdm::ui::application_icon());
-    swiftdm::ui::apply_dark_theme(app);
 
     swiftdm::Settings settings;
     std::string error;
@@ -70,6 +69,11 @@ int run_gui(int argc, char** argv, bool start_hidden) {
     if (!error.empty()) {
         std::fprintf(stderr, "warning: %s\n", error.c_str());
     }
+
+    // The theme is applied before the windows are created, so the system
+    // preference of a "follow system" theme is still the platform default.
+    swiftdm::ui::apply_theme(
+        app, swiftdm::ui::theme_mode_from_string(QString::fromStdString(settings.theme)));
 
     // Older releases wrote an autostart entry without --autostart. Refresh it
     // whenever the setting is on so the next login starts silently.

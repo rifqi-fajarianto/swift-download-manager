@@ -8,7 +8,6 @@
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
-class QLabel;
 class QLineEdit;
 class QRadioButton;
 class QSpinBox;
@@ -45,7 +44,10 @@ class SettingsDialog : public QDialog {
     QCheckBox* autostart_ = nullptr;
 
     // Interface tab
-    QLabel* interface_placeholder_ = nullptr;
+    QComboBox* toolbar_size_ = nullptr;
+    QCheckBox* show_toolbar_text_ = nullptr;
+    QComboBox* theme_ = nullptr;
+    QComboBox* tray_icon_style_ = nullptr;
 
     // Download tab
     QSpinBox* max_connections_ = nullptr;

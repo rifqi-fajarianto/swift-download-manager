@@ -17,6 +17,7 @@ class QLabel;
 class QModelIndex;
 class QSystemTrayIcon;
 class QTableView;
+class QToolBar;
 class QTreeWidget;
 
 namespace swiftdm::ui {
@@ -59,6 +60,13 @@ class MainWindow : public QMainWindow {
     void build_body();
     void build_tray();
     void update_status_bar();
+    // Applies the appearance settings (theme, toolbar, tray icon) after the
+    // settings dialog was accepted.
+    void apply_interface_settings();
+    void apply_toolbar_settings();
+    void apply_tray_settings();
+    // Re-tints the toolbar icons; the neutral tint depends on the theme.
+    void refresh_action_icons();
     void add_download(const QString& url);
     void add_browser_download(const QJsonObject& data);
     // Probes the URL (no list row, no database entry) and shows the download
@@ -99,6 +107,7 @@ class MainWindow : public QMainWindow {
     QTableView* table_ = nullptr;
     QTreeWidget* tree_ = nullptr;
     QLabel* status_label_ = nullptr;
+    QToolBar* toolbar_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
     BrowserIntegration* browser_integration_ = nullptr;
 

@@ -84,6 +84,18 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME settings_dialog COMMAND test_settings_dialog)
     set_tests_properties(settings_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless (offscreen) check of the theme module: the setting value, the
+    # two palettes and the "follow system" resolution. No window is shown.
+    add_executable(test_theme
+        test_theme.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/theme.cpp"
+    )
+    target_include_directories(test_theme PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_theme PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_theme PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME theme COMMAND test_theme)
+    set_tests_properties(theme PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(test_browser_protocol
         test_browser_protocol.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/browser_integration.cpp"

@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QGuiApplication>
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QJsonArray>
@@ -22,6 +23,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QStyleHints>
 #include <QSystemTrayIcon>
 #include <QTableView>
 #include <QToolBar>
@@ -44,6 +46,7 @@
 #include "ui/icons.h"
 #include "ui/properties_dialog.h"
 #include "ui/settings_dialog.h"
+#include "ui/theme.h"
 
 namespace swiftdm::ui {
 
@@ -208,6 +211,17 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
                     tr("Browser extension connection rejected: %1").arg(reason), 10000);
             });
     build_tray();
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    // A "follow system" theme follows the desktop when the color scheme
+    // changes while the app runs.
+    if (const QStyleHints* hints = QGuiApplication::styleHints()) {
+        connect(hints, &QStyleHints::colorSchemeChanged, this, [this] {
+            if (settings_.theme != "system") return;
+            apply_interface_settings();
+        });
+    }
+#endif
 
     connect(model_, &QAbstractItemModel::rowsInserted, this,
             [this] { update_status_bar(); });
@@ -431,10 +445,10 @@ void MainWindow::build_actions() {
                     tr("Delete File"), this);
     act_delete_file_->setToolTip(tr("Delete the downloaded file from disk"));
     act_settings_ =
-        new QAction(tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::kNeutral),
+        new QAction(tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::neutral_tint()),
                     tr("Settings"), this);
     act_browsers_ =
-        new QAction(tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::kNeutral),
+        new QAction(tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::neutral_tint()),
                     tr("Extensions"), this);
     act_about_ = new QAction(tinted_icon(QStringLiteral(":/icons/about.svg"), colors::kActionBlue),
                              tr("About"), this);
@@ -455,10 +469,9 @@ void MainWindow::build_actions() {
     connect(act_quit_, &QAction::triggered, this, &MainWindow::on_quit);
 
     auto* toolbar = addToolBar(tr("Main"));
+    toolbar_ = toolbar;
     toolbar->setObjectName(QStringLiteral("main_toolbar"));
     toolbar->setMovable(false);
-    toolbar->setIconSize(QSize(28, 28));
-    toolbar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     toolbar->addAction(act_new_);
     toolbar->addAction(act_resume_);
     toolbar->addAction(act_stop_);
@@ -471,11 +484,60 @@ void MainWindow::build_actions() {
     toolbar->addAction(act_browsers_);
     toolbar->addAction(act_about_);
     toolbar->addAction(act_quit_);
-    for (QAction* action : toolbar->actions()) {
-        if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(action))) {
-            button->setFixedSize(88, 76);
+    apply_toolbar_settings();
+}
+
+// The toolbar size and the text under the icons follow the Interface tab.
+void MainWindow::apply_toolbar_settings() {
+    if (!toolbar_) return;
+    const bool small = settings_.toolbar_size == "small";
+    const int icon_size = small ? 22 : 28;
+    const bool with_text = settings_.show_toolbar_text;
+
+    toolbar_->setIconSize(QSize(icon_size, icon_size));
+    toolbar_->setToolButtonStyle(with_text ? Qt::ToolButtonTextUnderIcon
+                                           : Qt::ToolButtonIconOnly);
+    for (QAction* action : toolbar_->actions()) {
+        auto* button = qobject_cast<QToolButton*>(toolbar_->widgetForAction(action));
+        if (!button) continue;
+        if (with_text) {
+            button->setFixedSize(small ? 64 : 88, small ? 56 : 76);
+        } else {
+            // Without the text the button only holds the icon.
+            const int side = icon_size + 12;
+            button->setFixedSize(side, side);
         }
     }
+}
+
+// The tray icon style follows the Interface tab.
+void MainWindow::apply_tray_settings() {
+    if (!tray_) return;
+    const TrayIconStyle style = tray_icon_style_from_string(
+        QString::fromStdString(settings_.tray_icon_style));
+    tray_->setIcon(tray_icon(style));
+}
+
+// The neutral tint depends on the theme, so the icons are re-tinted whenever
+// the theme changes.
+void MainWindow::refresh_action_icons() {
+    act_settings_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::neutral_tint()));
+    act_browsers_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::neutral_tint()));
+}
+
+// Applies the appearance settings without a restart.
+void MainWindow::apply_interface_settings() {
+    if (auto* app = qobject_cast<QApplication*>(QApplication::instance())) {
+        apply_theme(*app, theme_mode_from_string(QString::fromStdString(settings_.theme)));
+    }
+    refresh_action_icons();
+    apply_toolbar_settings();
+    apply_tray_settings();
+    // The palette change repaints the widgets, but the custom painted ones
+    // (segment bar) have to be asked explicitly.
+    for (QWidget* widget : QApplication::topLevelWidgets()) widget->update();
 }
 
 void MainWindow::build_body() {
@@ -551,7 +613,8 @@ void MainWindow::build_body() {
 void MainWindow::build_tray() {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
 
-    tray_ = new QSystemTrayIcon(tray_icon(), this);
+    tray_ = new QSystemTrayIcon(this);
+    apply_tray_settings();
     tray_->setToolTip(QStringLiteral("SwiftDM %1").arg(swiftdm::kVersionString));
 
     auto* menu = new QMenu(this);
@@ -1264,7 +1327,9 @@ void MainWindow::on_delete() {
 
 void MainWindow::on_settings() {
     SettingsDialog dialog(settings_, this);
-    dialog.exec();
+    if (dialog.exec() != QDialog::Accepted) return;
+    // The appearance settings take effect right away; no restart needed.
+    apply_interface_settings();
 }
 
 void MainWindow::on_browsers() {

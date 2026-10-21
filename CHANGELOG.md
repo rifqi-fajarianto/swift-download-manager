@@ -34,6 +34,29 @@ Store the new settings sections and keys.
 - The settings store tests cover the new keys, the section fallback and the
   validation of the interface values.
 
+## 0.18.12 — 2026-10-21
+
+Add the Interface tab with the appearance options.
+
+- New tab `Interface` with four options: toolbar size (`Normal` / `Small`),
+  "Show Toolbar Text", app theme (`Light` / `Dark` / `Follow System`) and tray
+  icon style (`Simple` / `Colorful`).
+- The changes take effect immediately when the settings dialog is confirmed;
+  no restart is needed.
+- The light theme is a real light palette now, and the "follow system" option
+  uses the color scheme of the desktop. When the desktop switches its color
+  scheme while the app runs, a "follow system" theme follows along.
+- The colors that were hardcoded for the dark theme follow the theme as well:
+  the toolbar icons of the neutral group, the status colors of the download
+  table and the segment bar of the download window.
+- The tray icon follows the chosen style: the colored browser-integration mark
+  or the monochrome mark, tinted so it stays visible on light and dark panels.
+- The toolbar keeps its text under the icons, or shows the icons only; the
+  button sizes follow the toolbar size.
+- New headless test `theme` covers the setting value, the two palettes and
+  the "follow system" resolution; the icon test now checks both tray icon
+  styles and the settings dialog test covers the Interface tab.
+
 ## 0.18.10 — 2026-10-21
 
 Restructure the settings window into five tabs.

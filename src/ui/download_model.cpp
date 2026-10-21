@@ -7,6 +7,7 @@
 #include "core/util.h"
 #include "engine/categories.h"
 #include "ui/download_task.h"
+#include "ui/theme.h"
 
 namespace swiftdm::ui {
 
@@ -23,7 +24,8 @@ QColor download_status_color(const DownloadItem& item) {
         case DownloadItem::State::Probing:
             break;
     }
-    return QColor(0xb8, 0xb8, 0xb8);
+    // The muted color has to stay readable on both themes.
+    return is_dark_theme() ? QColor(0xb8, 0xb8, 0xb8) : QColor(0x70, 0x70, 0x70);
 }
 
 namespace {
