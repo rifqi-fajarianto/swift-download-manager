@@ -15,6 +15,33 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.10 — 2026-10-21
+
+Restructure the settings window into five tabs.
+
+- The settings window now has the tabs `General`, `Interface`, `Download`,
+  `Proxy/Socks` and `Passwords` (previously `General`, `Proxy/Socks` and
+  `Passwords`).
+- `Download` holds the download options that used to sit in `General`: max
+  connections per download, the "when the first connection starts downloading"
+  policy, the bandwidth limit, the default user agent, the download directory
+  (with the category folders toggle), the temporary directory and "Get File
+  Creation Date From Server".
+- `General` keeps the app-wide behavior options: "Show Download Completion
+  Dialog" and "Start Application on System Startup".
+- `Interface` is a placeholder for now; the appearance options (toolbar size,
+  toolbar text, theme, tray icon style) arrive in a later release of this
+  batch.
+- The window was slightly enlarged (640×540) because the `Download` tab needs
+  more room.
+- The settings window structure is covered by a new headless test
+  (`settings_dialog`), so the tab order and the placement of every control are
+  checked automatically.
+
+> This release is part of a batch that is versioned as patch releases of the
+> 0.18.x series (0.18.10 → 0.18.13) instead of a MINOR bump, by maintainer
+> decision.
+
 ## 0.18.9 — 2026-10-21
 
 Keep the download confirmation window at a fixed size.

@@ -46,14 +46,19 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.9**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.10**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.9. Dialog konfirmasi download memakai ukuran tetap
+- **Versi kerja**: 0.18.10. Window Settings dibagi menjadi lima tab
+  (`General`, `Interface`, `Download`, `Proxy/Socks`, `Passwords`); opsi
+  unduhan pindah ke tab `Download`, tab `General` menyimpan opsi perilaku
+  aplikasi, dan tab `Interface` masih placeholder hingga opsi tampilan
+  (toolbar size/text, theme, tray icon style) menyusul.
+  Dialog konfirmasi download memakai ukuran tetap
   (default 640×250, minimum 520×230), nama file di-elide di tengah dengan
   nama penuh di tooltip, ukuran file tampil pada baris `Size` sendiri, dan
   semua field serta tombol memakai tinggi yang sama.
@@ -64,7 +69,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.9
+### Sudah tersedia sampai 0.18.10
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -81,7 +86,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
   ikon hicolor, dan instalasi ekstensi.
 
-### 0.18.1–0.18.9 — riwayat fitur
+### 0.18.1–0.18.10 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -116,6 +121,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   widget di sebelahnya supaya semua baris sejajar, dan semua field serta
   tombol memakai tinggi yang sama. Test headless baru `confirm_dialog`
   menjaga perilaku ini.
+- 0.18.10 membagi window Settings menjadi lima tab: `General` (opsi perilaku
+  aplikasi), `Interface` (placeholder untuk opsi tampilan), `Download` (opsi
+  unduhan yang sebelumnya ada di `General`), `Proxy/Socks`, dan `Passwords`.
+  Test headless baru `settings_dialog` menjaga urutan tab dan penempatan
+  setiap kontrol. Batch sisanya (opsi Interface, opsi General tambahan, dan
+  pemisahan section INI) Planned sebagai 0.18.11–0.18.13.
 
 ### Rencana / gap yang diketahui
 
@@ -191,7 +202,8 @@ Menjalankan aplikasi:
 ```
 
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
-`media`, `http`, `extension_logic` (butuh Node), `icons` (offscreen), dan
+`media`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
+`confirm_dialog` (offscreen), `settings_dialog` (offscreen), dan
 `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai server lokal di
 `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
 

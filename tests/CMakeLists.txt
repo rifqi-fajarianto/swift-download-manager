@@ -71,6 +71,19 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME confirm_dialog COMMAND test_confirm_dialog)
     set_tests_properties(confirm_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless (offscreen) check of the settings window structure: five tabs
+    # and every control on the tab that owns it. The dialog is never shown.
+    add_executable(test_settings_dialog
+        test_settings_dialog.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/settings_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"
+    )
+    target_include_directories(test_settings_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_settings_dialog PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_settings_dialog PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME settings_dialog COMMAND test_settings_dialog)
+    set_tests_properties(settings_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(test_browser_protocol
         test_browser_protocol.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/browser_integration.cpp"

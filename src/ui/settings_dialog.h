@@ -8,14 +8,16 @@
 class QCheckBox;
 class QComboBox;
 class QFormLayout;
+class QLabel;
 class QLineEdit;
 class QRadioButton;
 class QSpinBox;
 
 namespace swiftdm::ui {
 
-// Settings dialog with tabs General / Proxy-Socks / Passwords, mirroring the
-// reference options window (docs/spec/01-product.md §3.7, 05-settings.md).
+// Settings dialog with tabs General / Interface / Download / Proxy-Socks /
+// Passwords, mirroring the reference options window
+// (docs/spec/01-product.md §3.7, 05-settings.md).
 class SettingsDialog : public QDialog {
     Q_OBJECT
   public:
@@ -26,15 +28,26 @@ class SettingsDialog : public QDialog {
     void store_to_settings();
 
     QWidget* build_general_tab();
+    QWidget* build_interface_tab();
+    QWidget* build_download_tab();
     QWidget* build_proxy_tab();
     QWidget* build_passwords_tab();
 
-    // Adds a directory picker row to `layout`; returns the line edit.
-    QLineEdit* add_directory_row(QFormLayout* layout, const QString& title);
+    // Adds a directory picker row to `layout`; returns the line edit. The row
+    // widgets are parented to `parent` so they stay inside the owning tab page.
+    QLineEdit* add_directory_row(QFormLayout* layout, QWidget* parent,
+                                 const QString& title);
 
     swiftdm::Settings& settings_;
 
     // General tab
+    QCheckBox* completion_dialog_ = nullptr;
+    QCheckBox* autostart_ = nullptr;
+
+    // Interface tab
+    QLabel* interface_placeholder_ = nullptr;
+
+    // Download tab
     QSpinBox* max_connections_ = nullptr;
     QRadioButton* all_at_once_ = nullptr;
     QRadioButton* one_by_one_ = nullptr;
@@ -45,8 +58,6 @@ class SettingsDialog : public QDialog {
     QCheckBox* category_folders_ = nullptr;
     QLineEdit* temp_dir_ = nullptr;
     QCheckBox* server_creation_date_ = nullptr;
-    QCheckBox* completion_dialog_ = nullptr;
-    QCheckBox* autostart_ = nullptr;
 
     // Proxy tab
     QRadioButton* proxy_none_ = nullptr;

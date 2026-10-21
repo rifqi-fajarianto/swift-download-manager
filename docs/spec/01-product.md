@@ -117,15 +117,20 @@ Layout (from `main-window.png`):
    URL/Page Title/Browser and `Log File` depend on history / browser
    integration (v1.1 / v2).
 9. **Settings** (`options-window.png`), tabs:
-   - *General*: Max Connections per Download (default 8, "8 Connections
+   - *General*: app-wide behavior options — Show Download Completion Dialog;
+     Start Application on System Startup (0.18.10 split the tabs: the download
+     options moved to the `Download` tab).
+   - *Interface*: appearance options — toolbar size, toolbar text, theme,
+     tray icon style (added in the 0.18.x settings batch; see the parity
+     checklist for the current status).
+   - *Download*: Max Connections per Download (default 8, "8 Connections
      Recommended"); when-start policy (all at once / one by one); Bandwidth
      Limit per Download with an enable toggle and presets (500 KB/s, 1 MB/s,
      5 MB/s, 10 MB/s, 20 MB/s, 50 MB/s, or custom KB/s; value editable while
      the toggle is off — 0.18.1); Default User-Agent (+Reset,
      + "use for both manual and browser-sent downloads"); Download Directory
      (+ category folders toggle); Temporary Directory; Get File Creation Date
-     From Server; Show Download Completion Dialog; Start Application on System
-     Startup.
+     From Server.
    - *Proxy/Socks*: No Proxy/Socks | HTTP Proxy | Socks Proxy (V4/V5),
      Address/Port/User/Password, "https protocol" handling note.
    - *Passwords*: credential table (Target/User/Password; remembered auth per
