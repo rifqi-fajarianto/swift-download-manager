@@ -686,7 +686,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 // just to parent the dialog.
 bool MainWindow::confirm_quit() {
     QMessageBox confirmation;
-    confirmation.setIcon(QMessageBox::Question);
+    confirmation.setIconPixmap(dialog_question_pixmap());
     confirmation.setWindowTitle(tr("Quit SwiftDM"));
     confirmation.setText(
         tr("SwiftDM will close completely. Active downloads will be paused and can be "
@@ -1032,7 +1032,7 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
     box->setAttribute(Qt::WA_DeleteOnClose);
     box->setWindowModality(Qt::NonModal);
     box->setWindowTitle(tr("Download Complete"));
-    box->setIcon(QMessageBox::Information);
+    box->setIconPixmap(dialog_complete_pixmap());
     box->setText(QStringLiteral("%1\n%2").arg(name, path));
     QPushButton* open_folder = box->addButton(tr("Open Folder"), QMessageBox::ActionRole);
     QPushButton* open_file = box->addButton(tr("Open"), QMessageBox::ActionRole);
@@ -1084,7 +1084,7 @@ void MainWindow::show_error_dialog(const QString& url, const QString& error,
     box->setAttribute(Qt::WA_DeleteOnClose);
     box->setWindowModality(Qt::NonModal);
     box->setWindowTitle(tr("Download Error"));
-    box->setIcon(QMessageBox::Critical);
+    box->setIconPixmap(dialog_warning_pixmap());
     box->setText(tr("Error : %1").arg(error));
     // A long URL must not widen the notification: show an elided form and keep
     // the complete URL behind "Show Details…".
@@ -1192,7 +1192,7 @@ void MainWindow::show_missing_file_dialog(const DownloadItem& item) {
     box->setAttribute(Qt::WA_DeleteOnClose);
     box->setWindowModality(Qt::NonModal);
     box->setWindowTitle(tr("File Not Found"));
-    box->setIcon(QMessageBox::Warning);
+    box->setIconPixmap(dialog_warning_pixmap());
     box->setText(missing_file_warning(item.dest_path));
     const QString dir = QFileInfo(item.dest_path).absolutePath();
     if (!dir.isEmpty() && QFileInfo(dir).isDir()) {
@@ -1236,7 +1236,7 @@ void MainWindow::open_folder_for_row(int row) {
         box->setAttribute(Qt::WA_DeleteOnClose);
         box->setWindowModality(Qt::NonModal);
         box->setWindowTitle(tr("Folder Not Found"));
-        box->setIcon(QMessageBox::Warning);
+        box->setIconPixmap(dialog_warning_pixmap());
         box->setText(tr("The folder has been deleted or moved:\n%1").arg(dir));
         box->addButton(QMessageBox::Close);
         box->adjustSize();
@@ -1310,7 +1310,7 @@ void MainWindow::on_delete_file() {
 
     QMessageBox box(this);
     box.setWindowTitle(tr("Delete File"));
-    box.setIcon(QMessageBox::Warning);
+    box.setIconPixmap(dialog_warning_pixmap());
     if (targets.size() == 1) {
         box.setText(tr("Delete \"%1\" from disk?").arg(QFileInfo(targets.first().second).fileName()));
         box.setInformativeText(
@@ -1404,12 +1404,14 @@ void MainWindow::on_browsers() {
             state += QLatin1Char('.');
         }
     }
-    QMessageBox::information(
-        this, tr("Browser Extensions"),
-        tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
-            "Firefox based browser integration coming soon.\n\n"
-           "Automatic browser download handoff is enabled in the extension popup.\n")
-            .arg(state));
+    QMessageBox box(this);
+    box.setIconPixmap(dialog_info_pixmap());
+    box.setWindowTitle(tr("Browser Extensions"));
+    box.setText(tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
+                   "Firefox based browser integration coming soon.\n\n"
+                   "Automatic browser download handoff is enabled in the extension popup.\n")
+                    .arg(state));
+    box.exec();
 }
 
 void MainWindow::on_about() {

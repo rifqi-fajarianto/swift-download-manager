@@ -68,6 +68,21 @@ QIcon rasterized(const QString& resource_path, std::initializer_list<int> sizes)
     return icon;
 }
 
+// The message-box glyphs are large and sit on the plain dialog background,
+// so the light theme uses the darker variants of the palette to keep them
+// readable.
+QColor info_tint() {
+    return is_dark_theme() ? colors::kActionBlue : QColor(0x1a, 0x6f, 0xb5);
+}
+
+QColor danger_tint() {
+    return is_dark_theme() ? colors::kDanger : QColor(0xc0, 0x30, 0x30);
+}
+
+QColor ok_tint() {
+    return is_dark_theme() ? colors::kOkGreen : QColor(0x2e, 0x7d, 0x32);
+}
+
 }  // namespace
 
 QIcon tinted_icon(const QString& resource_path, const QColor& color) {
@@ -101,6 +116,22 @@ QIcon tray_icon(TrayIconStyle style) {
     // app is recognizable in the system tray.
     return rasterized(QStringLiteral(":/icons/app-icon/extension-icon.svg"),
                       {16, 20, 22, 24, 32, 48});
+}
+
+QPixmap dialog_info_pixmap() {
+    return tinted_icon(QStringLiteral(":/icons/info-filled.svg"), info_tint()).pixmap(32, 32);
+}
+
+QPixmap dialog_warning_pixmap() {
+    return tinted_icon(QStringLiteral(":/icons/allert-filled.svg"), danger_tint()).pixmap(32, 32);
+}
+
+QPixmap dialog_question_pixmap() {
+    return tinted_icon(QStringLiteral(":/icons/question-filled.svg"), info_tint()).pixmap(32, 32);
+}
+
+QPixmap dialog_complete_pixmap() {
+    return tinted_icon(QStringLiteral(":/icons/complete-filled.svg"), ok_tint()).pixmap(32, 32);
 }
 
 TrayIconStyle tray_icon_style_from_string(const QString& value) {

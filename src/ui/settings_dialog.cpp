@@ -17,6 +17,7 @@
 
 #include "core/util.h"
 #include "swiftdm/version.h"
+#include "ui/icons.h"
 
 namespace swiftdm::ui {
 
@@ -37,15 +38,21 @@ SettingsDialog::SettingsDialog(swiftdm::Settings& settings, QWidget* parent)
         store_to_settings();
         std::string error;
         if (!swiftdm::save_settings(settings_, &error)) {
-            QMessageBox::warning(this, tr("Settings"),
-                                 tr("Could not save settings: %1")
-                                     .arg(QString::fromStdString(error)));
+            QMessageBox box(this);
+            box.setIconPixmap(dialog_warning_pixmap());
+            box.setWindowTitle(tr("Settings"));
+            box.setText(tr("Could not save settings: %1")
+                            .arg(QString::fromStdString(error)));
+            box.exec();
         }
         std::string autostart_error;
         if (!swiftdm::apply_autostart(settings_.autostart, &autostart_error)) {
-            QMessageBox::warning(this, tr("Settings"),
-                                 tr("Could not update autostart entry: %1")
-                                     .arg(QString::fromStdString(autostart_error)));
+            QMessageBox box(this);
+            box.setIconPixmap(dialog_warning_pixmap());
+            box.setWindowTitle(tr("Settings"));
+            box.setText(tr("Could not update autostart entry: %1")
+                            .arg(QString::fromStdString(autostart_error)));
+            box.exec();
         }
         accept();
     });

@@ -15,6 +15,23 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.16 — 2026-10-21
+
+Use the app's own icons in the message boxes.
+
+- The message boxes of the app no longer use the built-in icons of the
+  platform. The Browser Extensions window shows the filled information icon,
+  the Quit confirmation the filled question icon, the Download Complete
+  window the filled check icon and every warning (Delete File, Download
+  Error, a missing file or folder, and the warnings of the Settings and the
+  Download Confirmation windows) the filled alert icon.
+- The glyphs are tinted with the palette of the app: blue for information and
+  question, red for warnings and green for the completion notice. In the light
+  theme the darker variants are used, so they stay readable on the dialog
+  background.
+- The icons come from `ui-assets/info-filled.svg`, `allert-filled.svg`,
+  `question-filled.svg` and `complete-filled.svg`.
+
 ## 0.18.15 — 2026-10-21
 
 Render the launcher icons at build time.

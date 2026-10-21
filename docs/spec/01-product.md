@@ -157,6 +157,16 @@ Layout (from `main-window.png`):
     app after the same confirmation (0.18.13).
 12. **About**: version, license tier, support contact, website; update check
     button (we replace this with "no update check").
+13. **Message-box icons**: the message boxes of the app show the app's own
+    filled glyphs instead of the built-in platform icons (0.18.16): the
+    information glyph for the Browser Extensions window, the question glyph for
+    the quit confirmation, the check glyph for the Download Complete window and
+    the alert glyph for every warning (Delete File, Download Error, a missing
+    file or folder, and the warnings of the Settings and Download Confirmation
+    windows). The glyphs are tinted with the palette of the app — blue for
+    information and question, red for warnings, green for the completion notice
+    — and only the icon area of the dialog changes; the title bar keeps the
+    application icon.
 
 ## 4. Non-goals for v1 (see 06-parity-checklist.md)
 

@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QIcon>
+#include <QPixmap>
 #include <QString>
 
 namespace swiftdm::ui {
@@ -46,5 +47,14 @@ QIcon extension_icon();
 // Tray mark: the colored browser-integration mark or the monochrome variant
 // (ui-assets/app-icon/single-color-icon.svg) tinted for the current theme.
 QIcon tray_icon(TrayIconStyle style = TrayIconStyle::Colorful);
+
+// Filled glyphs for the icon area of the message boxes. They replace the
+// platform's built-in message icons, so every window of the app follows the
+// same look. The pixmaps are rendered at the size a message box uses for its
+// icon (32x32).
+QPixmap dialog_info_pixmap();
+QPixmap dialog_warning_pixmap();
+QPixmap dialog_question_pixmap();
+QPixmap dialog_complete_pixmap();
 
 }  // namespace swiftdm::ui

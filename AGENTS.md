@@ -46,14 +46,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.15**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.16**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.15. Ikon launcher (hicolor PNG) dirender otomatis saat
+- **Versi kerja**: 0.18.16. Ikon launcher (hicolor PNG) dirender otomatis saat
   build dari `ui-assets/app-icon/main-icon.svg` ke `build/generated/icons/`;
   PNG lama yang disimpan di `packaging/icons/` dihapus.
   Tombol Quit di toolbar memakai glyph power dari
@@ -82,11 +82,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Paket `.deb` tidak lagi mendeklarasikan browser sebagai `Recommends`.
   Autostart login menjalankan `swiftdm --autostart` sehingga aplikasi hanya
   muncul di system tray; tanpa tray, main window ditampilkan sebagai fallback.
+  Semua message box memakai ikon aplikasi sendiri (filled) alih-alih ikon
+  bawaan platform: info untuk Browser Extensions, question untuk konfirmasi
+  quit, check untuk Download Complete, alert untuk semua peringatan.
 - **Versi ekstensi Chromium**: 0.5.1 (`ext/chromium/manifest.json`), terpisah
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.15
+### Sudah tersedia sampai 0.18.16
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -171,6 +174,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.15 merender ikon launcher hicolor otomatis saat build dari
   `ui-assets/app-icon/main-icon.svg`; PNG lama di `packaging/icons/` dihapus
   sehingga satu SVG adalah sumber kebenaran.
+- 0.18.16 mengganti ikon bawaan platform pada semua message box dengan ikon
+  filled milik aplikasi (`ui-assets/info-filled.svg`, `allert-filled.svg`,
+  `question-filled.svg`, `complete-filled.svg`); ikon hanya muncul di area ikon
+  dialog, judul baris tetap memakai ikon aplikasi. Helper baru
+  `dialog_info_pixmap()`, `dialog_warning_pixmap()`,
+  `dialog_question_pixmap()`, `dialog_complete_pixmap()` di `src/ui/icons.*`.
 
 ### Rencana / gap yang diketahui
 

@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.15.
+Status as of 0.18.16.
 
 ## v1 — core engine + GUI
 
@@ -41,6 +41,7 @@ Status as of 0.18.15.
 | Hidden/dark custom theming | Diverges | Qt Fusion + own icons; the palette follows the Interface tab (light, dark, or follow the system) instead of a custom hidden theme (0.18.12) |
 | Toolbar size / toolbar text | Implemented | Interface tab: `Normal` or `Small` toolbar, with or without the text under the icons; applied without a restart (0.18.12) |
 | Tray icon style | Implemented | Interface tab: the colored browser-integration mark or the monochrome mark, tinted for the current theme (0.18.12) |
+| Message-box icons | Diverges | the message boxes use the app's own filled glyphs (info, alert, question, completion) instead of the built-in platform icons; only the icon area changes, the title bar keeps the app icon (0.18.16) |
 
 ## v1.1 — GUI completion (planned)
 

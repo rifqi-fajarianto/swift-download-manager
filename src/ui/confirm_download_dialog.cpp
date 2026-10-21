@@ -18,6 +18,7 @@
 
 #include "core/util.h"
 #include "engine/categories.h"
+#include "ui/icons.h"
 
 namespace swiftdm::ui {
 namespace {
@@ -233,13 +234,19 @@ void ConfirmDownloadDialog::choose_location() {
 void ConfirmDownloadDialog::confirm_download() {
     const QString dir = location();
     if (dir.isEmpty()) {
-        QMessageBox::warning(this, tr("Download Confirmation"),
-                             tr("Choose a folder the file is saved to."));
+        QMessageBox box(this);
+        box.setIconPixmap(dialog_warning_pixmap());
+        box.setWindowTitle(tr("Download Confirmation"));
+        box.setText(tr("Choose a folder the file is saved to."));
+        box.exec();
         return;
     }
     if (!QDir(dir).exists() && !QDir().mkpath(dir)) {
-        QMessageBox::warning(this, tr("Download Confirmation"),
-                             tr("The folder cannot be created:\n%1").arg(dir));
+        QMessageBox box(this);
+        box.setIconPixmap(dialog_warning_pixmap());
+        box.setWindowTitle(tr("Download Confirmation"));
+        box.setText(tr("The folder cannot be created:\n%1").arg(dir));
+        box.exec();
         return;
     }
     accept();

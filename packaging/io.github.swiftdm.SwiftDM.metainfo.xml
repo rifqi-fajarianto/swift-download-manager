@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.16" date="2026-10-21">
+      <description>
+        <p>The message boxes of the app use their own icons: information, warning, question and completion.</p>
+      </description>
+    </release>
     <release version="0.18.15" date="2026-10-21">
       <description>
         <p>New application icon; the launcher icons are rendered from the icon source during the build.</p>

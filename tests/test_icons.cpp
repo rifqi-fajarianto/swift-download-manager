@@ -81,6 +81,8 @@ int main(int argc, char** argv) {
         QStringLiteral(":/icons/stop.svg"),         QStringLiteral(":/icons/video.svg"),
         QStringLiteral(":/icons/browsers.svg"),     QStringLiteral(":/icons/about.svg"),
         QStringLiteral(":/icons/quit.svg"),
+        QStringLiteral(":/icons/info-filled.svg"),  QStringLiteral(":/icons/allert-filled.svg"),
+        QStringLiteral(":/icons/question-filled.svg"), QStringLiteral(":/icons/complete-filled.svg"),
     };
     for (const QString& resource : tinted_icons) {
         const QIcon icon = swiftdm::ui::tinted_icon(resource, Qt::white);
@@ -96,6 +98,34 @@ int main(int argc, char** argv) {
             ++failures;
         } else {
             std::printf("ok   %s (%d px)\n", qPrintable(resource), opaque);
+        }
+    }
+
+    // The message-box glyphs are tinted copies of the filled SVG icons: they
+    // must render as a solid, single-colored mark on a 32x32 canvas.
+    const QList<QPixmap> dialog_pixmaps = {
+        swiftdm::ui::dialog_info_pixmap(),
+        swiftdm::ui::dialog_warning_pixmap(),
+        swiftdm::ui::dialog_question_pixmap(),
+        swiftdm::ui::dialog_complete_pixmap(),
+    };
+    for (const QPixmap& pixmap : dialog_pixmaps) {
+        if (pixmap.isNull() || pixmap.size() != QSize(32, 32)) {
+            std::printf("FAIL dialog icon: missing or not 32x32\n");
+            ++failures;
+            continue;
+        }
+        const QImage image = pixmap.toImage();
+        const int opaque = opaque_pixels(image);
+        if (opaque == 0) {
+            std::printf("FAIL dialog icon: rendered empty\n");
+            ++failures;
+        } else if (distinct_colors(image) != 1) {
+            std::printf("FAIL dialog icon is not monochrome (%d colors)\n",
+                        distinct_colors(image));
+            ++failures;
+        } else {
+            std::printf("ok   dialog icon (%d px)\n", opaque);
         }
     }
 

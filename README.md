@@ -39,6 +39,7 @@ taken from the application used as a behavioral reference.
 - Store download history in SQLite and application settings in an INI file.
 - Adjust the appearance: light, dark, or follow the system theme; toolbar size
   and toolbar text; simple or colorful tray icon. The changes apply right away.
+  The message boxes use the app's own icons instead of the platform ones.
 - Download from the command line without opening the GUI.
 - Preview integration with the Chromium extension: send links or pages,
   intercept HTTP(S) downloads, and detect playlists/media pairs.
@@ -123,7 +124,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.15_amd64.deb
+sudo apt install ./swiftdm_0.18.16_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

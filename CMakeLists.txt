@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.18.15
+    VERSION 0.18.16
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -74,19 +74,23 @@ if(SWIFTSDM_BUILD_UI)
     # Icon assets, shared by the app and the headless icons test.
     set(SWIFTSDM_ASSET_ICONS
         "${CMAKE_SOURCE_DIR}/ui-assets/alert.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/allert-filled.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/applications.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/complete.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/complete-filled.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/compressed.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/delete-file.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/delete.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/document.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/folder.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/info-filled.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/link-plus.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/link.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/music.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/other.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/plus.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/properties.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/question-filled.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/quit.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/resume-start.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/settings.svg"
