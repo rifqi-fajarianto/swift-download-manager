@@ -34,6 +34,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.15" date="2026-10-21">
+      <description>
+        <p>New application icon; the launcher icons are rendered from the icon source during the build.</p>
+      </description>
+    </release>
+    <release version="0.18.14" date="2026-10-21">
+      <description>
+        <p>The Quit button in the toolbar uses the power icon.</p>
+      </description>
+    </release>
     <release version="0.18.13" date="2026-10-21">
       <description>
         <p>The General tab of the settings window offers a tray icon switch, a close-to-tray switch and an option that opens the download folder when a transfer finishes.</p>

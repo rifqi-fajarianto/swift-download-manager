@@ -46,14 +46,17 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.14**. Status ini cepat
+> Snapshot terakhir: **2026-10-21**, versi kerja **0.18.15**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `ui`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.14. Tombol Quit di toolbar memakai glyph power dari
+- **Versi kerja**: 0.18.15. Ikon launcher (hicolor PNG) dirender otomatis saat
+  build dari `ui-assets/app-icon/main-icon.svg` ke `build/generated/icons/`;
+  PNG lama yang disimpan di `packaging/icons/` dihapus.
+  Tombol Quit di toolbar memakai glyph power dari
   `ui-assets/quit.svg` (gaya ikon tabler); glyph logout buatan sendiri dihapus.
   Tab `General` offers Show System Tray Icon,
   Minimize to Tray When Closing the Window and Open the Download Folder When a
@@ -83,7 +86,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup 0.5.1 mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.14
+### Sudah tersedia sampai 0.18.15
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -98,9 +101,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Integrasi Chromium MV3: handoff otomatis/manual, cookie opsional, deteksi
   HLS dan pasangan video+audio, status push lewat WebSocket.
 - Packaging: aturan install CMake, `.deb` via CPack, desktop entry, AppStream,
-  ikon hicolor, dan instalasi ekstensi.
+  ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
+  ekstensi.
 
-### 0.18.1–0.18.14 — riwayat fitur
+### 0.18.1–0.18.15 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -164,6 +168,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - 0.18.14 mengganti ikon Quit di toolbar dengan glyph power dari
   `ui-assets/quit.svg`; glyph logout buatan sendiri di `src/ui/icons/quit.svg`
   dihapus. Perilaku tombol tidak berubah.
+- 0.18.15 merender ikon launcher hicolor otomatis saat build dari
+  `ui-assets/app-icon/main-icon.svg`; PNG lama di `packaging/icons/` dihapus
+  sehingga satu SVG adalah sumber kebenaran.
 
 ### Rencana / gap yang diketahui
 
@@ -192,7 +199,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 | `ext/chromium/` | Ekstensi Chromium Manifest V3 (popup, service worker, cookie permission, ikon). |
 | `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, dan test protokol browser. |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
-| `packaging/` | Desktop entry, AppStream metadata, ikon hicolor, maintainer script Debian, dokumentasi packaging. |
+| `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
 | `tools/` | Rasterizer ikon ekstensi dan ikon desktop. |
 | `ui-assets/` | Sumber SVG ikon toolbar dan ikon aplikasi/ekstensi. |
 | `cmake/` | Template `version.h.in` dan helper CMake. |
@@ -246,8 +253,12 @@ Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
 
 Regenerasi ikon setelah mengubah SVG:
 
+- Ikon launcher (hicolor) dirender otomatis saat build dari
+  `ui-assets/app-icon/main-icon.svg`; hasilnya ada di
+  `build/generated/icons/hicolor/` dan ikut ter-install.
+- Ikon aksi ekstensi Chromium masih manual:
+
 ```sh
-cmake --build build --target render-desktop-icons
 cmake --build build --target render-extension-icons
 ```
 

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.18.14
+    VERSION 0.18.15
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -15,6 +15,10 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(SWIFTSDM_BUILD_UI    "Build the Qt6 GUI"      ON)
 option(SWIFTSDM_BUILD_TESTS "Build the test suite"  ON)
+
+# The install destinations are needed by the install rules of the UI block, so
+# the module is included before them.
+include(GNUInstallDirs)
 
 # ---------------------------------------------------------------------------
 # Version header (generated; never edited by hand)
@@ -41,11 +45,31 @@ if(SWIFTSDM_BUILD_UI)
     target_compile_definitions(render-extension-icons PRIVATE
         SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
-    # Regenerates packaging/icons/hicolor/**/swiftdm.png for the .desktop entry.
+    # Renders the hicolor launcher icons from the app icon SVG. The build runs
+    # it automatically, so a changed app icon reaches the installed icons.
     add_executable(render-desktop-icons tools/render_desktop_icons.cpp)
     target_link_libraries(render-desktop-icons PRIVATE Qt6::Gui)
     target_compile_definitions(render-desktop-icons PRIVATE
-        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        SWIFTSDM_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+
+    set(SWIFTSDM_DESKTOP_ICON_SIZES 16 24 32 48 64 128 256 512)
+    set(SWIFTSDM_DESKTOP_ICON_FILES "")
+    foreach(size IN LISTS SWIFTSDM_DESKTOP_ICON_SIZES)
+        list(APPEND SWIFTSDM_DESKTOP_ICON_FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/icons/hicolor/${size}x${size}/apps/swiftdm.png")
+    endforeach()
+    add_custom_command(
+        OUTPUT ${SWIFTSDM_DESKTOP_ICON_FILES}
+        COMMAND "$<TARGET_FILE:render-desktop-icons>"
+                "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/main-icon.svg"
+                "${CMAKE_CURRENT_BINARY_DIR}/generated/icons/hicolor"
+        DEPENDS "${CMAKE_SOURCE_DIR}/ui-assets/app-icon/main-icon.svg" render-desktop-icons
+        COMMENT "Rendering the desktop launcher icons from main-icon.svg"
+        VERBATIM
+    )
+    add_custom_target(swiftdm-desktop-icons ALL DEPENDS ${SWIFTSDM_DESKTOP_ICON_FILES})
+    add_dependencies(swiftdm-desktop-icons render-desktop-icons)
 
     # Icon assets, shared by the app and the headless icons test.
     set(SWIFTSDM_ASSET_ICONS
@@ -140,12 +164,16 @@ if(SWIFTSDM_BUILD_UI)
     )
     target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)
+
+    # The launcher icons are rendered at build time from the app icon SVG.
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated/icons/hicolor"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
+    )
 endif()
 
 # ---------------------------------------------------------------------------
 # Install rules (system install and CPack .deb)
 # ---------------------------------------------------------------------------
-include(GNUInstallDirs)
 
 install(TARGETS swiftdm
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
@@ -161,10 +189,6 @@ install(FILES LICENSE
     DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/swiftdm"
     RENAME copyright
 )
-install(DIRECTORY packaging/icons/hicolor
-    DESTINATION "${CMAKE_INSTALL_DATADIR}/icons"
-)
-
 # Development copy of the browser integration; the store-free workflow is to
 # load ext/chromium as an unpacked extension from a checkout or from this copy.
 install(DIRECTORY ext/chromium

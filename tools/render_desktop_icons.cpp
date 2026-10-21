@@ -1,7 +1,11 @@
-// Regenerates the hicolor icon theme PNGs used by the .desktop entry from the
-// SVG sources in ui-assets/app-icon/. Run it after changing the app icon:
+// Renders the hicolor icon theme PNGs used by the .desktop entry from the SVG
+// source in ui-assets/app-icon/. The build runs this automatically, so a
+// changed app icon reaches the installed launcher icons without a manual step.
 //
-//   cmake --build build --target render-desktop-icons
+//   render-desktop-icons [<source.svg> [<output-hicolor-dir>]]
+//
+// Without arguments the source is the app icon in the source tree and the
+// output is the generated icon folder of the build tree.
 //
 // Debian policy wants raster icons in the theme, and the desktop shells pick the
 // largest matching size for launchers and switchers.
@@ -60,10 +64,12 @@ int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
 
-    const QString root = argc > 1 ? QString::fromUtf8(argv[1])
-                                  : QStringLiteral(SWIFTSDM_SOURCE_DIR);
-    const QString source = root + QStringLiteral("/ui-assets/app-icon/main-icon.svg");
-    const QString base = root + QStringLiteral("/packaging/icons/hicolor");
+    const QString source = argc > 1
+                               ? QString::fromUtf8(argv[1])
+                               : QStringLiteral(SWIFTSDM_SOURCE_DIR "/ui-assets/app-icon/main-icon.svg");
+    const QString base = argc > 2
+                             ? QString::fromUtf8(argv[2])
+                             : QStringLiteral(SWIFTSDM_BINARY_DIR "/generated/icons/hicolor");
 
     bool ok = true;
     for (const int size : {16, 24, 32, 48, 64, 128, 256, 512}) {

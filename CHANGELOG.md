@@ -15,6 +15,20 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.18.15 — 2026-10-21
+
+Render the launcher icons at build time.
+
+- The hicolor launcher icons are now rendered during the build from
+  `ui-assets/app-icon/main-icon.svg` into `build/generated/icons/hicolor/`, and
+  the install and `.deb` rules take them from there. A changed app icon
+  therefore reaches the installed launcher icons with a plain
+  `cmake --build build`; no manual step is needed anymore.
+- The checked-in PNGs under `packaging/icons/` were removed, so the SVG in
+  `ui-assets/app-icon/` is the only source of the app icon.
+- The app icon itself was updated: the window and launcher now show the new
+  mark.
+
 ## 0.18.14 — 2026-10-21
 
 Use the power glyph for the toolbar Quit button.
