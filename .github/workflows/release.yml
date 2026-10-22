@@ -128,14 +128,17 @@ jobs:
         run: |
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" build/*.deb --clobber
+          repo="$GITHUB_REPOSITORY"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" build/*.deb --clobber --repo "$repo"
             gh release edit "$tag" \
               --title "SwiftDM ${version}" \
-              --notes-file release-notes.md
+              --notes-file release-notes.md \
+              --repo "$repo"
           else
             gh release create "$tag" build/*.deb --draft \
               --title "SwiftDM ${version}" \
-              --notes-file release-notes.md
+              --notes-file release-notes.md \
+              --repo "$repo"
           fi
-          gh release edit "$tag" --draft=false
+          gh release edit "$tag" --draft=false --repo "$repo"
