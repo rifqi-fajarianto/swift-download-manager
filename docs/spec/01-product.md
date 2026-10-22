@@ -66,22 +66,31 @@ Layout (from `main-window.png`):
      the rows look even in every style (0.18.9).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
-   - Fixed default size (560×420, minimum 420×300): the window never grows with
+   - Fixed default size (650×500, minimum 520×420): the window never grows with
      the URL length. The URL line is elided in the middle and keeps the full
      URL in its tooltip and link.
-   - Tabs: `Download`, `Options`, `Connections`.
-   - Download tab: URL, Status, File Size, Downloaded (bytes + %), Bandwidth,
-     Remaining Time, Resumable (Yes/No), main progress bar, segment progress
-     bar (segments shown as colored slices), segmented count label
-     (`Segments : N`), `Resume`/`Cancel` buttons. When the per-download speed
-     limiter is on, an orange `Speed limit: <value>` line sits next to the
-     Bandwidth value (0.18.1).
-   - Options tab: Save To, File Name, Connections, Bandwidth Limit with an
-     enable toggle and presets (500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s, 20 MB/s,
-     50 MB/s, or a custom KB/s value), Referer; `Apply` (0.18.1). While a
-     transfer is active, only the speed-limit editor remains enabled and its
-     changes apply after 500 ms without pausing. Other fields are disabled
-     until the transfer is paused; `Apply` saves them then (0.18.2).
+   - Tabs: `Download`, `Options`, `Connections`. Each tab groups its fields in
+     bold-titled sections, like the Settings and Download Properties windows
+     (0.18.22).
+   - Download tab: URL; `Details` section with Status, File size, Downloaded
+     (bytes + %), Bandwidth, Remaining time and Resumable (Yes/No); `Progress`
+     section with the main progress bar (percentage drawn inside), segment
+     progress bar (segments shown as colored slices) and the segment count
+     (`Segments: N`); `Resume`/`Cancel` buttons aligned to the right. When the
+     per-download speed limiter is on, an orange `Speed limit: <value>` line
+     sits next to the Bandwidth value (0.18.1).
+   - Options tab: `Destination` section with Save to and File name; `Transfer`
+     section with Connections, Bandwidth limit (enable toggle, preset selector
+     and custom KB/s value) and Referer, plus a note explaining that speed-limit
+     changes apply while downloading and other changes on resume; `Apply` at
+     the bottom right (0.18.1). Presets are 500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s,
+     20 MB/s, 50 MB/s, or a custom KB/s value. While a transfer is active, only
+     the speed-limit editor remains enabled and its changes apply after 500 ms
+     without pausing. Other fields are disabled until the transfer is paused;
+     `Apply` saves them then (0.18.2).
+   - Connections tab: the segment table sits inside a single frame, with columns
+     `#`, `Range (bytes)`, `Downloaded` and `%`; the table itself does not draw
+     grid lines or a second border (0.18.22).
 3. **Item actions** (right-click a download row):
    - `Open File` — opens the downloaded file with the default handler. It is
      available for every completed row; when the file was deleted or moved it

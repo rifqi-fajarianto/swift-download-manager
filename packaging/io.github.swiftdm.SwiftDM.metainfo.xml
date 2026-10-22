@@ -36,7 +36,7 @@
   <releases>
     <release version="0.18.22" date="2026-10-22">
       <description>
-        <p>The Download Properties window groups its read-only values into General, Location, Source and Time sections.</p>
+        <p>The Download Properties window groups its read-only values into General, Location, Source and Time sections. The Download progress window uses the same section layout on its Download, Options and Connections tabs.</p>
       </description>
     </release>
     <release version="0.18.21" date="2026-10-22">

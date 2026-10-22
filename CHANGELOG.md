@@ -21,7 +21,8 @@
 
 ## 0.18.22 — 2026-10-22
 
-Redesign the Download Properties window around labeled sections.
+Redesign the Download Properties and Download progress windows around labeled
+sections.
 
 - The read-only values are grouped into `General`, `Location`, `Source` and
   `Time`, using the same section spacing as the settings window (0.18.20).
@@ -41,6 +42,24 @@ Redesign the Download Properties window around labeled sections.
   behavior. No data or engine behavior changed.
 - Regression test `properties_dialog` covers the section order, field
   placement, conditional rows, header elision and the OK button.
+
+The progress window now shares the same section language and opens at 650×500
+(minimum 520×420).
+
+- The Download tab groups the read-only values under `Details` (Status, File
+  size, Downloaded, Bandwidth, Remaining time, Resumable) and the progress
+  widgets under `Progress` (bar with the percentage inside, segment bar and
+  `Segments: N`). `Resume`/`Cancel` are right-aligned.
+- The Options tab groups the fields under `Destination` (Save to, File name)
+  and `Transfer` (Connections, Bandwidth limit, Referer, note). The shared
+  speed-limit editor puts the toggle and preset on the first row and the
+  custom KB/s value below it. `Apply` stays at the bottom right.
+- The Connections tab draws the segment table inside one frame, without the
+  table's own border or grid lines.
+- The section headings are bold and use the shared spacing of the settings and
+  properties windows; no field or engine behavior changed.
+- Regression test `download_window` covers the tab order, section order, field
+  placement, default/minimum size and the framed table.
 - This UX change uses PATCH 0.18.22 by the maintainer's decision rather than
   the usual MINOR bump.
 

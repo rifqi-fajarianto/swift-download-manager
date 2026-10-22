@@ -6,20 +6,18 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QFormLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QResizeEvent>
-#include <QStyleOption>
-#include <QStylePainter>
 #include <QUrl>
 #include <QVBoxLayout>
 
 #include "core/util.h"
 #include "ui/download_task.h"
 #include "ui/icons.h"
+#include "ui/section_box.h"
 
 namespace swiftdm::ui {
 
@@ -29,42 +27,6 @@ namespace {
 // The file name gets what is left of the window width.
 constexpr int kNameChrome = 2 * 12 + 28 + 8;
 constexpr int kMinNameWidth = 160;
-
-// The section headings follow the mockup: bold title, normal-weight content.
-class SectionBox : public QGroupBox {
-  public:
-    explicit SectionBox(const QString& title, QWidget* parent = nullptr)
-        : QGroupBox(title, parent) {}
-
-  protected:
-    void paintEvent(QPaintEvent*) override {
-        QStyleOptionGroupBox option;
-        initStyleOption(&option);
-        QFont title_font = font();
-        title_font.setBold(true);
-        // The title rectangle is sized from the option metrics, while the text
-        // is drawn with the painter font; both must use the bold title font.
-        option.fontMetrics = QFontMetrics(title_font);
-        QStylePainter painter(this);
-        painter.setFont(title_font);
-        painter.drawComplexControl(QStyle::CC_GroupBox, option);
-    }
-};
-
-// Adds a labeled section with the same spacing as the settings window (0.18.20).
-QFormLayout* add_form_section(QVBoxLayout* page, QWidget* parent,
-                              const QString& title) {
-    auto* box = new SectionBox(title, parent);
-    auto* form = new QFormLayout(box);
-    form->setContentsMargins(10, 4, 10, 8);
-    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    form->setHorizontalSpacing(14);
-    form->setVerticalSpacing(6);
-    page->addWidget(box);
-    return form;
-}
 
 QLabel* add_value_row(QFormLayout* form, const QString& label, const QString& value,
                       const char* object_name) {
@@ -104,7 +66,7 @@ PropertiesDialog::PropertiesDialog(const DownloadItem& item, const DownloadTask*
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(10);
+    layout->setSpacing(kSectionSpacing);
 
     // Header: icon + file name.
     auto* header = new QHBoxLayout;

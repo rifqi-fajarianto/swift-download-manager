@@ -3,7 +3,7 @@
 #include <QFileDialog>
 #include <QFontMetrics>
 #include <QFormLayout>
-#include <QGridLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -26,6 +26,7 @@
 #include "ui/download_task.h"
 #include "ui/icons.h"
 #include "ui/speed_limit_editor.h"
+#include "ui/section_box.h"
 #include "ui/theme.h"
 
 namespace swiftdm::ui {
@@ -34,13 +35,20 @@ namespace {
 
 // Fixed default size for the progress window: independent of the URL length,
 // the file name, or the current tab (docs/spec/01-product.md §3.2).
-constexpr int kDefaultWindowWidth = 560;
-constexpr int kDefaultWindowHeight = 420;
-constexpr int kMinWindowWidth = 420;
-constexpr int kMinWindowHeight = 300;
+constexpr int kDefaultWindowWidth = 650;
+constexpr int kDefaultWindowHeight = 500;
+constexpr int kMinWindowWidth = 520;
+constexpr int kMinWindowHeight = 420;
 constexpr int kMinUrlLabelWidth = 120;
 // Dialog chrome around the link row (window/tab margins, icon, spacings).
 constexpr int kUrlLabelChrome = 80;
+
+QLabel* add_value_row(QFormLayout* form, const QString& label, QLabel*& value) {
+    value = new QLabel(form->parentWidget());
+    value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    form->addRow(label, value);
+    return value;
+}
 
 QString format_bytes_q(quint64 bytes) {
     return QString::fromStdString(swiftdm::format_bytes(bytes, 3));
@@ -131,6 +139,7 @@ DownloadWindow::DownloadWindow(DownloadModel* model, int item_id,
     tabs->addTab(build_connections_tab(), tr("Connections"));
 
     auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(10, 10, 10, 10);
     layout->addWidget(tabs, 1);
 
     connect(model_, &QAbstractItemModel::dataChanged, this, [this] { refresh(); });
@@ -142,7 +151,8 @@ DownloadWindow::DownloadWindow(DownloadModel* model, int item_id,
 QWidget* DownloadWindow::build_download_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
-    layout->setSpacing(6);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
     url_label_ = new QLabel(page);
     url_label_->setOpenExternalLinks(true);
@@ -160,55 +170,62 @@ QWidget* DownloadWindow::build_download_tab() {
     url_row->addWidget(link_icon);
     url_row->addWidget(url_label_, 1);
     layout->addLayout(url_row);
-    layout->addSpacing(4);
 
-    auto* grid = new QGridLayout;
-    grid->setHorizontalSpacing(16);
-    grid->setVerticalSpacing(4);
-    const auto add_row = [&](int row, const QString& name, QLabel*& value) {
-        grid->addWidget(new QLabel(name, page), row, 0, Qt::AlignLeft | Qt::AlignTop);
-        value = new QLabel(page);
-        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        grid->addWidget(value, row, 1, Qt::AlignLeft);
-    };
-    add_row(0, tr("Status"), status_label_);
-    add_row(1, tr("File Size"), size_label_);
-    add_row(2, tr("Downloaded"), downloaded_label_);
-    add_row(3, tr("Bandwidth"), bandwidth_label_);
+    auto* details = add_form_section(layout, page, tr("Details"));
+    add_value_row(details, tr("Status"), status_label_)->setObjectName("download_status");
+    add_value_row(details, tr("File size"), size_label_)->setObjectName("download_file_size");
+    add_value_row(details, tr("Downloaded"), downloaded_label_)
+        ->setObjectName("download_downloaded");
+
+    auto* bandwidth_row = new QWidget(page);
+    auto* bandwidth_layout = new QHBoxLayout(bandwidth_row);
+    bandwidth_layout->setContentsMargins(0, 0, 0, 0);
+    bandwidth_layout->setSpacing(8);
+    bandwidth_label_ = new QLabel(bandwidth_row);
+    bandwidth_label_->setObjectName("download_bandwidth");
+    bandwidth_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     // Active speed-limiter info sits next to the bandwidth value, in orange.
-    limit_info_label_ = new QLabel(page);
+    limit_info_label_ = new QLabel(bandwidth_row);
+    limit_info_label_->setObjectName("download_limit_info");
     limit_info_label_->setStyleSheet("color:#e0a85a;");
     limit_info_label_->setToolTip(tr("Speed limiter is active for this download"));
-    grid->addWidget(limit_info_label_, 3, 2, Qt::AlignLeft);
-    add_row(4, tr("Remaining Time"), remaining_label_);
-    add_row(5, tr("Resumable"), resumable_label_);
-    grid->setColumnStretch(1, 1);
-    layout->addLayout(grid);
-    layout->addSpacing(8);
+    bandwidth_layout->addWidget(bandwidth_label_);
+    bandwidth_layout->addWidget(limit_info_label_);
+    bandwidth_layout->addStretch(1);
+    details->addRow(tr("Bandwidth"), bandwidth_row);
 
+    add_value_row(details, tr("Remaining time"), remaining_label_)
+        ->setObjectName("download_remaining");
+    add_value_row(details, tr("Resumable"), resumable_label_)
+        ->setObjectName("download_resumable");
+
+    auto* progress_section = add_section(layout, page, tr("Progress"));
     progress_ = new QProgressBar(page);
+    progress_->setObjectName("download_progress");
     progress_->setRange(0, 100);
-    progress_->setTextVisible(false);
-    layout->addWidget(progress_);
-    layout->addSpacing(6);
+    progress_->setTextVisible(true);
+    progress_section->addWidget(progress_);
 
     segment_bar_ = new SegmentBar(page);
-    layout->addWidget(segment_bar_);
+    segment_bar_->setObjectName("download_segment_bar");
+    progress_section->addWidget(segment_bar_);
 
     segments_label_ = new QLabel(page);
+    segments_label_->setObjectName("download_segments");
     segments_label_->setAlignment(Qt::AlignCenter);
     segments_label_->setStyleSheet("color:#4da3ff;");
-    layout->addWidget(segments_label_);
+    progress_section->addWidget(segments_label_);
     layout->addStretch(1);
 
     auto* buttons = new QHBoxLayout;
+    buttons->setSpacing(8);
     buttons->addStretch(1);
     action_button_ = new QPushButton(tr("Pause"), page);  // label toggles in refresh()
+    action_button_->setObjectName("download_action");
     cancel_button_ = new QPushButton(tr("Cancel"), page);
+    cancel_button_->setObjectName("download_cancel");
     buttons->addWidget(action_button_);
-    buttons->addSpacing(28);
     buttons->addWidget(cancel_button_);
-    buttons->addStretch(1);
     layout->addLayout(buttons);
 
     connect(action_button_, &QPushButton::clicked, this, [this] {
@@ -238,16 +255,21 @@ QWidget* DownloadWindow::build_download_tab() {
 QWidget* DownloadWindow::build_options_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
-    auto* form = new QFormLayout;
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
 
     dir_edit_ = new QLineEdit(page);
+    dir_edit_->setObjectName("download_save_to");
     name_edit_ = new QLineEdit(page);
+    name_edit_->setObjectName("download_file_name");
     referer_edit_ = new QLineEdit(page);
+    referer_edit_->setObjectName("download_referer");
     connections_spin_ = new QSpinBox(page);
+    connections_spin_->setObjectName("download_connections");
     connections_spin_->setRange(0, 64);
     connections_spin_->setSpecialValueText(tr("default"));
     limit_editor_ = new SpeedLimitEditor(page);
+    limit_editor_->setObjectName("download_bandwidth_limit");
     limit_debounce_ = new QTimer(this);
     limit_debounce_->setSingleShot(true);
     limit_debounce_->setInterval(500);
@@ -259,20 +281,34 @@ QWidget* DownloadWindow::build_options_tab() {
             });
     connect(limit_debounce_, &QTimer::timeout, this, [this] { apply_live_limit(); });
 
-    form->addRow(tr("Save To"), dir_edit_);
-    form->addRow(tr("File Name"), name_edit_);
-    form->addRow(tr("Connections"), connections_spin_);
-    form->addRow(tr("Bandwidth Limit"), limit_editor_);
-    form->addRow(tr("Referer"), referer_edit_);
-    layout->addLayout(form);
+    auto* destination = add_form_section(layout, page, tr("Destination"));
+    destination->addRow(tr("Save to:"), dir_edit_);
+    destination->addRow(tr("File name:"), name_edit_);
+
+    auto* transfer = add_section(layout, page, tr("Transfer"));
+    auto* transfer_form = new QFormLayout;
+    transfer_form->setContentsMargins(0, 0, 0, 0);
+    transfer_form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    transfer_form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    transfer_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    transfer_form->setHorizontalSpacing(14);
+    transfer_form->setVerticalSpacing(6);
+    transfer_form->addRow(tr("Connections:"), connections_spin_);
+    transfer_form->addRow(tr("Bandwidth limit:"), limit_editor_);
+    transfer_form->addRow(tr("Referer:"), referer_edit_);
+    transfer->addLayout(transfer_form);
 
     auto* note = new QLabel(
-        tr("Speed limit changes apply while downloading. Other changes apply when resumed."), page);
+        tr("Speed limit changes apply while downloading. Other changes apply when resuming."),
+        page);
+    note->setObjectName("download_transfer_note");
     note->setStyleSheet("color:#a0a0a0;");
-    layout->addWidget(note);
+    note->setWordWrap(true);
+    transfer->addWidget(note);
     layout->addStretch(1);
 
     apply_button_ = new QPushButton(tr("Apply"), page);
+    apply_button_->setObjectName("download_apply");
     auto* buttons = new QHBoxLayout;
     buttons->addStretch(1);
     buttons->addWidget(apply_button_);
@@ -304,7 +340,13 @@ QWidget* DownloadWindow::build_options_tab() {
 QWidget* DownloadWindow::build_connections_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(kSectionSpacing);
+    auto* frame = add_section(layout, page, QString());
     connections_table_ = new QTableWidget(0, 4, page);
+    connections_table_->setObjectName("download_connections_table");
+    connections_table_->setFrameShape(QFrame::NoFrame);
+    connections_table_->setShowGrid(false);
     connections_table_->setHorizontalHeaderLabels(
         {tr("#"), tr("Range (bytes)"), tr("Downloaded"), tr("%")});
     connections_table_->horizontalHeader()->setStretchLastSection(true);
@@ -312,7 +354,7 @@ QWidget* DownloadWindow::build_connections_tab() {
     connections_table_->verticalHeader()->setVisible(false);
     connections_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     connections_table_->setSelectionMode(QAbstractItemView::NoSelection);
-    layout->addWidget(connections_table_);
+    frame->addWidget(connections_table_);
     return page;
 }
 
@@ -366,7 +408,7 @@ void DownloadWindow::refresh() {
     const DownloadTask* task = item->task;
     const DownloadTask::Snapshot snap = task ? task->snapshot() : DownloadTask::Snapshot{};
     segment_bar_->set_segments(snap.segments);
-    segments_label_->setText(tr("Segments : %1").arg(snap.segments.size()));
+    segments_label_->setText(tr("Segments: %1").arg(snap.segments.size()));
 
     const bool active = task && task->active();
     const bool running = active && item->state == DownloadItem::State::Downloading;

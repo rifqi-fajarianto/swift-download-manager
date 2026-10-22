@@ -58,8 +58,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   label sentence case; field dan perilakunya tidak berubah. Window dibuka
   650×690, nama file panjang di-elide di tengah dengan tooltip, dan baris
   Source kondisional (Page URL/Page title/Pair) hanya muncul bila datanya ada.
-  Batch layout ini memakai patch 0.18.22 atas keputusan maintainer, meskipun
-  kebijakan normal untuk UX adalah MINOR +1.
+  Window progress memakai bahasa section yang sama: tab Download berisi
+  `Details`/`Progress`, tab Options berisi `Destination`/`Transfer`, dan tab
+  Connections menaruh tabel segmen dalam satu frame. Window progress dibuka
+  650×500 (minimum 520×420); label memakai sentence case, tombol Download
+  rata kanan, dan speed-limit editor memakai dua baris. Batch layout ini
+  memakai patch 0.18.22 atas keputusan maintainer, meskipun kebijakan normal
+  untuk UX adalah MINOR +1.
   Tombol toolbar `Resume` aktif hanya jika minimal
   satu item terpilih bisa di-resume (Paused/Error/Queued, task tidak aktif) dan
   `Stop` aktif hanya jika minimal satu item sedang `Downloading`; seleksi
@@ -261,7 +266,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   section bold; label sentence case. Nilai pendek memakai label yang bisa
   diseleksi, path/URL tetap read-only field. Nama file panjang di-elide di
   tengah dengan tooltip. Default window 650×690 dan minimum mengikuti layout.
-  Test headless baru `properties_dialog`.
+  Test headless baru `properties_dialog`. Window progress ikut memakai section
+  bold: tab Download (`Details`, `Progress`), tab Options (`Destination`,
+  `Transfer`) dan tab Connections (tabel dalam satu frame). Tab Download
+  menampilkan persentase di dalam progress bar dan `Segments: N`; tombol
+  Resume/Cancel rata kanan. Window progress dibuka 650×500 (minimum 520×420),
+  dan speed-limit editor memakai dua baris (toggle + preset, lalu nilai
+  kustom). Test headless baru `download_window`.
 
 ### Rencana / gap yang diketahui
 
@@ -343,9 +354,9 @@ Menjalankan aplikasi:
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
 `media`, `filenames`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
 `confirm_dialog` (offscreen), `settings_dialog` (offscreen),
-`properties_dialog` (offscreen), `action_state`, `theme` (offscreen), dan
-`browser_protocol` (tanpa GUI). Test HTTP/FTP memakai server lokal di
-`tests/http_test_server.h` dan `tests/ftp_test_server.h`.
+`properties_dialog` (offscreen), `download_window` (offscreen), `action_state`,
+`theme` (offscreen), dan `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai
+server lokal di `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
 
 Regenerasi ikon setelah mengubah SVG:
 

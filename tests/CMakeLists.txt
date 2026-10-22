@@ -128,6 +128,33 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME properties_dialog COMMAND test_properties_dialog)
     set_tests_properties(properties_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless (offscreen) check of the Download window: the three tabs, the
+    # labeled sections on each tab, and the fields they own. The window is
+    # never shown.
+    add_executable(test_download_window
+        test_download_window.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/download_window.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/download_model.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/download_task.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
+    )
+    target_include_directories(test_download_window PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_download_window PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_download_window PRIVATE swiftdm_core Qt6::Widgets)
+    qt_add_resources(test_download_window "test_download_window_icons"
+        PREFIX "/icons"
+        BASE "${CMAKE_SOURCE_DIR}/ui-assets"
+        FILES ${SWIFTSDM_ASSET_ICONS}
+    )
+    qt_add_resources(test_download_window "test_download_window_ui_icons"
+        PREFIX "/icons"
+        BASE "${CMAKE_SOURCE_DIR}/src/ui/icons"
+        FILES ${SWIFTSDM_UI_ICONS}
+    )
+    add_test(NAME download_window COMMAND test_download_window)
+    set_tests_properties(download_window PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # Headless check of the toolbar Resume/Stop availability rules.
     add_executable(test_action_state test_action_state.cpp)
     target_include_directories(test_action_state PRIVATE "${CMAKE_SOURCE_DIR}/src")
