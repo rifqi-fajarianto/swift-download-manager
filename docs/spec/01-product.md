@@ -14,9 +14,13 @@ queueing, per-download speed limits, proxy support, and a download history.
 
 Layout (from `main-window.png`):
 
-- **Toolbar** (left to right): `New URL`, `Resume`, `Stop`, `Delete`,
+- **Toolbar** (left to right): `New URL` | `Resume`, `Stop` | `Delete`,
   `Delete File` | (right) `Settings`, `Browsers`, `About`, `Quit`.
-  (`Delete File` is a SwiftDM addition, documented below.)
+  (`Delete File` is a SwiftDM addition, documented below.) `Resume` is enabled
+  while at least one selected row is paused, failed or queued; `Stop` is
+  enabled while at least one selected row is downloading. A mixed selection
+  enables each button that has a matching row (0.18.21). The vertical bars are
+  toolbar dividers.
 - **Left panel**: category tree.
   - `All Downloads` with children: `Video`, `Audio`, `Compressed`, `Document`,
     `Application`, `Misc`.

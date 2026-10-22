@@ -46,6 +46,33 @@ struct DownloadItem {
     bool is_complete() const { return state == State::Complete; }
 };
 
+// Toolbar availability for the Resume and Stop actions. Resume starts a row
+// that is not running (paused, failed or queued); Stop pauses an active
+// transfer. A mixed selection enables an action when at least one selected row
+// can use it.
+struct ToolbarActionState {
+    bool resume = false;
+    bool stop = false;
+};
+
+inline bool item_can_resume(DownloadItem::State state, bool has_task, bool task_active) {
+    if (!has_task || task_active) return false;
+    return state == DownloadItem::State::Paused ||
+           state == DownloadItem::State::Error ||
+           state == DownloadItem::State::Queued;
+}
+
+inline bool item_can_stop(DownloadItem::State state, bool has_task, bool task_active) {
+    return has_task && task_active && state == DownloadItem::State::Downloading;
+}
+
+inline void merge_toolbar_action_state(ToolbarActionState& actions,
+                                       DownloadItem::State state, bool has_task,
+                                       bool task_active) {
+    actions.resume = actions.resume || item_can_resume(state, has_task, task_active);
+    actions.stop = actions.stop || item_can_stop(state, has_task, task_active);
+}
+
 // Status text shown in the table and download window ("Paused ( 54% )" etc.).
 QString download_status_text(const DownloadItem& item);
 

@@ -474,8 +474,10 @@ void MainWindow::build_actions() {
     toolbar->setObjectName(QStringLiteral("main_toolbar"));
     toolbar->setMovable(false);
     toolbar->addAction(act_new_);
+    toolbar->addSeparator();
     toolbar->addAction(act_resume_);
     toolbar->addAction(act_stop_);
+    toolbar->addSeparator();
     toolbar->addAction(act_delete_);
     toolbar->addAction(act_delete_file_);
     auto* spacer = new QWidget(toolbar);
@@ -1375,13 +1377,20 @@ void MainWindow::remove_row_with_cleanup(int row) {
 }
 
 void MainWindow::update_action_states() {
-    const bool has_selection = !selected_rows().isEmpty();
-    act_resume_->setEnabled(has_selection);
-    act_stop_->setEnabled(has_selection);
-    act_delete_->setEnabled(has_selection);
+    const QList<int> rows = selected_rows();
+    ToolbarActionState actions;
+    for (const int row : rows) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item) continue;
+        merge_toolbar_action_state(actions, item->state, item->task != nullptr,
+                                   item->task && item->task->active());
+    }
+    act_resume_->setEnabled(actions.resume);
+    act_stop_->setEnabled(actions.stop);
+    act_delete_->setEnabled(!rows.isEmpty());
 
     bool can_delete_file = false;
-    for (const int row : selected_rows()) {
+    for (const int row : rows) {
         const DownloadItem* item = model_->item_at(row);
         if (item && item->is_complete() && !item->dest_path.isEmpty() &&
             QFileInfo::exists(item->dest_path)) {
@@ -1389,7 +1398,7 @@ void MainWindow::update_action_states() {
             break;
         }
     }
-    act_delete_file_->setEnabled(has_selection && can_delete_file);
+    act_delete_file_->setEnabled(!rows.isEmpty() && can_delete_file);
 }
 
 void MainWindow::on_delete_file() {
@@ -1443,12 +1452,8 @@ void MainWindow::on_resume() {
     const QList<int> rows = selected_rows();
     for (const int row : rows) {
         DownloadItem* item = model_->item_at(row);
-        if (!item || !item->task || item->task->active()) continue;
-        const DownloadItem::State state = item->state;
-        if (state != DownloadItem::State::Paused && state != DownloadItem::State::Error &&
-            state != DownloadItem::State::Queued) {
-            continue;
-        }
+        if (!item || !item->task) continue;
+        if (!item_can_resume(item->state, true, item->task->active())) continue;
         const int id = item->id;
         DownloadTask::Options options = item->task->options();
         options.limit_enabled = item->bandwidth_limit_enabled;
@@ -1462,10 +1467,9 @@ void MainWindow::on_stop() {
     const QList<int> rows = selected_rows();
     for (const int row : rows) {
         DownloadItem* item = model_->item_at(row);
-        if (item && item->state == DownloadItem::State::Downloading && item->task &&
-            item->task->active()) {
-            item->task->pause();
-        }
+        if (!item || !item->task) continue;
+        if (!item_can_stop(item->state, true, item->task->active())) continue;
+        item->task->pause();
     }
 }
 

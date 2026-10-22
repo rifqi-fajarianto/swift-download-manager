@@ -19,6 +19,23 @@
   command channel while browser cookie metadata is being gathered. The status
   subscription remains a separate socket.
 
+## 0.18.21 — 2026-10-22
+
+Make the toolbar Resume and Stop buttons reflect what they can act on.
+
+- Resume is enabled only while at least one selected download is paused, failed
+  or queued and its worker is not running. Stop is enabled only while at least
+  one selected download is still transferring. Complete or probing rows leave
+  both buttons disabled. A mixed selection enables each button that has at
+  least one matching row, so a downloading + paused selection can use both
+  actions.
+- `on_resume()` and `on_stop()` use the same per-row rules as the button
+  states, so the toolbar cannot offer an action that does nothing.
+- The toolbar has a divider after `New URL` and after `Stop`.
+- Regression test `action_state` covers the status matrix and mixed selections.
+- This UX change uses PATCH 0.18.21 by the maintainer's decision rather than
+  the usual MINOR bump.
+
 ## 0.18.20 — 2026-10-22
 
 Group the settings window into labeled sections so the options are easier to

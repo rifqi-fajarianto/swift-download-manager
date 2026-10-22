@@ -46,14 +46,20 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.20**. Status ini cepat
+> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.21**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
 - **Branch kerja saat snapshot**: `engine`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.20. Window Settings memakai section berlabel di kelima
+- **Versi kerja**: 0.18.21. Tombol toolbar `Resume` aktif hanya jika minimal
+  satu item terpilih bisa di-resume (Paused/Error/Queued, task tidak aktif) dan
+  `Stop` aktif hanya jika minimal satu item sedang `Downloading`; seleksi
+  campuran menyalakan tombol yang punya item cocok. Toolbar memakai divider
+  setelah `New URL` dan setelah `Stop`. Batch UX ini memakai patch 0.18.21 atas
+  keputusan maintainer, meskipun kebijakan normal untuk UX adalah MINOR +1.
+  Window Settings memakai section berlabel di kelima
   tab (General, Interface, Download, Proxy/Socks, Passwords) agar opsi lebih
   mudah dipindai; hanya layout/teks yang berubah, tanpa perubahan key, default,
   atau perilaku. Batch layout ini memakai patch 0.18.20 atas keputusan
@@ -109,7 +115,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.20
+### Sudah tersedia sampai 0.18.21
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -130,7 +136,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.20 — riwayat fitur
+### 0.18.1–0.18.21 — riwayat fitur
 
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
@@ -235,6 +241,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   section. Tidak ada key,
   default, atau perilaku yang berubah; test `settings_dialog` diperluas untuk
   menjaga judul/urutan section dan penempatan kontrol.
+- 0.18.21 menyesuaikan tombol toolbar `Resume` dan `Stop` dengan status item
+  terpilih: Resume nonaktif untuk item `Downloading`, Stop nonaktif untuk
+  `Paused`/`Error`/`Complete`, dan seleksi campuran menyalakan tombol yang
+  memiliki minimal satu item cocok. `on_resume()`/`on_stop()` memakai helper
+  status yang sama dengan tombol. Toolbar diberi divider setelah `New URL` dan
+  setelah `Stop`. Test headless baru `action_state`.
 
 ### Rencana / gap yang diketahui
 
@@ -311,9 +323,9 @@ Menjalankan aplikasi:
 
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
 `media`, `filenames`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
-`confirm_dialog` (offscreen), `settings_dialog` (offscreen), `theme` (offscreen), dan
-`browser_protocol` (tanpa GUI). Test HTTP/FTP memakai server lokal di
-`tests/http_test_server.h` dan `tests/ftp_test_server.h`.
+`confirm_dialog` (offscreen), `settings_dialog` (offscreen), `action_state`,
+`theme` (offscreen), dan `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai
+server lokal di `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
 
 Regenerasi ikon setelah mengubah SVG:
 

@@ -102,6 +102,12 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME settings_dialog COMMAND test_settings_dialog)
     set_tests_properties(settings_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless check of the toolbar Resume/Stop availability rules.
+    add_executable(test_action_state test_action_state.cpp)
+    target_include_directories(test_action_state PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(test_action_state PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME action_state COMMAND test_action_state)
+
     # Headless (offscreen) check of the theme module: the setting value, the
     # two palettes and the "follow system" resolution. No window is shown.
     add_executable(test_theme

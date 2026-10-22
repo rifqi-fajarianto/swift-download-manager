@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.21" date="2026-10-22">
+      <description>
+        <p>The toolbar Resume and Stop buttons follow the selected download states, and the toolbar has dividers after New URL and Stop.</p>
+      </description>
+    </release>
     <release version="0.18.20" date="2026-10-22">
       <description>
         <p>The settings window groups its options into labeled sections on every tab.</p>
