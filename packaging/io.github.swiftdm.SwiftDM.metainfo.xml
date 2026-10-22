@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.18.22" date="2026-10-22">
+      <description>
+        <p>The Download Properties window groups its read-only values into General, Location, Source and Time sections.</p>
+      </description>
+    </release>
     <release version="0.18.21" date="2026-10-22">
       <description>
         <p>The toolbar Resume and Stop buttons follow the selected download states, and the toolbar has dividers after New URL and Stop.</p>

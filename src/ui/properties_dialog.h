@@ -4,6 +4,9 @@
 
 #include "ui/download_model.h"
 
+class QLabel;
+class QResizeEvent;
+
 namespace swiftdm::ui {
 
 class DownloadTask;
@@ -15,6 +18,15 @@ class PropertiesDialog : public QDialog {
   public:
     PropertiesDialog(const DownloadItem& item, const DownloadTask* task,
                      QWidget* parent = nullptr);
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override;
+
+  private:
+    void update_name_label();
+
+    QString file_name_;
+    QLabel* name_label_ = nullptr;
 };
 
 }  // namespace swiftdm::ui

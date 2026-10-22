@@ -118,11 +118,17 @@ Layout (from `main-window.png`):
    status, Saved To path (+ Open Folder), Temp Path, URL (editable), Page URL
    (+ Show Page), Page Title, Browser (source that submitted it), Added On,
    Last Try timestamps, `Log File` button.
-   *Implemented subset (0.6.0)*: file name, File Size, Status, Saved To
-   (+ Open Folder), Temp Path, URL (read-only), Category, Downloaded,
-   Resumable, Segments, Added On, Last Try. Editable URL, Page
-   URL/Page Title/Browser and `Log File` depend on history / browser
-   integration (v1.1 / v2).
+   *Implemented (0.18.22)*: the read-only window groups the values into four
+   labeled sections, in this order: `General` (file size in bytes plus the
+   formatted size, status in its status color, category, downloaded amount,
+   resumable, segment count), `Location` (Saved To path with `Open Folder`,
+   Temp Path), `Source` (read-only URL; Page URL, Page title and Pair only when
+   the item carries them) and `Time` (Added On, Last Try). The header keeps the
+   properties icon and file name; a long name is elided in the middle and keeps
+   the full name in its tooltip. Section titles are bold, labels use sentence
+   case and left alignment. The dialog opens at 650×690 and its minimum size
+   follows the sections; optional source rows make it taller. Editable URL,
+   the Browser source and `Log File` remain future work.
 9. **Settings** (`options-window.png`), tabs:
    Every tab groups its options into labeled sections (0.18.20): `General`
    (Downloads, Startup, System tray), `Interface` (Toolbar, Appearance, System

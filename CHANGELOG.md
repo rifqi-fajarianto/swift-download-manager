@@ -19,6 +19,31 @@
   command channel while browser cookie metadata is being gathered. The status
   subscription remains a separate socket.
 
+## 0.18.22 — 2026-10-22
+
+Redesign the Download Properties window around labeled sections.
+
+- The read-only values are grouped into `General`, `Location`, `Source` and
+  `Time`, using the same section spacing as the settings window (0.18.20).
+- `General` holds the file size, status, category, downloaded amount,
+  resumable flag and segment count. `Location` holds the saved folder with
+  `Open Folder` and the temp path. `Source` holds the URL and the optional
+  page URL, page title and pair token. `Time` holds the added and last-try
+  timestamps.
+- Each section has a bold title; labels use sentence case and left alignment.
+  Short values are selectable labels, while paths and URLs stay read-only
+  fields so they can be scrolled and copied.
+- The header keeps the properties icon and file name. Long names are elided in
+  the middle and keep the full name in their tooltip.
+- The dialog opens at 650×690; its minimum size follows the section layout.
+  The conditional source rows grow the window instead of clipping.
+- Fields, values, the status color and `Open Folder` keep their previous
+  behavior. No data or engine behavior changed.
+- Regression test `properties_dialog` covers the section order, field
+  placement, conditional rows, header elision and the OK button.
+- This UX change uses PATCH 0.18.22 by the maintainer's decision rather than
+  the usual MINOR bump.
+
 ## 0.18.21 — 2026-10-22
 
 Make the toolbar Resume and Stop buttons reflect what they can act on.
