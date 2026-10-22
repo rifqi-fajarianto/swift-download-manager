@@ -37,6 +37,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
+            file \
             ninja-build \
             nodejs \
             qt6-base-dev \

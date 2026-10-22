@@ -315,7 +315,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 Dependency Debian 13:
 
 ```sh
-sudo apt install build-essential cmake ninja-build \
+sudo apt install build-essential cmake file ninja-build \
     qt6-base-dev qt6-svg-plugins libqt6svg6 \
     libcurl4-openssl-dev libsqlite3-dev
 ```
@@ -546,6 +546,9 @@ Catatan:
 - Workflow release membuat release sebagai draft, mengunggah `.deb`, lalu
   mempublikasikannya. Re-run workflow akan memakai release yang sudah ada dan
   mengganti asset `.deb` (`--clobber`).
+- Jika rilis gagal sebelum release terbit, perbaiki workflow di `main`, lalu
+  jalankan workflow `Release` secara manual dengan input tag yang sama
+  (`workflow_dispatch`). Tag tidak perlu dipindahkan.
 - Jika tag tidak sama dengan versi di `CMakeLists.txt` atau section changelog
   tidak ada, workflow gagal sebelum menerbitkan apa pun.
 - Badge CI di `README.md` menunjuk ke repository

@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish (for example v0.18.22)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -21,6 +27,7 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
       GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       # The Debian image does not ship git, which actions/checkout needs.
       - name: Install git for the checkout action
@@ -28,14 +35,19 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
 
+      # A manual dispatch can rebuild an existing tag (for example after a
+      # workflow fix) without moving the tag.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Install build and release dependencies
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
+            file \
             ninja-build \
             nodejs \
             qt6-base-dev \
@@ -50,14 +62,18 @@ jobs:
       - name: Verify the version in the tag
         id: version
         run: |
-          tag_version="${GITHUB_REF_NAME#v}"
+          tag_version="${RELEASE_TAG#v}"
+          if [ "$tag_version" = "$RELEASE_TAG" ]; then
+            echo "::error::Release tag must start with v: $RELEASE_TAG"
+            exit 1
+          fi
           cmake_version="$(grep -m1 -oP '^\s*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)"
           if [ -z "$cmake_version" ]; then
             echo "::error::Could not read the project version from CMakeLists.txt"
             exit 1
           fi
           if [ "$tag_version" != "$cmake_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match the CMake version $cmake_version"
+            echo "::error::Tag $RELEASE_TAG does not match the CMake version $cmake_version"
             exit 1
           fi
           echo "version=$cmake_version" >> "$GITHUB_OUTPUT"
@@ -111,7 +127,7 @@ jobs:
       - name: Publish the GitHub release
         run: |
           version="${{ steps.version.outputs.version }}"
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" build/*.deb --clobber
             gh release edit "$tag" \

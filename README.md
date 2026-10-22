@@ -97,7 +97,7 @@ swiftdm --version
 Debian 13 (trixie) is the reference platform. Install the dependencies:
 
 ```sh
-sudo apt install build-essential cmake ninja-build \
+sudo apt install build-essential cmake file ninja-build \
   qt6-base-dev qt6-svg-plugins libqt6svg6 \
   libcurl4-openssl-dev libsqlite3-dev
 ```
