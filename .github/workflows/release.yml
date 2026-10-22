@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish the Debian package
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 30
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # The Debian image does not ship git, which actions/checkout needs.
+      - name: Install git for the checkout action
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build and release dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            nodejs \
+            qt6-base-dev \
+            qt6-svg-plugins \
+            libqt6svg6 \
+            libcurl4-openssl-dev \
+            libsqlite3-dev \
+            gh
+
+      # The tag is the public version. Refuse to publish a package whose
+      # internal version does not match it.
+      - name: Verify the version in the tag
+        id: version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          cmake_version="$(grep -m1 -oP '^\s*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)"
+          if [ -z "$cmake_version" ]; then
+            echo "::error::Could not read the project version from CMakeLists.txt"
+            exit 1
+          fi
+          if [ "$tag_version" != "$cmake_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the CMake version $cmake_version"
+            exit 1
+          fi
+          echo "version=$cmake_version" >> "$GITHUB_OUTPUT"
+
+      - name: Check the release metadata
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          if ! grep -q "<release version=\"${version}\"" packaging/io.github.swiftdm.SwiftDM.metainfo.xml; then
+            echo "::warning::packaging/io.github.swiftdm.SwiftDM.metainfo.xml has no release entry for ${version}"
+          fi
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Verify that the extension tests are registered
+        run: |
+          tests="$(ctest --test-dir build -N)"
+          for name in extension_logic extension_popup; do
+            if ! echo "$tests" | grep -q " ${name}$"; then
+              echo "::error::${name} is not registered; nodejs is probably missing"
+              exit 1
+            fi
+          done
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build the Debian package
+        run: cd build && cpack
+
+      # The changelog is the source of truth for the release notes. Require the
+      # section so a tag cannot be published without documented changes.
+      - name: Extract the release notes
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          awk -v version="$version" '
+            index($0, "## " version " ") == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for ${version}"
+            exit 1
+          fi
+
+      # Create the release as a draft, upload the package, then publish. A
+      # re-run reuses an existing release and replaces the package asset.
+      - name: Publish the GitHub release
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" build/*.deb --clobber
+            gh release edit "$tag" \
+              --title "SwiftDM ${version}" \
+              --notes-file release-notes.md
+          else
+            gh release create "$tag" build/*.deb --draft \
+              --title "SwiftDM ${version}" \
+              --notes-file release-notes.md
+          fi
+          gh release edit "$tag" --draft=false

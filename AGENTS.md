@@ -328,6 +328,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+CI (`.github/workflows/ci.yml`) menjalankan build dan test yang sama di
+container Debian 13 untuk push ke `main` dan semua PR. Job kedua membangun
+dengan `-DSWIFTSDM_BUILD_UI=OFF` tanpa Qt untuk menjaga batas arsitektur inti.
+
 Menjalankan aplikasi:
 
 ```sh
@@ -376,7 +380,8 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
 3. Setiap perubahan perilaku aplikasi wajib disertai kenaikan versi yang
    sesuai, catatan `CHANGELOG.md`, dan pembaruan status di `README.md`.
 4. Untuk rilis, periksa juga versi contoh di `packaging/README.md` dan
-   `packaging/io.github.swiftdm.SwiftDM.metainfo.xml`.
+   `packaging/io.github.swiftdm.SwiftDM.metainfo.xml`. Prosedur rilis otomatis
+   ada di bagian 11.
 5. Perubahan dokumentasi murni (tanpa perilaku aplikasi) tidak perlu menaikkan
    versi aplikasi.
 6. **Pengecualian yang disetujui**: batch restrukturisasi window Settings
@@ -499,4 +504,50 @@ Aturan commit:
 - Jangan commit `build/`, artefak generated, `binary-original/`, atau file
   sementara.
 - Jangan mengubah, revert, atau meng-amend commit/perubahan user tanpa izin.
-- Jangan push ke remote kecuali diminta.
+- Jangan push ke remote kecuali diminta. Permintaan eksplisit untuk membuat
+  rilis versi (bagian 11) adalah izin untuk push commit rilis dan tag.
+
+## 11. Rilis otomatis dan tag versi
+
+Rilis dipicu oleh tag `vMAJOR.MINOR.PATCH` (contoh `v0.19.0`) yang di-push ke
+`origin`. Tag itu menjalankan `.github/workflows/release.yml`, yang memvalidasi
+kesamaan tag dengan `project(... VERSION ...)`, membangun dan menguji di Debian
+13, membuat `.deb`, lalu menerbitkan GitHub Release dengan catatan dari section
+`CHANGELOG.md` versi tersebut.
+
+Rilis dapat dimulai dengan dua cara:
+
+1. Maintainer membuat dan push tag versi rilis.
+2. Maintainer secara eksplisit meminta agen membuat rilis versi tertentu
+   (contoh: "buat rilis 0.19.0"). Permintaan itu adalah izin untuk menjalankan
+   seluruh prosedur di bawah, termasuk push commit rilis dan tag. Tanpa
+   permintaan eksplisit, agen tetap tidak push (bagian 10).
+
+Checklist sebelum tag:
+
+1. Tentukan versi sesuai bagian 5.
+2. Naikkan `project(... VERSION ...)` di `CMakeLists.txt`.
+3. Pindahkan entri `Unreleased` di `CHANGELOG.md` menjadi section
+   `## X.Y.Z — YYYY-MM-DD` (heading harus memakai format itu; workflow
+   mengekstrak catatan rilis dari section ini).
+4. Perbarui contoh versi di `README.md` dan `packaging/README.md`, serta
+   tambahkan entri `<release version="X.Y.Z" date="YYYY-MM-DD">` di
+   `packaging/io.github.swiftdm.SwiftDM.metainfo.xml`.
+5. Jalankan configure, build, dan `ctest --test-dir build --output-on-failure`.
+6. Commit dengan `chore(release): X.Y.Z`, lalu buat annotated tag:
+   `git tag -a vX.Y.Z -m "SwiftDM X.Y.Z"`.
+7. Push commit dan tag (`git push origin HEAD` dan `git push origin vX.Y.Z`),
+   hanya setelah langkah 1-6 lulus.
+
+Catatan:
+
+- Jangan memindahkan atau menghapus tag yang sudah dipublikasikan. Jika rilis
+  bermasalah, perbaiki dan naikkan patch baru.
+- Workflow release membuat release sebagai draft, mengunggah `.deb`, lalu
+  mempublikasikannya. Re-run workflow akan memakai release yang sudah ada dan
+  mengganti asset `.deb` (`--clobber`).
+- Jika tag tidak sama dengan versi di `CMakeLists.txt` atau section changelog
+  tidak ada, workflow gagal sebelum menerbitkan apa pun.
+- Badge CI di `README.md` menunjuk ke repository
+  `LuckyPicky354/swift-download-manager`; perbarui URL badge jika repository
+  dipindahkan atau diganti nama.

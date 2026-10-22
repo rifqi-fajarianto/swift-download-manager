@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (Debian 13)
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 20
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      # The Debian image does not ship git, which actions/checkout needs.
+      - name: Install git for the checkout action
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            nodejs \
+            qt6-base-dev \
+            qt6-svg-plugins \
+            libqt6svg6 \
+            libcurl4-openssl-dev \
+            libsqlite3-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # CMake skips the extension tests when node is missing. Assert they are
+      # registered so a missing nodejs cannot produce a false green run.
+      - name: Verify that the extension tests are registered
+        run: |
+          tests="$(ctest --test-dir build -N)"
+          for name in extension_logic extension_popup; do
+            if ! echo "$tests" | grep -q " ${name}$"; then
+              echo "::error::${name} is not registered; nodejs is probably missing"
+              exit 1
+            fi
+          done
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # Packaging runs on pull requests too, so a broken CPack configuration is
+      # caught before it reaches main.
+      - name: Build the Debian package
+        run: cd build && cpack
+
+      - name: Upload the Debian package
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftdm-deb
+          path: build/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-log
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  core-headless:
+    name: Core build without Qt
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 15
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      # The Debian image does not ship git, which actions/checkout needs.
+      - name: Install git for the checkout action
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Qt is deliberately absent: the core, engine, network and store code
+      # must keep building without Qt Widgets.
+      - name: Install build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            libcurl4-openssl-dev \
+            libsqlite3-dev
+
+      - name: Configure without the Qt UI
+        run: >
+          cmake -S . -B build-headless -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DSWIFTSDM_BUILD_UI=OFF
+
+      - name: Build
+        run: cmake --build build-headless --parallel
+
+      - name: Test
+        run: ctest --test-dir build-headless --output-on-failure

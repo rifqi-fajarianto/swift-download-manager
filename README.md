@@ -1,5 +1,7 @@
 # SwiftDM
 
+[![CI](https://github.com/LuckyPicky354/swift-download-manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LuckyPicky354/swift-download-manager/actions/workflows/ci.yml)
+
 SwiftDM is a desktop download manager for Linux. It supports segmented
 downloads, pausing and resuming transfers, and both graphical and command-line
 interfaces. SwiftDM is built with C++20, Qt 6, libcurl, and SQLite.
@@ -114,6 +116,10 @@ Run the backend/unit and integration tests:
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+CI runs the same build and test sequence on Debian 13 for pull requests and
+pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb` package
+to GitHub Releases; the release checklist is in [`AGENTS.md`](AGENTS.md).
 
 Run the build:
 
