@@ -549,5 +549,5 @@ Catatan:
 - Jika tag tidak sama dengan versi di `CMakeLists.txt` atau section changelog
   tidak ada, workflow gagal sebelum menerbitkan apa pun.
 - Badge CI di `README.md` menunjuk ke repository
-  `LuckyPicky354/swift-download-manager`; perbarui URL badge jika repository
-  dipindahkan atau diganti nama.
+  `rifqi-fajarianto/swift-download-manager`; perbarui URL badge jika
+  repository dipindahkan atau diganti nama.

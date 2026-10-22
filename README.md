@@ -1,6 +1,6 @@
 # SwiftDM
 
-[![CI](https://github.com/LuckyPicky354/swift-download-manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LuckyPicky354/swift-download-manager/actions/workflows/ci.yml)
+[![CI](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml)
 
 SwiftDM is a desktop download manager for Linux. It supports segmented
 downloads, pausing and resuming transfers, and both graphical and command-line
