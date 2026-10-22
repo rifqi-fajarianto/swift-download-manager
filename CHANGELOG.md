@@ -21,8 +21,8 @@
 
 ## 0.18.22 — 2026-10-22
 
-Redesign the Download Properties and Download progress windows around labeled
-sections.
+Redesign the Download Properties, Download progress and Download Confirmation
+windows around labeled sections.
 
 - The read-only values are grouped into `General`, `Location`, `Source` and
   `Time`, using the same section spacing as the settings window (0.18.20).
@@ -60,6 +60,19 @@ The progress window now shares the same section language and opens at 650×500
   properties windows; no field or engine behavior changed.
 - Regression test `download_window` covers the tab order, section order, field
   placement, default/minimum size and the framed table.
+
+The confirmation window now uses the same sections and opens at 650×330
+(minimum 560×320).
+
+- `File` holds the name and size; `Save` holds the URL, category and location.
+  Both titles are bold and use the shared section spacing.
+- The file name is still elided in the middle with the full name in its
+  tooltip, and the URL stays a read-only field.
+- The buttons move to one row: `Cancel` on the left, `Add to queue` and
+  `Download Now` on the right; `Download Now` remains the default button. All
+  inputs and buttons keep their common height.
+- `confirm_dialog` now also covers the section order, field placement, button
+  order and the hidden queue hint.
 - This UX change uses PATCH 0.18.22 by the maintainer's decision rather than
   the usual MINOR bump.
 

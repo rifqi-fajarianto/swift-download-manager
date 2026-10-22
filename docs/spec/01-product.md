@@ -54,13 +54,16 @@ Layout (from `main-window.png`):
    `Checking…` size are shown and Download Now is disabled; server metadata
    replaces them when ready. The successful probe is reused by the initial
    transfer, while Resume probes again (0.18.19).
-   - Fixed default size (640×250, minimum 520×230): the window never grows with
+   - Fixed default size (650×330, minimum 560×320): the window never grows with
      the file name or the URL length (0.18.9). The file name line is elided in
      the middle and keeps the full name in its tooltip.
-   - Rows: `File` (name), `Size` (content length, `Unknown size` when the
-     server reports none), `URL` (read-only field), `Category` and `Location`
-     (0.18.9: the size is no longer inline with the file name). Every
+   - Rows are grouped into two bold-titled sections (0.18.22): `File` holds
+     `Name` and `Size` (content length, `Unknown size` when the server reports
+     none); `Save` holds `URL` (read-only field), `Category` and `Location`.
+     The size is no longer inline with the file name (0.18.9). Every
      description is vertically centered with the widget next to it (0.18.9).
+   - The buttons sit in one row: `Cancel` on the left, `Add to queue` and
+     `Download Now` on the right; `Download Now` is the default button.
    - All inputs and buttons (URL field, location field, `Browse...`, category
      dropdown, `Download Now`, `Add to queue`, `Cancel`) share one height, so
      the rows look even in every style (0.18.9).

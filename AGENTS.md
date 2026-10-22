@@ -62,9 +62,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `Details`/`Progress`, tab Options berisi `Destination`/`Transfer`, dan tab
   Connections menaruh tabel segmen dalam satu frame. Window progress dibuka
   650×500 (minimum 520×420); label memakai sentence case, tombol Download
-  rata kanan, dan speed-limit editor memakai dua baris. Batch layout ini
-  memakai patch 0.18.22 atas keputusan maintainer, meskipun kebijakan normal
-  untuk UX adalah MINOR +1.
+  rata kanan, dan speed-limit editor memakai dua baris. Window Download
+  Confirmation memakai section `File` (Name, Size) dan `Save` (URL, Category,
+  Location), dibuka 650×330 (minimum 560×320), dengan `Cancel` di kiri serta
+  `Add to queue`/`Download Now` di kanan. Batch layout ini memakai patch
+  0.18.22 atas keputusan maintainer, meskipun kebijakan normal untuk UX adalah
+  MINOR +1.
   Tombol toolbar `Resume` aktif hanya jika minimal
   satu item terpilih bisa di-resume (Paused/Error/Queued, task tidak aktif) dan
   `Stop` aktif hanya jika minimal satu item sedang `Downloading`; seleksi
@@ -113,10 +116,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   (`General`, `Interface`, `Download`, `Proxy/Socks`, `Passwords`); opsi
   unduhan pindah ke tab `Download`, tab `General` menyimpan opsi perilaku
   aplikasi, dan tab `Interface` menyimpan opsi tampilan.
-  Dialog konfirmasi download memakai ukuran tetap
-  (default 640×250, minimum 520×230), nama file di-elide di tengah dengan
-  nama penuh di tooltip, ukuran file tampil pada baris `Size` sendiri, dan
-  semua field serta tombol memakai tinggi yang sama.
+  Dialog konfirmasi download memakai section `File` dan `Save` dengan judul
+  bold, ukuran default 650×330 (minimum 560×320), nama file di-elide di tengah
+  dengan nama penuh di tooltip, ukuran file tampil pada baris `Size` sendiri,
+  dan semua field serta tombol memakai tinggi yang sama. `Cancel` ada di kiri,
+  `Add to queue`/`Download Now` di kanan.
   Paket `.deb` tidak lagi mendeklarasikan browser sebagai `Recommends`.
   Autostart login menjalankan `swiftdm --autostart` sehingga aplikasi hanya
   muncul di system tray; tanpa tray, main window ditampilkan sebagai fallback.
@@ -272,7 +276,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   menampilkan persentase di dalam progress bar dan `Segments: N`; tombol
   Resume/Cancel rata kanan. Window progress dibuka 650×500 (minimum 520×420),
   dan speed-limit editor memakai dua baris (toggle + preset, lalu nilai
-  kustom). Test headless baru `download_window`.
+  kustom). Test headless baru `download_window`. Window Download Confirmation
+  juga memakai section bold: `File` (Name, Size) dan `Save` (URL, Category,
+  Location), dibuka 650×330 (minimum 560×320). Tombol disusun `Cancel` di
+  kiri, `Add to queue` dan `Download Now` di kanan. Test `confirm_dialog`
+  diperluas untuk section, penempatan field, urutan tombol, dan hint queue.
 
 ### Rencana / gap yang diketahui
 

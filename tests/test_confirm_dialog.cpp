@@ -1,11 +1,12 @@
-// Headless check of the download confirmation dialog: the window keeps a
-// fixed geometry and the file size sits on its own row. The dialog is never
-// shown, so this stays within the CLI/backend-only test policy (AGENTS.md §6).
+// Headless check of the download confirmation dialog: the File/Save sections,
+// the separate file size row, the fixed geometry and the button row. The
+// dialog is never shown, so this stays within the CLI/backend-only test policy
+// (AGENTS.md §6).
 
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
-#include <QFontMetrics>
+#include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -36,6 +37,29 @@ QStringList label_texts(const QWidget* widget) {
     return texts;
 }
 
+QStringList section_titles(const QWidget* root) {
+    QStringList titles;
+    for (const QGroupBox* box : root->findChildren<QGroupBox*>()) titles << box->title();
+    return titles;
+}
+
+const QGroupBox* section_with_title(const QWidget* root, const QString& title) {
+    for (const QGroupBox* box : root->findChildren<QGroupBox*>()) {
+        if (box->title() == title) return box;
+    }
+    return nullptr;
+}
+
+QWidget* named_widget(const QWidget* root, const char* name) {
+    return root->findChild<QWidget*>(QString::fromLatin1(name));
+}
+
+bool is_in_section(const QWidget* root, const QString& title, const char* name) {
+    const QGroupBox* section = section_with_title(root, title);
+    const QWidget* widget = named_widget(root, name);
+    return section && widget && section->isAncestorOf(widget);
+}
+
 const QLabel* label_with_text(const QWidget* root, const QString& text) {
     for (const QLabel* label : root->findChildren<QLabel*>()) {
         if (label->text() == text) return label;
@@ -56,6 +80,9 @@ double center_y(const QWidget* widget, const QWidget* root) {
 void activate_layouts(QWidget* widget) {
     QLayout* layout = widget->layout();
     if (!layout) return;
+    // activate() alone does not assign child geometry while the dialog is
+    // hidden, so give the layout an explicit rectangle first.
+    layout->setGeometry(widget->contentsRect());
     layout->activate();
     for (int i = 0; i < layout->count(); ++i) {
         QLayoutItem* item = layout->itemAt(i);
@@ -90,6 +117,8 @@ int main(int argc, char** argv) {
                                  QStringLiteral("https://example.com/movie.mp4"),
                                  QStringLiteral("/tmp"), true);
 
+    check(dialog.windowTitle() == QStringLiteral("Download Confirmation"),
+          "the window title is Download Confirmation");
     check(dialog.minimumSize() == QSize(ConfirmDownloadDialog::kMinWindowWidth,
                                         ConfirmDownloadDialog::kMinWindowHeight),
           "the dialog declares a fixed minimum size");
@@ -98,6 +127,9 @@ int main(int argc, char** argv) {
           "the dialog opens with the default size");
     check(dialog.layout()->sizeHint().height() <= ConfirmDownloadDialog::kDefaultWindowHeight,
           "the content fits into the default window height");
+    check(section_titles(&dialog) ==
+              QStringList({QStringLiteral("File"), QStringLiteral("Save")}),
+          "the dialog has File and Save sections in order");
 
     // The size has its own row and is no longer inline with the file name.
     // The expected text comes from the shared formatter: the decimal
@@ -105,7 +137,12 @@ int main(int argc, char** argv) {
     const QString size_text =
         QString::fromStdString(swiftdm::format_bytes(1500000, 3));
     const QStringList texts = label_texts(&dialog);
-    check(texts.contains(QStringLiteral("Size :")), "the dialog has a separate size row");
+    check(texts.contains(QStringLiteral("Name:")) &&
+              texts.contains(QStringLiteral("Size:")),
+          "the File section has Name and Size rows");
+    check(!texts.contains(QStringLiteral("File :")) &&
+              !texts.contains(QStringLiteral("Size :")),
+          "the old spaced labels are gone");
     check(texts.contains(size_text), "the size row shows the formatted size");
     bool inline_size = false;
     for (const QString& text : texts) {
@@ -115,6 +152,9 @@ int main(int argc, char** argv) {
         }
     }
     check(!inline_size, "the size is no longer shown inline with the file name");
+    check(is_in_section(&dialog, QStringLiteral("File"), "confirm_file_name") &&
+              is_in_section(&dialog, QStringLiteral("File"), "confirm_file_size"),
+          "the name and size sit in the File section");
 
     ConfirmDownloadDialog unknown(QStringLiteral("movie.mp4"), 0,
                                   QStringLiteral("https://example.com/movie.mp4"),
@@ -170,11 +210,10 @@ int main(int argc, char** argv) {
     check(file_label != nullptr, "the dialog has a file name label");
     if (file_label) {
         activate_layouts(&dialog);
-        const QFontMetrics metrics(file_label->font());
-        check(metrics.horizontalAdvance(file_label->text()) <= file_label->width() + 1,
-              "the shown file name fits into the label width");
-        check(file_label->width() <= dialog.width(),
-              "the file name label stays inside the window");
+        check(file_label->text() == QStringLiteral("movie.mp4"),
+              "a short file name is shown in full");
+        check(file_label->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored,
+              "the file name takes the width the form gives it");
     }
 
     // Every description shares the vertical center of the widget next to it.
@@ -195,11 +234,11 @@ int main(int argc, char** argv) {
         const QWidget* value;
     };
     const Row rows[] = {
-        {"File", label_with_text(&dialog, "File :"), file_label},
-        {"Size", label_with_text(&dialog, "Size :"), size_label},
-        {"URL", label_with_text(&dialog, "URL :"), url_edit},
-        {"Category", label_with_text(&dialog, "Category :"), category_box},
-        {"Location", label_with_text(&dialog, "Location :"), location_edit},
+        {"Name", label_with_text(&dialog, "Name:"), file_label},
+        {"Size", label_with_text(&dialog, "Size:"), size_label},
+        {"URL", label_with_text(&dialog, "URL:"), url_edit},
+        {"Category", label_with_text(&dialog, "Category:"), category_box},
+        {"Location", label_with_text(&dialog, "Location:"), location_edit},
     };
     for (const Row& row : rows) {
         check(row.description != nullptr && row.value != nullptr,
@@ -213,6 +252,30 @@ int main(int argc, char** argv) {
             ++failures;
         }
     }
+
+    check(is_in_section(&dialog, QStringLiteral("Save"), "confirm_url") &&
+              is_in_section(&dialog, QStringLiteral("Save"), "confirm_category") &&
+              is_in_section(&dialog, QStringLiteral("Save"), "confirm_location") &&
+              is_in_section(&dialog, QStringLiteral("Save"), "confirm_browse"),
+          "the URL, category and location sit in the Save section");
+
+    auto* cancel_button =
+        qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_cancel"));
+    auto* queue_button =
+        qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_queue"));
+    auto* download_button_widget =
+        qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_download"));
+    check(cancel_button && cancel_button->text() == QStringLiteral("Cancel"),
+          "Cancel is on the left side of the button row");
+    check(queue_button && queue_button->text() == QStringLiteral("Add to queue"),
+          "Add to queue stays available as a placeholder");
+    check(download_button_widget && download_button_widget->text() == QStringLiteral("Download Now"),
+          "Download Now is on the right side of the button row");
+    check(download_button_widget && download_button_widget->isDefault(),
+          "Download Now is the default button");
+    auto* hint =
+        qobject_cast<QLabel*>(named_widget(&dialog, "confirm_queue_hint"));
+    check(hint && hint->isHidden(), "the queue hint is hidden until Add to queue is used");
 
     // Every input and button shares one height.
     QList<int> control_heights;
