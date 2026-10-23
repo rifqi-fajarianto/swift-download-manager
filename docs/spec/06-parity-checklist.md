@@ -20,12 +20,14 @@ Windows notes:
 - The package ships `ca-bundle.crt` and libcurl is pointed at it with
   `CURLOPT_CAINFO`, because the MSYS2 build defaults to a POSIX CA path that
   does not exist on Windows. `SWIFTDM_CA_BUNDLE` overrides the file;
-  Linux falls back to the system bundle as before.
+  Linux falls back to the system bundle as before. Verified manually on
+  Windows 10: an HTTPS download handed over by the Chromium extension
+  completed with the package build (2026-10-23).
 - The GUI executable uses the console subsystem, so starting it from Explorer
   also opens a console window. Switching to the GUI subsystem needs an
   `AttachConsole`-based CLI wrapper and is tracked as an open item.
-- The download confirmation/progress Windows, tray icon, autostart and
-  pause/resume behaviour still need a manual pass on a Windows 10 machine.
+- The tray icon, autostart and pause/resume behaviour still need a manual pass
+  on a Windows 10 machine.
 
 ## v1 — core engine + GUI
 
