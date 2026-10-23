@@ -19,7 +19,9 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
+#ifndef _WIN32
 #include <QProcess>
+#endif
 #include <QPushButton>
 #include <QSplitter>
 #include <QStatusBar>
@@ -152,19 +154,19 @@ QString find_existing_workspace(const swiftdm::Settings& settings,
                                 const swiftdm::HistoryStore::Record& record) {
     if (record.url.empty()) return {};
     std::error_code ec;
-    const std::filesystem::path root(settings.temp_dir);
+    const std::filesystem::path root = swiftdm::path_from_utf8(settings.temp_dir);
     if (!std::filesystem::is_directory(root, ec)) return {};
     for (std::filesystem::directory_iterator it(root, ec), end; !ec && it != end;
          it.increment(ec)) {
         std::error_code type_ec;
         if (!it->is_directory(type_ec)) continue;
-        const std::string name = it->path().filename().string();
+        const std::string name = swiftdm::path_to_utf8(it->path().filename());
         if (!swiftdm::starts_with(name, "download-")) continue;
         swiftdm::TransferState state;
-        if (swiftdm::load_transfer_state((it->path() / "segments.json").string(), state,
+        if (swiftdm::load_transfer_state(swiftdm::path_to_utf8(it->path() / "segments.json"), state,
                                          nullptr) &&
             state.url == record.url) {
-            return QString::fromStdString(it->path().string());
+            return QString::fromUtf8(swiftdm::path_to_utf8(it->path()));
         }
     }
     return {};
@@ -1149,9 +1151,13 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
         if (!folder_url.endsWith(QLatin1Char('/'))) folder_url += QLatin1Char('/');
         const bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(folder_url));
         qInfo() << "completion dialog: openUrl returned" << opened;
+#ifndef _WIN32
         if (!opened && !QProcess::startDetached(QStringLiteral("xdg-open"), {dir})) {
             show_error_dialog(dir, tr("Could not open the download folder."));
         }
+#else
+        if (!opened) show_error_dialog(dir, tr("Could not open the download folder."));
+#endif
     });
     connect(open_file, &QPushButton::clicked, this, [this, path] {
         const QFileInfo file(path);
@@ -1163,9 +1169,13 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
         qInfo() << "completion dialog: opening file" << target;
         const bool opened = QDesktopServices::openUrl(QUrl::fromLocalFile(target));
         qInfo() << "completion dialog: openUrl returned" << opened;
+#ifndef _WIN32
         if (!opened && !QProcess::startDetached(QStringLiteral("xdg-open"), {target})) {
             show_error_dialog(target, tr("Could not open the downloaded file."));
         }
+#else
+        if (!opened) show_error_dialog(target, tr("Could not open the downloaded file."));
+#endif
     });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());

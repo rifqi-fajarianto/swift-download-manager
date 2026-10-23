@@ -1,9 +1,5 @@
 #include "engine/download_engine.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -14,6 +10,7 @@
 
 #include "core/log.h"
 #include "core/util.h"
+#include "core/file_io.h"
 #include "engine/categories.h"
 #include "engine/hls.h"
 #include "engine/segment_plan.h"
@@ -36,17 +33,18 @@ std::string pick_filename(const ProbeResult& probe, const std::string& url) {
 
 bool move_file(const std::string& from, const std::string& to, std::string* error) {
     std::error_code ec;
-    std::filesystem::rename(from, to, ec);
+    std::filesystem::rename(path_from_utf8(from), path_from_utf8(to), ec);
     if (!ec) return true;
     // Cross-device move fallback.
     std::error_code copy_ec;
-    std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing,
+    std::filesystem::copy_file(path_from_utf8(from), path_from_utf8(to),
+                               std::filesystem::copy_options::overwrite_existing,
                                copy_ec);
     if (copy_ec) {
         if (error) *error = "cannot move to '" + to + "': " + copy_ec.message();
         return false;
     }
-    std::filesystem::remove(from, ec);
+    std::filesystem::remove(path_from_utf8(from), ec);
     return true;
 }
 
@@ -82,14 +80,14 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
 
     uint64_t resume_from = 0;
     std::error_code ec;
-    if (allow_resume && known_size && std::filesystem::exists(ws.part_path, ec)) {
-        const uint64_t have = std::filesystem::file_size(ws.part_path, ec);
+    if (allow_resume && known_size && std::filesystem::exists(path_from_utf8(ws.part_path), ec)) {
+        const uint64_t have = std::filesystem::file_size(path_from_utf8(ws.part_path), ec);
         if (!ec && have < probe.content_length) resume_from = have;
     }
 
-    const int flags = resume_from > 0 ? (O_WRONLY | O_CREAT | O_CLOEXEC)
-                                      : (O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC);
-    const int fd = ::open(ws.part_path.c_str(), flags, 0644);
+    const unsigned flags = FileWrite | FileCreate |
+                           (resume_from > 0 ? 0u : FileTruncate);
+    const int fd = open_file(ws.part_path, flags);
     if (fd < 0) {
         result.status = DownloadResult::Status::Failed;
         result.error = "cannot create '" + ws.part_path + "': " + errno_string(errno);
@@ -108,8 +106,8 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
     const TransferOutcome outcome =
         stream_download(options, fd, progress, &written, &transfer_error, resume_from,
                         bandwidth_limit);
-    ::fsync(fd);
-    ::close(fd);
+    sync_file(fd);
+    close_file(fd);
 
     if (outcome == TransferOutcome::Completed) {
         if (known_size && written != probe.content_length) {
@@ -120,14 +118,14 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
             return result;
         }
         const std::string final_path =
-            unique_path((std::filesystem::path(out_dir) / filename).string());
+            unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
         std::string move_error;
         if (!move_file(ws.part_path, final_path, &move_error)) {
             result.status = DownloadResult::Status::Failed;
             result.error = move_error;
             return result;
         }
-        std::filesystem::remove_all(ws.dir, ec);
+        remove_tree(ws.dir);
         result.status = DownloadResult::Status::Completed;
         result.path = final_path;
         result.size = written > 0 ? written : probe.content_length;
@@ -211,19 +209,19 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     // The progress file holds the index of the next segment to fetch; the part
     // file holds the concatenated segments.
     const std::string progress_path =
-        (std::filesystem::path(ws.dir) / "hls_progress").string();
+        path_to_utf8(path_from_utf8(ws.dir) / "hls_progress");
     std::error_code ec;
     uint64_t next_index = 0;
-    if (allow_resume && std::filesystem::exists(ws.part_path, ec) &&
-        std::filesystem::exists(progress_path, ec)) {
-        std::ifstream in(progress_path);
+    if (allow_resume && std::filesystem::exists(path_from_utf8(ws.part_path), ec) &&
+        std::filesystem::exists(path_from_utf8(progress_path), ec)) {
+        std::ifstream in(path_from_utf8(progress_path));
         uint64_t stored = 0;
         if (in >> stored) next_index = std::min<uint64_t>(stored, playlist.segments.size());
     }
 
-    const int flags = next_index > 0 ? (O_WRONLY | O_APPEND | O_CLOEXEC)
-                                     : (O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC);
-    const int fd = ::open(ws.part_path.c_str(), flags, 0644);
+    const unsigned flags = FileWrite | FileCreate |
+                           (next_index > 0 ? FileAppend : FileTruncate);
+    const int fd = open_file(ws.part_path, flags);
     if (fd < 0) {
         result.status = DownloadResult::Status::Failed;
         result.error = "cannot create '" + ws.part_path + "': " + errno_string(errno);
@@ -234,14 +232,14 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     info.total = 0;  // byte total unknown; percent follows the segment index
     uint64_t bytes_done = 0;
     if (next_index > 0) {
-        const uint64_t have = std::filesystem::file_size(ws.part_path, ec);
+        const uint64_t have = std::filesystem::file_size(path_from_utf8(ws.part_path), ec);
         if (!ec) bytes_done = have;
     }
     info.done = bytes_done;
     info.percent = static_cast<int>(percent_of(next_index, playlist.segments.size()));
 
     const auto save_progress = [&](uint64_t index) {
-        std::ofstream out(progress_path, std::ios::trunc);
+        std::ofstream out(path_from_utf8(progress_path), std::ios::trunc);
         out << index;
     };
 
@@ -288,8 +286,8 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
             break;
         }
     }
-    ::fsync(fd);
-    ::close(fd);
+    sync_file(fd);
+    close_file(fd);
     save_progress(next_index);
     if (failed) {
         result.status = DownloadResult::Status::Failed;
@@ -305,7 +303,7 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     }
 
     const std::string final_path =
-        unique_path((std::filesystem::path(out_dir) / filename).string());
+        unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
     std::string move_error;
     if (!move_file(ws.part_path, final_path, &move_error)) {
         result.status = DownloadResult::Status::Failed;
@@ -313,10 +311,10 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         result.path = ws.part_path;
         return result;
     }
-    std::filesystem::remove_all(ws.dir, ec);
+    remove_tree(ws.dir);
     result.status = DownloadResult::Status::Completed;
     result.path = final_path;
-    result.size = std::filesystem::file_size(final_path, ec);
+    result.size = std::filesystem::file_size(path_from_utf8(final_path), ec);
     return result;
 }
 
@@ -326,28 +324,28 @@ DownloadWorkspace make_workspace(const Settings& settings, const std::string& ur
                                  const std::string& filename) {
     DownloadWorkspace ws;
     const std::filesystem::path dir =
-        std::filesystem::path(settings.temp_dir) /
+        path_from_utf8(settings.temp_dir) /
         ("download-" + hex_hash64(fnv1a_hash(url + "\n" + filename)));
-    ws.dir = dir.string();
+    ws.dir = path_to_utf8(dir);
     // The temporary file is a path component of its own, so it needs the same
     // length limit as the final name (a long name would fail with
     // "File name too long").
     ws.part_path =
-        (dir / limit_filename_length(filename + ".part", kMaxFileNameBytes)).string();
-    ws.state_path = (dir / "segments.json").string();
+        path_to_utf8(dir / path_from_utf8(limit_filename_length(filename + ".part", kMaxFileNameBytes)));
+    ws.state_path = path_to_utf8(dir / "segments.json");
     return ws;
 }
 
 std::string unique_path(const std::string& path) {
     std::error_code ec;
-    const std::filesystem::path original(path);
+    const std::filesystem::path original = path_from_utf8(path);
     // Guard against a caller that passes a name which was not sanitized.
     const std::filesystem::path p =
         original.parent_path() /
-        limit_filename_length(original.filename().string(), kMaxFileNameBytes);
-    if (!std::filesystem::exists(p, ec)) return p.string();
-    const std::string stem = p.stem().string();
-    const std::string ext = p.extension().string();
+        path_from_utf8(limit_filename_length(path_to_utf8(original.filename()), kMaxFileNameBytes));
+    if (!std::filesystem::exists(p, ec)) return path_to_utf8(p);
+    const std::string stem = path_to_utf8(p.stem());
+    const std::string ext = path_to_utf8(p.extension());
     for (int i = 1; i < 10000; ++i) {
         const std::string tag = " (" + std::to_string(i) + ")";
         // The " (N)" variant has to stay within the limit as well, so the
@@ -360,10 +358,10 @@ std::string unique_path(const std::string& path) {
         if (trimmed.size() > budget) {
             trimmed = std::string(utf8_truncate(trimmed, budget));
         }
-        const std::filesystem::path candidate = p.parent_path() / (trimmed + tag + ext);
-        if (!std::filesystem::exists(candidate, ec)) return candidate.string();
+        const std::filesystem::path candidate = p.parent_path() / path_from_utf8(trimmed + tag + ext);
+        if (!std::filesystem::exists(candidate, ec)) return path_to_utf8(candidate);
     }
-    return p.string();
+    return path_to_utf8(p);
 }
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
@@ -424,7 +422,7 @@ DownloadResult DownloadEngine::run(
     std::string out_dir =
         request.output_dir.empty() ? settings_.download_dir : request.output_dir;
     if (settings_.category_folders && request.apply_category_folder) {
-        out_dir = (std::filesystem::path(out_dir) / category_folder_for(filename)).string();
+        out_dir = path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(category_folder_for(filename)));
     }
 
     std::string dir_error;
@@ -465,8 +463,7 @@ DownloadResult DownloadEngine::run(
     // Unknown size: sequential streaming, no resume (spec 03-engine.md).
     // ------------------------------------------------------------------
     if (!known_size) {
-        const int fd = ::open(ws.part_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
-                              0644);
+        const int fd = open_file(ws.part_path, FileWrite | FileCreate | FileTruncate);
         if (fd < 0) {
             result.status = DownloadResult::Status::Failed;
             result.error = "cannot create '" + ws.part_path + "': " + errno_string(errno);
@@ -483,20 +480,19 @@ DownloadResult DownloadEngine::run(
         const TransferOutcome outcome =
             stream_download(options, fd, progress, &written, &transfer_error, 0,
                             bandwidth_limit);
-        ::fsync(fd);
-        ::close(fd);
+        sync_file(fd);
+        close_file(fd);
 
         if (outcome == TransferOutcome::Completed) {
             std::string move_error;
             const std::string final_path =
-                unique_path((std::filesystem::path(out_dir) / filename).string());
+                unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
             if (!move_file(ws.part_path, final_path, &move_error)) {
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;
                 return result;
             }
-            std::error_code ec;
-            std::filesystem::remove_all(ws.dir, ec);
+            remove_tree(ws.dir);
             result.status = DownloadResult::Status::Completed;
             result.path = final_path;
             result.size = written;
@@ -504,7 +500,7 @@ DownloadResult DownloadEngine::run(
         }
 
         std::error_code ec;
-        std::filesystem::remove(ws.part_path, ec);
+        std::filesystem::remove(path_from_utf8(ws.part_path), ec);
         if (outcome == TransferOutcome::Paused) {
             result.status = DownloadResult::Status::Paused;
             return result;
@@ -546,14 +542,14 @@ DownloadResult DownloadEngine::run(
         state.segments = plan_segments(state.file_size, planned);
     }
 
-    const int fd = ::open(ws.part_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+    const int fd = open_file(ws.part_path, FileRead | FileWrite | FileCreate);
     if (fd < 0) {
         result.status = DownloadResult::Status::Failed;
         result.error = "cannot create '" + ws.part_path + "': " + errno_string(errno);
         return result;
     }
-    if (::ftruncate(fd, static_cast<off_t>(state.file_size)) != 0) {
-        ::close(fd);
+    if (resize_file(fd, state.file_size) != 0) {
+        close_file(fd);
         result.status = DownloadResult::Status::Failed;
         result.error = "cannot size '" + ws.part_path + "': " + errno_string(errno);
         return result;
@@ -593,8 +589,8 @@ DownloadResult DownloadEngine::run(
         transfer_error.clear();
         outcome = downloader.run(progress, &transfer_error);
     }
-    ::fsync(fd);
-    ::close(fd);
+    sync_file(fd);
+    close_file(fd);
 
     switch (outcome) {
         case TransferOutcome::Completed: {
@@ -605,7 +601,7 @@ DownloadResult DownloadEngine::run(
                 return result;
             }
             const std::string final_path =
-                unique_path((std::filesystem::path(out_dir) / filename).string());
+                unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
             std::string move_error;
             if (!move_file(ws.part_path, final_path, &move_error)) {
                 save_transfer_state(ws.state_path, state, nullptr);
@@ -614,8 +610,7 @@ DownloadResult DownloadEngine::run(
                 return result;
             }
             remove_transfer_state(ws.state_path);
-            std::error_code ec;
-            std::filesystem::remove_all(ws.dir, ec);
+            remove_tree(ws.dir);
             result.status = DownloadResult::Status::Completed;
             result.path = final_path;
             result.size = state.file_size;

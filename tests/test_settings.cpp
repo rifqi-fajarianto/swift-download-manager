@@ -31,8 +31,9 @@ void test_defaults() {
     CHECK_EQ(s.tray_icon_style, std::string("colorful"));
     CHECK(!s.proxy.enabled());
     CHECK(s.default_agent.find("Mozilla/5.0") == 0);
-    CHECK(s.download_dir.find("/Downloads") != std::string::npos);
-    CHECK(s.temp_dir.find("swiftdm") != std::string::npos);
+    CHECK(s.download_dir.find("Downloads") != std::string::npos);
+    CHECK(to_lower(s.temp_dir).find("swiftdm") != std::string::npos);
+    CHECK(s.config_path.find("swiftdm.ini") != std::string::npos);
 }
 
 void test_roundtrip(const std::string& dir) {
@@ -148,6 +149,12 @@ void test_parsing_quirks(const std::string& dir) {
 }
 
 void test_autostart_entry(const std::string& dir) {
+#ifdef _WIN32
+    (void)dir;
+    // The production setting changes the current-user Run key on Windows.
+    // Avoid mutating the developer/CI user's actual login configuration here.
+    CHECK(true);
+#else
     std::string error;
     CHECK(apply_autostart(true, &error));
     CHECK(error.empty());
@@ -165,6 +172,7 @@ void test_autostart_entry(const std::string& dir) {
     CHECK(error.empty());
     std::ifstream removed(path);
     CHECK(!removed.good());
+#endif
 }
 
 void test_bandwidth_toggle(const std::string& dir) {
@@ -363,9 +371,15 @@ void test_confirmation_option(const std::string& dir) {
 int main() {
     const std::string dir = testutil::make_temp_dir("settings");
     // Isolate HOME/XDG so defaults and tilde expansion are deterministic.
+#ifndef _WIN32
     setenv("HOME", (dir + "/home").c_str(), 1);
     setenv("XDG_CONFIG_HOME", (dir + "/config").c_str(), 1);
     setenv("XDG_DATA_HOME", (dir + "/data").c_str(), 1);
+#else
+    _wputenv_s(L"APPDATA", L"");
+    _wputenv_s(L"LOCALAPPDATA", L"");
+    _wputenv_s(L"USERPROFILE", L"");
+#endif
 
     test_defaults();
     test_roundtrip(dir);

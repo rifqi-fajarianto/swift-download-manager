@@ -25,10 +25,25 @@
 //   GET/HEAD /hls/map.m3u8          playlist with EXT-X-MAP init segment
 // Content bytes are shared with the tests via content_byte().
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+// Winsock calls take SOCKET, which is wider than int on 64-bit Windows.
+using socklen_t = int;
+using socket_t = SOCKET;
+inline constexpr socket_t kInvalidSocket = INVALID_SOCKET;
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+using socket_t = int;
+inline constexpr socket_t kInvalidSocket = -1;
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -37,8 +52,28 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <climits>
+#include <type_traits>
 
 namespace testutil {
+
+inline int close_socket(socket_t socket) {
+#ifdef _WIN32
+    return ::closesocket(socket);
+#else
+    return ::close(socket);
+#endif
+}
+inline bool socket_valid(socket_t socket) { return socket != kInvalidSocket; }
+
+// Portable millisecond sleep for the throttled test routes.
+inline void sleep_ms(int ms) {
+#ifdef _WIN32
+    ::Sleep(static_cast<DWORD>(ms));
+#else
+    ::usleep(static_cast<useconds_t>(ms) * 1000);
+#endif
+}
 
 inline std::atomic<int> g_cookie_requests{0};
 inline std::atomic<int> g_non_matching_cookie_requests{0};
@@ -71,29 +106,43 @@ class TestHttpServer {
     TestHttpServer& operator=(const TestHttpServer&) = delete;
 
     bool start() {
+#ifdef _WIN32
+        static const bool winsock_ready = [] {
+            WSADATA data{};
+            return ::WSAStartup(MAKEWORD(2, 2), &data) == 0;
+        }();
+        if (!winsock_ready) return false;
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#else
         listen_fd_ = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        if (listen_fd_ < 0) return false;
+#endif
+        if (!socket_valid(listen_fd_)) return false;
         int yes = 1;
+#ifdef _WIN32
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<const char*>(&yes), sizeof(yes));
+#else
         ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+#endif
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
         addr.sin_port = 0;
         if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+            close_socket(listen_fd_);
+            listen_fd_ = kInvalidSocket;
             return false;
         }
         socklen_t len = sizeof(addr);
         if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+            close_socket(listen_fd_);
+            listen_fd_ = kInvalidSocket;
             return false;
         }
         port_ = ::ntohs(addr.sin_port);
         if (::listen(listen_fd_, 64) != 0) {
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+            close_socket(listen_fd_);
+            listen_fd_ = kInvalidSocket;
             return false;
         }
         running_.store(true);
@@ -103,10 +152,14 @@ class TestHttpServer {
 
     void stop() {
         if (!running_.exchange(false)) return;
-        if (listen_fd_ >= 0) {
+        if (socket_valid(listen_fd_)) {
+#ifdef _WIN32
+            ::shutdown(listen_fd_, SD_BOTH);
+#else
             ::shutdown(listen_fd_, SHUT_RDWR);
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+#endif
+            close_socket(listen_fd_);
+            listen_fd_ = kInvalidSocket;
         }
         if (thread_.joinable()) thread_.join();
     }
@@ -117,7 +170,7 @@ class TestHttpServer {
     uint16_t port() const { return port_; }
 
   private:
-    int listen_fd_ = -1;
+    socket_t listen_fd_ = kInvalidSocket;
     uint16_t port_ = 0;
     std::atomic<bool> running_{false};
     std::thread thread_;
@@ -134,16 +187,22 @@ class TestHttpServer {
         while (running_.load()) {
             sockaddr_in peer{};
             socklen_t len = sizeof(peer);
-            const int fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &len);
-            if (fd < 0) break;
+            const auto fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &len);
+            if (!socket_valid(fd)) break;
             std::thread([this, fd] { handle_conn(fd, port_); }).detach();
         }
     }
 
-    static bool send_all(int fd, const void* data, size_t len) {
+    static bool send_all(
+        socket_t fd,
+        const void* data, size_t len) {
         const char* p = static_cast<const char*>(data);
         while (len > 0) {
+#ifdef _WIN32
+            const int n = ::send(fd, p, static_cast<int>(std::min<size_t>(len, INT_MAX)), 0);
+#else
             const ssize_t n = ::send(fd, p, len, MSG_NOSIGNAL);
+#endif
             if (n <= 0) return false;
             p += n;
             len -= static_cast<size_t>(n);
@@ -151,7 +210,9 @@ class TestHttpServer {
         return true;
     }
 
-    static bool send_str(int fd, const std::string& text) {
+    static bool send_str(
+        socket_t fd,
+        const std::string& text) {
         return send_all(fd, text.data(), text.size());
     }
 
@@ -164,13 +225,19 @@ class TestHttpServer {
                "Connection: close\r\n";
     }
 
-    static void handle_conn(int fd, uint16_t port) {
+    static void handle_conn(
+        socket_t fd,
+        uint16_t port) {
         std::string request;
         char buf[8192];
         while (request.find("\r\n\r\n") == std::string::npos && request.size() < 65536) {
+#ifdef _WIN32
+            const int n = ::recv(fd, buf, sizeof(buf), 0);
+#else
             const ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+#endif
             if (n <= 0) {
-                ::close(fd);
+                close_socket(fd);
                 return;
             }
             request.append(buf, static_cast<size_t>(n));
@@ -181,7 +248,7 @@ class TestHttpServer {
         const size_t sp1 = first.find(' ');
         const size_t sp2 = first.rfind(' ');
         if (sp1 == std::string::npos || sp2 == std::string::npos || sp2 <= sp1) {
-            ::close(fd);
+            close_socket(fd);
             return;
         }
         const std::string method = first.substr(0, sp1);
@@ -304,7 +371,7 @@ class TestHttpServer {
                              "\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n" +
                              body);
         }
-        ::close(fd);
+        close_socket(fd);
     }
 
     static std::string lower_copy(const std::string& s) {
@@ -346,7 +413,9 @@ class TestHttpServer {
     // the confirmation token. With confirm=t the route serves the real file.
     // /drive-loop/ keeps answering with the page, so the "cannot be resolved"
     // path is testable as well.
-    static void serve_drive_page(int fd, const std::string& method, uint16_t port,
+    static void serve_drive_page(
+        socket_t fd,
+        const std::string& method, uint16_t port,
                                  const std::string& path, const std::string& query,
                                  const std::string& range) {
         const bool loop = path.rfind("/drive-loop/", 0) == 0;
@@ -375,7 +444,7 @@ class TestHttpServer {
     }
 
     // Where a private Drive file redirects: Google's sign-in page.
-    static void serve_signin_page(int fd) {
+    static void serve_signin_page(socket_t fd) {
         const std::string body =
             "<!DOCTYPE html><html><head><title>Google Drive: Sign-in</title></head><body>"
             "<form action=\"https://accounts.google.com/v3/signin/identifier\" method=\"post\">"
@@ -389,7 +458,7 @@ class TestHttpServer {
 
     // An ordinary HTML page from a host that is not a known download
     // interstitial; the page is still downloadable as a file.
-    static void serve_plain_page(int fd) {
+    static void serve_plain_page(socket_t fd) {
         const std::string body =
             "<html><head><title>Plain page</title></head><body>hello</body></html>";
         send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
@@ -397,7 +466,7 @@ class TestHttpServer {
                          std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
     }
 
-    static void serve_file(int fd, const std::string& method, const std::string& size_text,
+    static void serve_file(socket_t fd, const std::string& method, const std::string& size_text,
                            const std::string& range_header, bool slow) {
         const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
         uint64_t start = 0;
@@ -409,7 +478,7 @@ class TestHttpServer {
         send_file_response(fd, method, total, start, end, partial, slow);
     }
 
-    static void send_file_response(int fd, const std::string& method, uint64_t total,
+    static void send_file_response(socket_t fd, const std::string& method, uint64_t total,
                                    uint64_t start, uint64_t end, bool partial, bool slow) {
         std::string head;
         if (partial) {
@@ -435,13 +504,13 @@ class TestHttpServer {
             }
             if (!send_all(fd, buf.data(), static_cast<size_t>(chunk))) return;
             offset += chunk;
-            if (slow) ::usleep(60000);  // ~1 MB/s per connection
+            if (slow) sleep_ms(60);  // ~1 MB/s per connection
         }
     }
 
     // One open ranged connection at a time, like a host with a per-IP limit:
     // the probe succeeds, parallel ranges are refused with a JSON 403.
-    static void serve_limited_connections(int fd, const std::string& method,
+    static void serve_limited_connections(socket_t fd, const std::string& method,
                                           const std::string& range_header,
                                           const std::string& size_text) {
         const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
@@ -464,12 +533,12 @@ class TestHttpServer {
         }
         if (::getenv("HTTP_TEST_LOG")) std::fprintf(stderr, "[srv] accept range=%s\n", range_header.c_str());
         // Hold the connection so the parallel requests overlap deterministically.
-        ::usleep(250000);
+        sleep_ms(250);
         send_file_response(fd, method, total, start, end, true, false);
         g_limited_active.fetch_sub(1);
     }
 
-    static void send_json_error(int fd, const char* status, const std::string& body) {
+    static void send_json_error(socket_t fd, const char* status, const std::string& body) {
         send_str(fd, std::string("HTTP/1.1 ") + status + "\r\nContent-Length: " +
                          std::to_string(body.size()) +
                          "\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n" +
@@ -487,7 +556,7 @@ class TestHttpServer {
                "reached the maximum number of open download connections for free accounts\"}";
     }
 
-    static void serve_chunked(int fd, const std::string& method,
+    static void serve_chunked(socket_t fd, const std::string& method,
                               const std::string& size_text) {
         const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
         std::string head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n" +
@@ -524,14 +593,14 @@ class TestHttpServer {
         return text;
     }
 
-    static void send_playlist(int fd, const std::string& method, const std::string& body) {
+    static void send_playlist(socket_t fd, const std::string& method, const std::string& body) {
         send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apple.mpegurl"
                      "\r\nContent-Length: " +
                          std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n");
         if (method != "HEAD") send_str(fd, body);
     }
 
-    static void serve_hls(int fd, const std::string& method, const std::string& path) {
+    static void serve_hls(socket_t fd, const std::string& method, const std::string& path) {
         if (path == "/hls/master.m3u8") {
             send_playlist(fd, method,
                           "#EXTM3U\n"
@@ -579,7 +648,7 @@ class TestHttpServer {
         send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     }
 
-    static void serve_hls_segment(int fd, const std::string& method, int variant, int segment) {
+    static void serve_hls_segment(socket_t fd, const std::string& method, int variant, int segment) {
         send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: video/mp2t\r\nAccept-Ranges: bytes"
                      "\r\nContent-Length: " +
                          std::to_string(kHlsSegmentSize) + "\r\nConnection: close\r\n\r\n");

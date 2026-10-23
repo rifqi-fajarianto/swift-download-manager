@@ -2,7 +2,30 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.19.
+Status as of 0.19.0 (Windows port is experimental and not yet release-validated).
+
+## Platform support
+
+| Platform | Status | Notes |
+|---|---|---|
+| Debian 13/Linux | Supported | Reference platform; Linux CI and packaging remain unchanged |
+| Windows 10 1809+ | Experimental port | MSYS2 UCRT64/Qt 6.5–6.12; builds, the full `ctest` suite and the ZIP package are verified, but GUI behaviour on Windows 10 has not been checked manually |
+| Windows 10 earlier than 1809 | Not targeted | Qt 6 minimum supported Windows version applies |
+| macOS | Not targeted | No macOS port or CI |
+
+Windows notes:
+
+- Paths longer than `MAX_PATH` work through the extended-length `\\?\` prefix;
+  no registry `LongPathsEnabled` setting is required.
+- The package ships `ca-bundle.crt` and libcurl is pointed at it with
+  `CURLOPT_CAINFO`, because the MSYS2 build defaults to a POSIX CA path that
+  does not exist on Windows. `SWIFTDM_CA_BUNDLE` overrides the file;
+  Linux falls back to the system bundle as before.
+- The GUI executable uses the console subsystem, so starting it from Explorer
+  also opens a console window. Switching to the GUI subsystem needs an
+  `AttachConsole`-based CLI wrapper and is tracked as an open item.
+- The download confirmation/progress Windows, tray icon, autostart and
+  pause/resume behaviour still need a manual pass on a Windows 10 machine.
 
 ## v1 — core engine + GUI
 

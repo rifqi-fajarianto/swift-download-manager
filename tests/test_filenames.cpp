@@ -1,13 +1,10 @@
-#include <fcntl.h>
-#include <unistd.h>
-
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <system_error>
 
 #include "core/util.h"
+#include "core/file_io.h"
 #include "engine/download_engine.h"
 #include "store/settings.h"
 #include "test_util.h"
@@ -128,16 +125,16 @@ void test_workspace_with_long_name(const std::string& dir) {
 
     const DownloadWorkspace ws =
         make_workspace(settings, "https://example.com/api/videos/long", long_token(700));
-    const std::string part_name = std::filesystem::path(ws.part_path).filename().string();
+    const std::string part_name = path_to_utf8(path_from_utf8(ws.part_path).filename());
     CHECK(part_name.size() <= kMaxFileNameBytes);
 
     std::error_code ec;
-    std::filesystem::create_directories(ws.dir, ec);
+    std::filesystem::create_directories(path_from_utf8(ws.dir), ec);
     // The temporary file has to be creatable. It used to fail here with
     // "File name too long".
-    const int fd = ::open(ws.part_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    const int fd = open_file(ws.part_path, FileWrite | FileCreate | FileTruncate);
     CHECK(fd >= 0);
-    if (fd >= 0) ::close(fd);
+    if (fd >= 0) close_file(fd);
 
     // A short name keeps the plain "<name>.part" file.
     const DownloadWorkspace short_ws =
@@ -147,22 +144,23 @@ void test_workspace_with_long_name(const std::string& dir) {
 
 void test_unique_path_stays_in_limit(const std::string& dir) {
     std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
+    std::filesystem::create_directories(path_from_utf8(dir), ec);
 
     const std::string name = limit_filename_length(long_token(250, 'b') + ".mp4");
     CHECK(name.size() <= kMaxFileNameBytes);
-    const std::filesystem::path target = std::filesystem::path(dir) / name;
-    {
-        std::ofstream out(target, std::ios::binary | std::ios::trunc);
-        out << "x";
-    }
+    const std::string target_utf8 = dir + "/" + name;
+    // The full path is longer than MAX_PATH, so the file is created through the
+    // platform layer that applies the extended-length prefix.
+    const int fd = open_file(target_utf8, FileWrite | FileCreate | FileTruncate);
+    CHECK(fd >= 0);
+    if (fd >= 0) close_file(fd);
 
     // The second file of the same name gets the " (1)" suffix, and it stays
     // within the limit of a path component.
-    const std::string unique = unique_path(target.string());
-    const std::string unique_name = std::filesystem::path(unique).filename().string();
+    const std::string unique = unique_path(target_utf8);
+    const std::string unique_name = path_to_utf8(path_from_utf8(unique).filename());
     CHECK(unique_name.size() <= kMaxFileNameBytes);
-    CHECK(unique != target.string());
+    CHECK(unique != target_utf8);
     CHECK(unique_name.find(" (1).mp4") != std::string::npos);
 }
 

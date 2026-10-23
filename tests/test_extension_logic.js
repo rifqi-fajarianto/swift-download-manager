@@ -588,6 +588,9 @@ async function testPairTokenIsSanitized() {
   await settle(() => env.calls.sockets.length > 0 && env.calls.sockets[0].sent.length > 0);
   const sent = env.calls.sockets[0].sent[0];
   check(sent.data.group === "pairtokenetc", "group tokens keep only safe characters");
+  // The mock answers on a timer; waiting for the socket alone races the reply on
+  // platforms with coarse timer granularity.
+  await settle(() => response !== null);
   check(response?.ok === true, "sanitized handoff still succeeds");
 }
 

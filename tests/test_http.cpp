@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -22,6 +23,13 @@ using namespace swiftdm;
 namespace {
 
 constexpr uint64_t k5MB = 5u << 20;
+
+// The engine reports the platform separator; the expectations in this file are
+// written with '/'.
+std::string slashed(std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
 
 Settings test_settings(const std::string& dir) {
     Settings s = default_settings();
@@ -611,8 +619,8 @@ void test_exact_folder_override(const std::string& dir, testutil::TestHttpServer
     exact.apply_category_folder = false;
     const auto exact_result = engine.run(exact);
     CHECK(exact_result.status == DownloadResult::Status::Completed);
-    CHECK(exact_result.path.find("/exact/sample-65536.bin") != std::string::npos);
-    CHECK(exact_result.path.find("/Application/") == std::string::npos);
+    CHECK(slashed(exact_result.path).find("/exact/sample-65536.bin") != std::string::npos);
+    CHECK(slashed(exact_result.path).find("/Application/") == std::string::npos);
     CHECK(file_matches(exact_result.path, 65536));
 
     // Legacy callers (CLI, old rows) keep the appended category folder.
@@ -621,7 +629,7 @@ void test_exact_folder_override(const std::string& dir, testutil::TestHttpServer
     legacy.output_dir = dir + "/legacy";
     const auto legacy_result = engine.run(legacy);
     CHECK(legacy_result.status == DownloadResult::Status::Completed);
-    CHECK(legacy_result.path.find("/legacy/Application/sample-65536.bin") !=
+    CHECK(slashed(legacy_result.path).find("/legacy/Application/sample-65536.bin") !=
           std::string::npos);
 }
 
@@ -647,12 +655,12 @@ void test_unique_path(const std::string& dir) {
         std::ofstream out(base);
         out << "x";
     }
-    CHECK_EQ(unique_path(base), dir + "/unique (1).bin");
+    CHECK_EQ(slashed(unique_path(base)), slashed(dir + "/unique (1).bin"));
     {
         std::ofstream out(dir + "/unique (1).bin");
         out << "x";
     }
-    CHECK_EQ(unique_path(base), dir + "/unique (2).bin");
+    CHECK_EQ(slashed(unique_path(base)), slashed(dir + "/unique (2).bin"));
 }
 
 }  // namespace

@@ -1,7 +1,5 @@
 #include "store/settings.h"
 
-#include <unistd.h>
-
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -10,6 +8,11 @@
 #include <string>
 
 #include "core/util.h"
+#include "core/win_headers.h"
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace swiftdm {
 
@@ -145,11 +148,29 @@ void apply_section(Settings& s, const std::string& section,
 
 }  // namespace
 
-std::string default_config_path() { return xdg_config_home() + "/swiftdm/swiftdm.ini"; }
+std::string default_config_path() {
+#ifdef _WIN32
+    return xdg_config_home() + "/SwiftDM/swiftdm.ini";
+#else
+    return xdg_config_home() + "/swiftdm/swiftdm.ini";
+#endif
+}
 
-std::string default_temp_dir() { return xdg_data_home() + "/swiftdm/tmp"; }
+std::string default_temp_dir() {
+#ifdef _WIN32
+    return xdg_data_home() + "/SwiftDM/tmp";
+#else
+    return xdg_data_home() + "/swiftdm/tmp";
+#endif
+}
 
-std::string default_database_path() { return xdg_data_home() + "/swiftdm/swiftdm.db"; }
+std::string default_database_path() {
+#ifdef _WIN32
+    return xdg_data_home() + "/SwiftDM/swiftdm.db";
+#else
+    return xdg_data_home() + "/swiftdm/swiftdm.db";
+#endif
+}
 
 bool is_valid_theme(const std::string& value) {
     const std::string v = to_lower(trim(value));
@@ -179,7 +200,7 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
     out = default_settings();
     out.config_path = path;
 
-    std::ifstream in(path);
+    std::ifstream in(path_from_utf8(path));
     if (!in) {
         // Missing configuration is normal: defaults apply.
         return true;
@@ -229,14 +250,14 @@ bool save_settings(const Settings& settings, std::string* error) {
     std::error_code ec;
     if (!path.empty()) {
         std::filesystem::create_directories(
-            std::filesystem::path(path).parent_path(), ec);
+            path_from_utf8(path).parent_path(), ec);
         if (ec) {
             if (error) *error = "cannot create config directory: " + ec.message();
             return false;
         }
     }
 
-    std::ofstream out(path, std::ios::trunc);
+    std::ofstream out(path_from_utf8(path), std::ios::trunc);
     if (!out) {
         if (error) *error = "cannot open '" + path + "' for writing";
         return false;
@@ -285,17 +306,59 @@ bool save_settings(const Settings& settings, std::string* error) {
 }
 
 bool apply_autostart(bool enabled, std::string* error) {
+#ifdef _WIN32
+    HKEY key = nullptr;
+    const LSTATUS open_status = RegCreateKeyExW(
+        HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr);
+    if (open_status != ERROR_SUCCESS) {
+        if (error) *error = "cannot open the current-user startup registry key";
+        return false;
+    }
+    if (!enabled) {
+        const LSTATUS status = RegDeleteValueW(key, L"SwiftDM");
+        RegCloseKey(key);
+        if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND) {
+            if (error) *error = "cannot remove the SwiftDM startup entry";
+            return false;
+        }
+        if (error) error->clear();
+        return true;
+    }
+
+    std::wstring exe(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(nullptr, exe.data(),
+                                             static_cast<DWORD>(exe.size()));
+    if (length == 0 || length >= exe.size()) {
+        RegCloseKey(key);
+        if (error) *error = "cannot locate the SwiftDM executable";
+        return false;
+    }
+    exe.resize(length);
+    const std::wstring command = L"\"" + exe + L"\" --autostart";
+    const LSTATUS status = RegSetValueExW(
+        key, L"SwiftDM", 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(command.c_str()),
+        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+    RegCloseKey(key);
+    if (status != ERROR_SUCCESS) {
+        if (error) *error = "cannot write the SwiftDM startup registry entry";
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+#else
     const std::string dir = xdg_config_home() + "/autostart";
     const std::string path = dir + "/swiftdm.desktop";
 
     std::error_code ec;
     if (!enabled) {
-        std::filesystem::remove(path, ec);
+        std::filesystem::remove(path_from_utf8(path), ec);
         if (error) error->clear();
         return true;
     }
 
-    std::filesystem::create_directories(dir, ec);
+    std::filesystem::create_directories(path_from_utf8(dir), ec);
     if (ec) {
         if (error) *error = "cannot create autostart directory: " + ec.message();
         return false;
@@ -309,7 +372,7 @@ bool apply_autostart(bool enabled, std::string* error) {
         exe = buffer;
     }
 
-    std::ofstream out(path, std::ios::trunc);
+    std::ofstream out(path_from_utf8(path), std::ios::trunc);
     if (!out) {
         if (error) *error = "cannot write '" + path + "'";
         return false;
@@ -329,6 +392,7 @@ bool apply_autostart(bool enabled, std::string* error) {
     }
     if (error) error->clear();
     return true;
+#endif
 }
 
 }  // namespace swiftdm

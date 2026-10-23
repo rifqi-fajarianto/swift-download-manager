@@ -29,7 +29,8 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   (Windows). Perilaku asal ditulis lebih dulu sebagai spesifikasi di
   `docs/spec/`, lalu diimplementasikan dari spec tersebut.
 - **Stack**: C++20, CMake >= 3.28, Ninja, Qt6 Widgets/Network, libcurl,
-  SQLite3. Tidak memakai C++ modules (`CMAKE_CXX_SCAN_FOR_MODULES OFF`).
+  SQLite3. Port Windows eksperimental memakai MSYS2 UCRT64/MinGW-w64 dan Qt
+  6.5–6.12. Tidak memakai C++ modules (`CMAKE_CXX_SCAN_FOR_MODULES OFF`).
 - **Platform acuan**: Debian 13 (trixie); build Linux lain dapat bekerja selama
   dependency tersedia.
 - **Bahasa kode/komentar**: Inggris; dokumentasi dan interaksi dengan user
@@ -46,14 +47,28 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.22**. Status ini cepat
+> Snapshot terakhir: **2026-10-23**, versi kerja **0.19.0**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
-- **Branch kerja saat snapshot**: `engine`.
-- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.22. Window Download Properties memakai empat section
+- **Commit baseline di `main`**: `d76d45a` (baseline sebelum port Windows).
+- **Branch kerja saat snapshot**: `windows`.
+- **Rilis stabil terakhir sebelum port**: 0.18.8.
+- **Versi kerja**: 0.19.0. Port Windows 10 eksperimental dikerjakan pada branch
+  `windows` dan sudah berhasil dibangun serta lulus seluruh `ctest` (20 test,
+  termasuk server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64
+  (GCC 16, Qt 6.9, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform,
+  dukungan path panjang `\\?\`, argumen command line UTF-8, jalur data
+  `%APPDATA%`/`%LOCALAPPDATA%`, autostart registry, paket ZIP mandiri
+  (windeployqt + `tools/deploy_msys_runtime.sh`), dan CA bundle
+  `ca-bundle.crt` (libcurl MSYS2 default-nya memakai path POSIX yang tidak ada
+  di Windows, sehingga HTTPS gagal error 77; kini `CURLOPT_CAINFO` menunjuk ke
+  bundle di samping exe, dengan override env `SWIFTDM_CA_BUNDLE`) sudah ada.
+  Yang masih terbuka:
+  verifikasi GUI manual di Windows 10 (tray, dialog, pause/resume, autostart)
+  dan penggantian subsistem console menjadi GUI dengan wrapper `AttachConsole`.
+  Platform acuan dan rilis stabil tetap Debian 13/Linux. Window Download
+  Properties memakai empat section
   berlabel (`General`, `Location`, `Source`, `Time`) dengan judul bold dan
   label sentence case; field dan perilakunya tidak berubah. Window dibuka
   650×690, nama file panjang di-elide di tengah dengan tooltip, dan baris
@@ -295,13 +310,18 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - In-page media panel dan site extractor (C4–C6, C9 di
   `docs/spec/07-chromium-extension-reference.md`).
 - Verifikasi GUI selalu manual oleh user; tidak ada automation GUI.
+- Windows: verifikasi GUI manual di Windows 10 (tray, dialog konfirmasi,
+  pause/resume, autostart) belum dilakukan. Executable memakai subsistem
+  console sehingga GUI dari Explorer juga membuka jendela console; rencana
+  perbaikannya adalah subsistem GUI + wrapper `AttachConsole` untuk CLI.
+  Installer (MSI/NSIS) dan code signing belum ada; paket masih ZIP.
 
 ## 3. Peta codebase
 
 | Path | Tanggung jawab |
 |---|---|
 | `src/app/main.cpp` | Entry point: GUI default, `--gui`, `--version`, `--help`, dan CLI `get`. |
-| `src/core/` | Logging (`log.*`) dan utilitas umum: format byte/speed/durasi, path XDG, sanitasi nama file, pencarian file hasil unduhan. |
+| `src/core/` | Logging (`log.*`), file I/O lintas platform (`file_io.*`), include Windows terpusat (`win_headers.h`), dan utilitas umum: format byte/speed/durasi, path platform, sanitasi nama file, pencarian file hasil unduhan, penghapusan direktori aman path panjang. |
 | `src/engine/` | `DownloadEngine::run`, request/result/progress, workspace, segment plan + state `segments.json`, kategori, HLS. |
 | `src/net/` | Lapisan libcurl: `probe_url`, `fetch_text`, `stream_download`, `SegmentDownloader`, resolver interstitial Google Drive. |
 | `src/store/` | `Settings` (INI) dan `HistoryStore` (SQLite: `downloads`, `headers`, `auths`). |
@@ -330,6 +350,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
    `BrowserIntegration` → `MainWindow` → konfirmasi yang sama seperti manual.
 
 ## 4. Build, run, dan test
+
+Windows 10 (1809+) adalah target port eksperimental, belum menjadi platform
+rilis yang didukung. Gunakan MSYS2 UCRT64 dengan GCC, CMake, Ninja, Qt 6.5–6.12,
+libcurl, dan SQLite; Qt 6.12 adalah lini Qt terakhir yang mendukung Windows 10.
+CI membangun executable Windows, menjalankan seluruh `ctest`, dan membuat paket
+ZIP; verifikasi GUI manual di Windows 10 masih menjadi tugas user.
 
 Dependency Debian 13:
 
@@ -360,11 +386,14 @@ Menjalankan aplikasi:
 ```
 
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
-`media`, `filenames`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
-`confirm_dialog` (offscreen), `settings_dialog` (offscreen),
-`properties_dialog` (offscreen), `download_window` (offscreen), `action_state`,
-`theme` (offscreen), dan `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai
-server lokal di `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
+`media`, `filenames`, `file_io`, `ca_bundle`, `http`, `extension_logic`
+(butuh Node), `icons` (offscreen), `confirm_dialog` (offscreen),
+`settings_dialog` (offscreen), `properties_dialog` (offscreen),
+`download_window` (offscreen), `action_state`, `theme` (offscreen), dan
+`browser_protocol` (tanpa GUI). Seluruh
+test berjalan di Linux dan Windows; test HTTP/FTP memakai server lokal di
+`tests/http_test_server.h` dan `tests/ftp_test_server.h` yang memakai Winsock di
+Windows. Di Windows, jalankan dengan `$env:QT_QPA_PLATFORM = "offscreen"`.
 
 Regenerasi ikon setelah mengubah SVG:
 
@@ -467,7 +496,11 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
   dihapus.
 - Autostart: `~/.config/autostart/swiftdm.desktop`.
 - Browser integration: WebSocket loopback `127.0.0.1:10007`, subprotokol
-  `swiftdm.v1`; ekstensi hasil install ada di `/usr/share/swiftdm/chromium`.
+  `swiftdm.v1`; ekstensi hasil install ada di `/usr/share/swiftdm/chromium`
+  (Linux) atau folder `chromium-extension/` di samping `swiftdm.exe` (Windows).
+- Windows: config di `%APPDATA%\SwiftDM\swiftdm.ini`, database dan temp di
+  `%LOCALAPPDATA%\SwiftDM\`, autostart lewat nilai `SwiftDM` di
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 - Log per-download direncanakan di
   `$XDG_DATA_HOME/swiftdm/logs/<id>-<filename>.log`; ini belum menjadi fitur
   yang selesai (lihat parity checklist).

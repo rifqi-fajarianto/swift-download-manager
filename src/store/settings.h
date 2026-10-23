@@ -67,9 +67,9 @@ bool is_valid_theme(const std::string& value);            // system | light | da
 bool is_valid_toolbar_size(const std::string& value);     // normal | small
 bool is_valid_tray_icon_style(const std::string& value);  // colorful | simple
 
-std::string default_config_path();  // $XDG_CONFIG_HOME/swiftdm/swiftdm.ini
-std::string default_temp_dir();     // $XDG_DATA_HOME/swiftdm/tmp
-std::string default_database_path();  // $XDG_DATA_HOME/swiftdm/swiftdm.db
+std::string default_config_path();  // platform config root/SwiftDM/swiftdm.ini
+std::string default_temp_dir();     // platform local data root/SwiftDM/tmp
+std::string default_database_path();  // platform local data root/SwiftDM/swiftdm.db
 
 Settings default_settings();
 
@@ -80,8 +80,7 @@ bool load_settings(const std::string& path, Settings& out, std::string* error = 
 // Saves settings; creates parent directories as needed.
 bool save_settings(const Settings& settings, std::string* error = nullptr);
 
-// Writes/removes the XDG autostart entry (~/.config/autostart/swiftdm.desktop)
-// according to the AppAutoStart setting.
+// Writes/removes the platform login-start entry according to AppAutoStart.
 bool apply_autostart(bool enabled, std::string* error = nullptr);
 
 }  // namespace swiftdm

@@ -15,6 +15,78 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-build:
+    name: Windows build (MinGW UCRT64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-ca-certificates
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Check CLI version
+        shell: msys2 {0}
+        run: ./build/windows-deploy/swiftdm.exe --version
+
+      # Node is preinstalled on the runner; assert the extension tests are
+      # registered so a missing runtime cannot produce a false green run.
+      - name: Verify that the extension tests are registered
+        shell: msys2 {0}
+        run: |
+          tests="$(ctest --test-dir build -N)"
+          for name in extension_logic extension_popup; do
+            if ! echo "$tests" | grep -q " ${name}$"; then
+              echo "::error::${name} is not registered; nodejs is probably missing"
+              exit 1
+            fi
+          done
+
+      - name: Run the test suite
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build Windows ZIP package
+        shell: msys2 {0}
+        run: cd build && cpack
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftdm-windows-zip
+          path: build/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the test log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-ctest-log
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
   build-and-test:
     name: Build and test (Debian 13)
     runs-on: ubuntu-24.04

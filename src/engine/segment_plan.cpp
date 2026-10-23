@@ -10,6 +10,7 @@
 #include <system_error>
 
 #include "core/util.h"
+#include "core/win_headers.h"
 
 namespace swiftdm {
 
@@ -369,7 +370,7 @@ class StateJsonParser {
 };
 
 bool read_file(const std::string& path, std::string& out, std::string* error) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(path_from_utf8(path), std::ios::binary);
     if (!in) {
         if (error) *error = "cannot open '" + path + "'";
         return false;
@@ -411,7 +412,13 @@ bool save_transfer_state(const std::string& path, const TransferState& state,
     const std::string tmp = path + ".tmp";
 
     {
+#ifdef _WIN32
+        FILE* f = nullptr;
+        const auto wide_tmp = path_from_utf8(tmp).native();
+        if (_wfopen_s(&f, wide_tmp.c_str(), L"wb") != 0) f = nullptr;
+#else
         FILE* f = std::fopen(tmp.c_str(), "wb");
+#endif
         if (!f) {
             if (error) *error = "cannot open '" + tmp + "': " + errno_string(errno);
             return false;
@@ -420,7 +427,7 @@ bool save_transfer_state(const std::string& path, const TransferState& state,
         const int flush_rc = std::fflush(f);
         if (written != text.size() || flush_rc != 0) {
             std::fclose(f);
-            std::remove(tmp.c_str());
+            std::filesystem::remove(path_from_utf8(tmp));
             if (error) *error = "write failed for '" + tmp + "'";
             return false;
         }
@@ -428,14 +435,31 @@ bool save_transfer_state(const std::string& path, const TransferState& state,
     }
 
     std::error_code ec;
-    if (std::filesystem::exists(path, ec)) {
-        std::filesystem::rename(path, backup_path(path), ec);
+#ifdef _WIN32
+    // std::filesystem::rename does not replace an existing target on Windows.
+    if (std::filesystem::exists(path_from_utf8(path), ec)) {
+        const std::string backup = backup_path(path);
+        if (!MoveFileExW(path_from_utf8(path).c_str(), path_from_utf8(backup).c_str(),
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            ec = std::error_code(static_cast<int>(GetLastError()), std::system_category());
+        }
         // A failed backup rotation is not fatal; the new state still wins.
         ec.clear();
     }
-    std::filesystem::rename(tmp, path, ec);
+    if (!MoveFileExW(path_from_utf8(tmp).c_str(), path_from_utf8(path).c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        ec = std::error_code(static_cast<int>(GetLastError()), std::system_category());
+    }
+#else
+    if (std::filesystem::exists(path_from_utf8(path), ec)) {
+        std::filesystem::rename(path_from_utf8(path), path_from_utf8(backup_path(path)), ec);
+        // A failed backup rotation is not fatal; the new state still wins.
+        ec.clear();
+    }
+    std::filesystem::rename(path_from_utf8(tmp), path_from_utf8(path), ec);
+#endif
     if (ec) {
-        std::remove(tmp.c_str());
+        std::filesystem::remove(path_from_utf8(tmp));
         if (error) *error = "cannot replace '" + path + "': " + ec.message();
         return false;
     }
@@ -462,9 +486,9 @@ bool load_transfer_state(const std::string& path, TransferState& out,
 
 void remove_transfer_state(const std::string& path) {
     std::error_code ec;
-    std::filesystem::remove(path, ec);
-    std::filesystem::remove(backup_path(path), ec);
-    std::filesystem::remove(path + ".tmp", ec);
+    std::filesystem::remove(path_from_utf8(path), ec);
+    std::filesystem::remove(path_from_utf8(backup_path(path)), ec);
+    std::filesystem::remove(path_from_utf8(path + ".tmp"), ec);
 }
 
 }  // namespace swiftdm

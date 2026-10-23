@@ -4,8 +4,10 @@
 
 #include <ctime>
 #include <filesystem>
+#include <string>
 
 #include "core/log.h"
+#include "core/util.h"
 
 namespace swiftdm {
 namespace {
@@ -148,12 +150,18 @@ bool HistoryStore::ensure_column(const char* name, const char* type, std::string
 bool HistoryStore::open(const std::string& path, std::string* error) {
     close();
     std::error_code ec;
-    const std::filesystem::path file(path);
+    const std::filesystem::path file = path_from_utf8(path);
     if (file.has_parent_path()) {
         std::filesystem::create_directories(file.parent_path(), ec);
     }
-    if (sqlite3_open_v2(path.c_str(), &db_,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+#ifdef _WIN32
+    const std::wstring wide_path = file.native();
+    const int open_rc = sqlite3_open16(wide_path.c_str(), &db_);
+#else
+    const int open_rc = sqlite3_open_v2(path.c_str(), &db_,
+                                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+#endif
+    if (open_rc != SQLITE_OK) {
         const std::string message = db_ ? sqlite3_errmsg(db_) : "cannot open database";
         if (db_) {
             sqlite3_close(db_);

@@ -6,7 +6,14 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
+
+#include "core/util.h"
 
 namespace testutil {
 
@@ -14,20 +21,26 @@ inline int g_failures = 0;
 
 inline std::string make_temp_dir(const std::string& tag) {
     std::error_code ec;
+    static unsigned sequence = 0;
+#ifndef _WIN32
     std::filesystem::path base = "/tmp/opencode";
     if (!std::filesystem::is_directory(base, ec)) {
         base = std::filesystem::temp_directory_path(ec);
     }
+#else
+    std::filesystem::path base = std::filesystem::temp_directory_path(ec);
+#endif
     const std::filesystem::path dir =
-        base / ("swiftdm-test-" + tag + "-" + std::to_string(::getpid()));
-    std::filesystem::remove_all(dir, ec);
+        base / ("swiftdm-test-" + tag + "-" + std::to_string(::getpid()) +
+                "-" + std::to_string(++sequence));
+    swiftdm::remove_tree(swiftdm::path_to_utf8(dir));
     std::filesystem::create_directories(dir, ec);
-    return dir.string();
+    const auto utf8 = dir.u8string();
+    return std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
 }
 
 inline void cleanup_dir(const std::string& dir) {
-    std::error_code ec;
-    std::filesystem::remove_all(dir, ec);
+    swiftdm::remove_tree(dir);
 }
 
 inline void report_failure(const char* file, int line, const char* expr) {

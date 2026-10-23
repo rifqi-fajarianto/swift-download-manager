@@ -15,6 +15,47 @@
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
 
+## 0.19.0 - 2026-10-23
+
+Start the experimental Windows 10 port while keeping Debian 13/Linux as the
+reference platform.
+
+- Add a cross-platform file I/O layer with wide-path support on Windows,
+  positioned writes, file sizing and flushing.
+- Use Windows roaming/local application data directories and the per-user
+  Startup registry key; keep XDG autostart and paths on Unix.
+- Support paths longer than `MAX_PATH`: the platform layer prefixes absolute
+  paths with the extended-length `\\?\` form and strips it again on the way
+  out, so neither the history database nor the UI sees the prefix. Workspace
+  cleanup uses a Win32 tree walk because the MinGW recursive iterator spins
+  forever on a name beyond `MAX_PATH`. File names are still limited to 240
+  bytes per component.
+- Read the command line as UTF-16 and convert it to UTF-8, so `--name` and
+  `--dir` accept non-ASCII text on Windows.
+- Port the local HTTP/FTP/HLS test servers to Winsock. The `http` and `media`
+  tests now run on Windows, and the Windows CI job executes the same test
+  suite as Linux.
+- Deploy the Qt runtime with `windeployqt` and the MinGW/libcurl/SQLite
+  dependency tree with `tools/deploy_msys_runtime.sh`, so the ZIP package runs
+  without MSYS2 installed. Ship the Chromium extension together with
+  `LICENSE` and `README.md` in the package.
+- Ship the Mozilla CA bundle as `ca-bundle.crt` and point libcurl at it with
+  `CURLOPT_CAINFO`. The MSYS2 build of libcurl defaults to the POSIX path
+  `/ucrt64/etc/ssl/certs/ca-bundle.crt`, which does not exist outside MSYS2,
+  so every HTTPS download failed with `CURLE_SSL_CACERT_BADFILE`
+  ("problem with the SSL CA cert"). The lookup order is the `SWIFTDM_CA_BUNDLE`
+  environment variable, then `ca-bundle.crt` next to the executable, then
+  libcurl's built-in default — so Linux keeps its system bundle and the
+  Debian package is unchanged. Verified by the `ca_bundle` test and by HTTPS
+  downloads from the Windows package.
+- Separate Linux desktop metadata and Debian packaging from the Windows ZIP
+  configuration. Qt 6.5–6.12 is required; 6.12 is the last line that supports
+  Windows 10.
+- Windows support is still experimental: the GUI has only been smoke-tested
+  through the CLI, and manual Windows 10 checks (tray, dialogs, pause/resume,
+  autostart) remain open. The executable uses the console subsystem, so
+  launching the GUI from Explorer also opens a console window.
+
 - The extension reuses its command WebSocket between handoffs and opens the
   command channel while browser cookie metadata is being gathered. The status
   subscription remains a separate socket.

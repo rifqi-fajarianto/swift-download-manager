@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml)
 
-SwiftDM is a desktop download manager for Linux. It supports segmented
+SwiftDM is a desktop download manager for Linux, with an experimental Windows
+10 (version 1809+) port in progress. It supports segmented
 downloads, pausing and resuming transfers, and both graphical and command-line
 interfaces. SwiftDM is built with C++20, Qt 6, libcurl, and SQLite.
 
@@ -101,6 +102,27 @@ sudo apt install build-essential cmake file ninja-build \
   qt6-base-dev qt6-svg-plugins libqt6svg6 \
   libcurl4-openssl-dev libsqlite3-dev
 ```
+
+The Windows build is experimental and is not yet a supported release. It uses
+MSYS2 UCRT64/MinGW-w64 with GCC, CMake, Ninja, Qt 6.5–6.12, libcurl and SQLite
+(Qt 6.12 is the last Qt release that supports Windows 10). In an MSYS2 UCRT64
+shell:
+
+```sh
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-qt6-base \
+  mingw-w64-ucrt-x86_64-qt6-svg mingw-w64-ucrt-x86_64-curl \
+  mingw-w64-ucrt-x86_64-sqlite3
+cmake -S . -B build-win -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-win --parallel
+ctest --test-dir build-win --output-on-failure
+```
+
+The build produces a self-contained `build-win/windows-deploy/` directory and
+`build-win/swiftdm-<version>-win64.zip` (`cd build-win && cpack`). The package
+contains the executable, the Qt plugins, the MinGW/libcurl/SQLite runtime DLLs,
+the `ca-bundle.crt` CA bundle used by libcurl for HTTPS, and the Chromium
+extension. GUI checks on Windows 10 are still manual.
 
 `qt6-svg-plugins` is required to load SVG icons at runtime.
 

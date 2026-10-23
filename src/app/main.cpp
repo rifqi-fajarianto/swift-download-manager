@@ -1,12 +1,19 @@
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 #include "core/log.h"
 #include "core/util.h"
 #include "engine/download_engine.h"
 #include "store/settings.h"
 #include "swiftdm/version.h"
+
+#ifdef _WIN32
+#include "core/win_headers.h"
+#include <shellapi.h>
+#endif
 
 #ifdef SWIFTSDM_WITH_GUI
 #include <QApplication>
@@ -256,6 +263,33 @@ int run_get(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    // The C runtime converts the command line with the ANSI code page, which
+    // corrupts non-ASCII arguments such as a download name. Rebuild the argument
+    // vector from the wide command line so the rest of the program only sees
+    // UTF-8.
+    std::vector<std::string> arguments;
+    {
+        int wide_count = 0;
+        if (LPWSTR* wide = ::CommandLineToArgvW(::GetCommandLineW(), &wide_count)) {
+            arguments.reserve(static_cast<size_t>(wide_count));
+            for (int i = 0; i < wide_count; ++i) {
+                arguments.push_back(
+                    swiftdm::path_to_utf8(std::filesystem::path(std::wstring(wide[i]))));
+            }
+            ::LocalFree(wide);
+        }
+    }
+    std::vector<char*> argument_pointers;
+    if (!arguments.empty()) {
+        argument_pointers.reserve(arguments.size() + 1);
+        for (std::string& argument : arguments) argument_pointers.push_back(argument.data());
+        argument_pointers.push_back(nullptr);
+        argc = static_cast<int>(arguments.size());
+        argv = argument_pointers.data();
+    }
+#endif
+
     swiftdm::log_set_level(swiftdm::LogLevel::Warn);
 
     if (argc <= 1) {

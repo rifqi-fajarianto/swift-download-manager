@@ -1,8 +1,6 @@
 #include "net/http.h"
 
 #include <curl/curl.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -14,6 +12,7 @@
 #include <vector>
 
 #include "core/log.h"
+#include "core/file_io.h"
 #include "core/util.h"
 #include "net/interstitial.h"
 
@@ -131,6 +130,17 @@ void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* header
     const std::string request_url = encode_url_for_request(o.url);
     curl_easy_setopt(handle, CURLOPT_URL, request_url.c_str());
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+
+    // MSYS2 builds of libcurl default to the POSIX path
+    // /ucrt64/etc/ssl/certs/ca-bundle.crt, which does not exist on Windows;
+    // without an explicit bundle every HTTPS handshake fails with
+    // CURLE_SSL_CACERT_BADFILE (error 77). The Windows package ships
+    // ca-bundle.crt next to the executable. On Linux that file is absent, so
+    // the lookup returns nothing and libcurl keeps its built-in system
+    // default. Resolved once: every request must present the same bundle.
+    static const std::string ca_bundle = resolve_ca_bundle();
+    if (!ca_bundle.empty()) curl_easy_setopt(handle, CURLOPT_CAINFO, ca_bundle.c_str());
+
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 15L);
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT,
@@ -901,7 +911,7 @@ struct SegmentDownloader::Impl {
         const uint64_t remaining = seg.length() - seg.done;
         if (to_write > remaining) to_write = remaining;
         const uint64_t offset = seg.start + seg.done;
-        const ssize_t written = ::pwrite(impl->fd, ptr, to_write, static_cast<off_t>(offset));
+        const std::ptrdiff_t written = write_file_at(impl->fd, ptr, to_write, offset);
         if (written < 0 || static_cast<uint64_t>(written) != to_write) return 0;
         seg.done += to_write;
         return total;
@@ -1241,7 +1251,7 @@ size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
         ctx->interrupted = true;
         return 0;
     }
-    const ssize_t written = ::write(ctx->fd, ptr, total);
+    const std::ptrdiff_t written = write_file(ctx->fd, ptr, total);
     if (written < 0 || static_cast<size_t>(written) != total) return 0;
     ctx->written += total;
     return total;
@@ -1311,7 +1321,7 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, stream_progress_cb);
     curl_easy_setopt(handle, CURLOPT_XFERINFODATA, &ctx);
     if (resume_from > 0 && options.post_data.empty()) {
-        if (::lseek(write_fd, static_cast<off_t>(resume_from), SEEK_SET) < 0) {
+        if (seek_file(write_fd, resume_from) != 0) {
             curl_easy_cleanup(handle);
             if (headers) curl_slist_free_all(headers);
             if (error) *error = "cannot seek in the partial file";

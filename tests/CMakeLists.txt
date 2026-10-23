@@ -30,6 +30,16 @@ add_executable(test_filenames test_filenames.cpp)
 target_link_libraries(test_filenames PRIVATE swiftdm_core)
 add_test(NAME filenames COMMAND test_filenames)
 
+add_executable(test_file_io test_file_io.cpp)
+target_link_libraries(test_file_io PRIVATE swiftdm_core)
+add_test(NAME file_io COMMAND test_file_io)
+
+# CA bundle resolution: the Windows package ships ca-bundle.crt next to the
+# executable because MSYS2's libcurl defaults to a POSIX CA path.
+add_executable(test_ca_bundle test_ca_bundle.cpp)
+target_link_libraries(test_ca_bundle PRIVATE swiftdm_core)
+add_test(NAME ca_bundle COMMAND test_ca_bundle)
+
 add_executable(test_http test_http.cpp)
 target_link_libraries(test_http PRIVATE swiftdm_core)
 add_test(NAME http COMMAND test_http)

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,11 +39,34 @@ std::string encode_url_for_request(std::string_view url);
 std::string percent_decode(std::string_view text);
 
 // Filesystem helpers.
-std::string home_dir();                       // $HOME or empty
+std::string home_dir();                       // $HOME on POSIX, %USERPROFILE% on Windows
 std::string expand_tilde(std::string_view path);
-std::string xdg_config_home();                // $XDG_CONFIG_HOME or ~/.config
-std::string xdg_data_home();                  // $XDG_DATA_HOME or ~/.local/share
+std::string xdg_config_home();                // platform configuration root
+std::string xdg_data_home();                  // platform data root
+std::filesystem::path path_from_utf8(std::string_view path);
+std::string path_to_utf8(const std::filesystem::path& path);
 bool ensure_directory(const std::string& path, std::string* error = nullptr);
+
+// Directory of the running executable, without a trailing separator. Empty
+// when it cannot be determined (for example /proc/self/exe is missing).
+std::string executable_dir();
+
+// CA bundle for libcurl, resolved once per process:
+//   1. `env_override` when it names an existing file;
+//   2. `ca-bundle.crt` next to the executable (the Windows package ships one);
+//   3. empty, so libcurl keeps its built-in default (Linux).
+// A missing or unreadable file is never returned: passing it to libcurl would
+// trade the current handshake failure for CURLE_SSL_CACERT_BADFILE.
+std::string resolve_ca_bundle(const std::string& exe_dir, std::string_view env_override);
+
+// Convenience overload reading executable_dir() and the SWIFTDM_CA_BUNDLE
+// environment variable.
+std::string resolve_ca_bundle();
+
+// Removes a file or a directory tree. Prefer this over
+// std::filesystem::remove_all in portable code: MinGW's recursive iterator can
+// spin forever on a directory that contains a name longer than MAX_PATH.
+bool remove_tree(const std::string& path);
 
 // Returns the path of an existing file for a completed download. The exact
 // `dir/filename` wins; when it is gone, "name (N).ext" siblings are tried and
