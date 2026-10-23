@@ -10,30 +10,37 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QLabel>
 #include <QJsonObject>
+#include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyleHints>
 #include <QSystemTrayIcon>
 #include <QTableView>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QUrl>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "core/util.h"
 #include "engine/categories.h"
@@ -46,6 +53,7 @@
 #include "ui/download_window.h"
 #include "ui/icons.h"
 #include "ui/properties_dialog.h"
+#include "ui/queue_dialog.h"
 #include "ui/settings_dialog.h"
 #include "ui/theme.h"
 
@@ -110,6 +118,8 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     record.temp_path = item.temp_path.toStdString();
     record.bandwidth_limit_enabled = item.bandwidth_limit_enabled;
     record.bandwidth_limit_kbps = item.bandwidth_limit_kbps;
+    record.connections = item.connections;
+    record.queue_id = item.queue_id;
     record.last_try = item.last_try_epoch;
     record.folder_path = item.dest_path.isEmpty()
                              ? item.output_dir.toStdString()
@@ -125,7 +135,6 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
     }
     if (options) {
         record.user_agent = options->user_agent.toStdString();
-        record.connections = options->connections;
         record.post_data.assign(options->post_data.constData(),
                                 static_cast<size_t>(options->post_data.size()));
         if (!options->post_data.isEmpty()) record.method = "POST";
@@ -137,10 +146,17 @@ swiftdm::HistoryStore::Record history_record_for(const DownloadItem& item,
 }
 
 // History "Downloading" rows are stale after a restart: no transfer runs.
+// Queue rows restore as Queued so Start Queue (or the autostart option) can
+// pick them up; a main-list row restores as Paused like before.
 DownloadItem::State state_from_record(const swiftdm::HistoryStore::Record& record) {
     if (record.status == "Complete") return DownloadItem::State::Complete;
     if (record.status == "Paused") return DownloadItem::State::Paused;
     if (record.status == "Error") return DownloadItem::State::Error;
+    if (record.status == "Queued") {
+        return record.queue_id > 0 ? DownloadItem::State::Queued
+                                   : DownloadItem::State::Paused;
+    }
+    if (record.queue_id > 0) return DownloadItem::State::Queued;
     return DownloadItem::State::Paused;
 }
 
@@ -182,6 +198,7 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
         qWarning() << "history: persistence disabled:"
                    << QString::fromStdString(history_error);
     }
+    load_queues();
 
     model_ = new DownloadModel(this);
     proxy_ = new DownloadFilterProxy(this);
@@ -189,6 +206,10 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
 
     build_actions();
     build_body();
+
+    shutdown_timer_ = new QTimer(this);
+    shutdown_timer_->setInterval(1000);
+    connect(shutdown_timer_, &QTimer::timeout, this, &MainWindow::on_shutdown_tick);
     browser_integration_ = new BrowserIntegration(this);
     connect(browser_integration_, &BrowserIntegration::downloadRequested, this,
             &MainWindow::add_browser_download);
@@ -232,11 +253,16 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
             [this] { update_status_bar(); });
     restore_history();
     update_status_bar();
+    start_autostart_queues();
 }
 
 MainWindow::~MainWindow() {
+    // A pending countdown must not outlive the window.
+    shutdown_scheduler_.cancel_all();
+    if (shutdown_timer_) shutdown_timer_->stop();
     // Pause every running transfer and wait for its worker so segments.json is
-    // written before the process goes away; the list then restores as Paused.
+    // written before the process goes away; the list then restores as Paused
+    // (queue items restore as Queued so their queue can pick them up again).
     for (int row = 0; row < model_->rowCount(); ++row) {
         DownloadItem* item = model_->item_at(row);
         if (!item || !item->task) continue;
@@ -244,7 +270,8 @@ MainWindow::~MainWindow() {
         item->task->pause_and_wait();
         if (was_active && (item->state == DownloadItem::State::Downloading ||
                            item->state == DownloadItem::State::Probing)) {
-            item->state = DownloadItem::State::Paused;
+            item->state = item->queue_id > 0 ? DownloadItem::State::Queued
+                                             : DownloadItem::State::Paused;
         }
         if (!item->task->workspace_dir().isEmpty()) {
             item->temp_path = item->task->workspace_dir();
@@ -319,6 +346,8 @@ void MainWindow::restore_history() {
         item.page_url = QString::fromStdString(record.page_url);
         item.page_title = QString::fromStdString(record.page_title);
         item.group = QString::fromStdString(record.group_id);
+        item.queue_id = record.queue_id;
+        item.connections = record.connections;
         item.resumable = record.resumable;
         item.temp_path = QString::fromStdString(record.temp_path);
         item.bandwidth_limit_enabled = record.bandwidth_limit_enabled;
@@ -381,10 +410,11 @@ void MainWindow::restore_history() {
             task->set_workspace_dir(item.temp_path);
             item.task = task;
             wire_task(task);
-            if (item.state == DownloadItem::State::Paused && record.status != "Paused") {
+            const std::string restored_status = history_status(item.state);
+            if (record.status != restored_status) {
                 // A row left "Downloading"/"Queued" by a quit or crash. Write the
                 // full row so lasttry (sort order) stays unchanged.
-                record.status = "Paused";
+                record.status = restored_status;
                 record.done = item.done;
                 record.file_size = item.size;
                 history_.update(entry.id, record);
@@ -392,6 +422,7 @@ void MainWindow::restore_history() {
         }
         model_->add_item(item);
     }
+    if (queues_root_) rebuild_queue_tree();
     qInfo() << "history: restored" << model_->rowCount() << "row(s),"
             << missing_count << "missing file(s)";
 }
@@ -456,10 +487,48 @@ void MainWindow::build_actions() {
     act_quit_ = new QAction(tinted_icon(QStringLiteral(":/icons/quit.svg"), colors::kDanger),
                             tr("Quit"), this);
 
+    // The queue toolbar reuses the main labels ("New URL", "Delete",
+    // "Delete File") but keeps its own action for "New URL" so the button can
+    // move to the third group without disturbing the Downloads toolbar.
+    act_queue_add_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/link-plus.svg"), colors::kActionBlue),
+                    tr("New URL"), this);
+    act_queue_add_->setToolTip(tr("Add a new download to this queue"));
+    act_start_queue_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/resume-start.svg"), colors::kActionBlue),
+                    tr("Start Queue"), this);
+    act_start_queue_->setToolTip(tr("Resume every queued, paused and failed item in this queue"));
+    act_pause_queue_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/stop.svg"), colors::kActionBlue),
+                    tr("Stop Queue"), this);
+    act_pause_queue_->setToolTip(tr("Pause the active downloads of this queue"));
+    act_queue_props_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/queue-settings.svg"),
+                                colors::neutral_tint()),
+                    tr("Queue Properties"), this);
+    act_new_queue_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/queue-add.svg"), colors::kActionBlue),
+                    tr("New Queue"), this);
+    act_delete_queue_ =
+        new QAction(tinted_icon(QStringLiteral(":/icons/queue-delete.svg"), colors::kDanger),
+                    tr("Delete Queue"), this);
+    act_delete_queue_->setToolTip(tr("Delete the selected queue and its items"));
+
+    // Queue-only actions start disabled; the first update_action_states()
+    // enables the ones that apply to the current view.
+    act_queue_add_->setEnabled(false);
+    act_delete_queue_->setEnabled(false);
+    act_queue_props_->setEnabled(false);
+    act_start_queue_->setEnabled(false);
+    act_pause_queue_->setEnabled(false);
+    act_new_queue_->setEnabled(queue_features_available());
+
     act_new_->setShortcut(QKeySequence::New);
+    act_queue_add_->setShortcut(QKeySequence::New);
     act_delete_->setShortcut(QKeySequence::Delete);
 
     connect(act_new_, &QAction::triggered, this, &MainWindow::on_new_url);
+    connect(act_queue_add_, &QAction::triggered, this, &MainWindow::on_new_url);
     connect(act_resume_, &QAction::triggered, this, &MainWindow::on_resume);
     connect(act_stop_, &QAction::triggered, this, &MainWindow::on_stop);
     connect(act_delete_, &QAction::triggered, this, &MainWindow::on_delete);
@@ -468,16 +537,29 @@ void MainWindow::build_actions() {
     connect(act_browsers_, &QAction::triggered, this, &MainWindow::on_browsers);
     connect(act_about_, &QAction::triggered, this, &MainWindow::on_about);
     connect(act_quit_, &QAction::triggered, this, &MainWindow::on_quit);
+    connect(act_start_queue_, &QAction::triggered, this, &MainWindow::on_start_queue);
+    connect(act_pause_queue_, &QAction::triggered, this, &MainWindow::on_pause_queue);
+    connect(act_queue_props_, &QAction::triggered, this, &MainWindow::on_queue_properties);
+    connect(act_new_queue_, &QAction::triggered, this, &MainWindow::on_new_queue);
+    connect(act_delete_queue_, &QAction::triggered, this, &MainWindow::on_delete_queue);
 
     auto* toolbar = addToolBar(tr("Main"));
     toolbar_ = toolbar;
     toolbar->setObjectName(QStringLiteral("main_toolbar"));
     toolbar->setMovable(false);
     toolbar->addAction(act_new_);
-    toolbar->addSeparator();
+    sep_after_new_ = toolbar->addSeparator();
     toolbar->addAction(act_resume_);
     toolbar->addAction(act_stop_);
-    toolbar->addSeparator();
+    sep_download_actions_ = toolbar->addSeparator();
+    toolbar->addAction(act_new_queue_);
+    toolbar->addAction(act_delete_queue_);
+    toolbar->addAction(act_queue_props_);
+    sep_queue_actions_ = toolbar->addSeparator();
+    toolbar->addAction(act_start_queue_);
+    toolbar->addAction(act_pause_queue_);
+    sep_queue_transfer_actions_ = toolbar->addSeparator();
+    toolbar->addAction(act_queue_add_);
     toolbar->addAction(act_delete_);
     toolbar->addAction(act_delete_file_);
     auto* spacer = new QWidget(toolbar);
@@ -488,6 +570,7 @@ void MainWindow::build_actions() {
     toolbar->addAction(act_about_);
     toolbar->addAction(act_quit_);
     apply_toolbar_settings();
+    update_queue_action_visibility();
 }
 
 // The toolbar size and the text under the icons follow the Interface tab.
@@ -528,6 +611,14 @@ void MainWindow::refresh_action_icons() {
         tinted_icon(QStringLiteral(":/icons/settings.svg"), colors::neutral_tint()));
     act_browsers_->setIcon(
         tinted_icon(QStringLiteral(":/icons/browsers.svg"), colors::neutral_tint()));
+    act_queue_props_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/queue-settings.svg"), colors::neutral_tint()));
+    act_new_queue_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/queue-add.svg"), colors::kActionBlue));
+    act_delete_queue_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/queue-delete.svg"), colors::kDanger));
+    act_queue_add_->setIcon(
+        tinted_icon(QStringLiteral(":/icons/link-plus.svg"), colors::kActionBlue));
 }
 
 // Applies the appearance settings without a restart.
@@ -536,6 +627,7 @@ void MainWindow::apply_interface_settings() {
         apply_theme(*app, theme_mode_from_string(QString::fromStdString(settings_.theme)));
     }
     refresh_action_icons();
+    refresh_queue_overview();
     apply_toolbar_settings();
     apply_tray_settings();
     // The palette change repaints the widgets, but the custom painted ones
@@ -555,6 +647,7 @@ void MainWindow::build_body() {
     auto* all = new QTreeWidgetItem(tree_, {QStringLiteral("All Downloads")});
     all->setData(0, Qt::UserRole, QString());
     all->setIcon(0, tinted_icon(QStringLiteral(":/icons/folder.svg"), colors::kActionBlue));
+    all_item_ = all;
     for (const CategoryEntry& entry : kCategories) {
         auto* child = new QTreeWidgetItem(all, {QString::fromLatin1(entry.label)});
         child->setData(0, Qt::UserRole, QString::fromLatin1(entry.label));
@@ -574,10 +667,25 @@ void MainWindow::build_body() {
         item->setData(0, Qt::UserRole, QString::fromLatin1(entry.key));
         item->setIcon(0, tinted_icon(QString::fromLatin1(entry.icon), colors::kActionBlue));
     }
+
+    // Queues are a separate workspace, so they live in their own sidebar
+    // branch instead of being another status on the main list. The branch is
+    // selectable and opens the queue overview in the right panel.
+    queues_root_ = new QTreeWidgetItem(tree_, {tr("Queues")});
+    queues_root_->setData(0, Qt::UserRole, QStringLiteral("__queues"));
+    queues_root_->setIcon(0, tinted_icon(QStringLiteral(":/icons/queue.svg"),
+                                         colors::kActionBlue));
+    rebuild_queue_tree();
+    queues_root_->setExpanded(true);
+
     tree_->setCurrentItem(all);
     connect(tree_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::on_tree_selection);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tree_, &QTreeWidget::customContextMenuRequested, this,
+            &MainWindow::on_tree_context_menu);
 
-    table_ = new QTableView(splitter);
+    right_stack_ = new QStackedWidget(splitter);
+    table_ = new QTableView(right_stack_);
     table_->setModel(proxy_);
     table_->setSortingEnabled(true);
     proxy_->setSortRole(Qt::UserRole);  // Last Try sorts by epoch, not text
@@ -603,8 +711,67 @@ void MainWindow::build_body() {
     connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             [this] { update_action_states(); });
 
+    // The right panel swaps between the download table and a queue overview.
+    // The overview lists the queues themselves (name + item count); it never
+    // shows every queue item in one table.
+    queue_overview_ = new QWidget(right_stack_);
+    queue_overview_->setObjectName(QStringLiteral("queue_overview"));
+    auto* overview_layout = new QVBoxLayout(queue_overview_);
+    overview_layout->setContentsMargins(16, 16, 16, 16);
+    overview_layout->setSpacing(10);
+    queue_title_ = new QLabel(tr("Queues"), queue_overview_);
+    queue_title_->setObjectName(QStringLiteral("queue_overview_title"));
+    QFont title_font = queue_title_->font();
+    title_font.setBold(true);
+    title_font.setPointSizeF(title_font.pointSizeF() + 2.0);
+    queue_title_->setFont(title_font);
+    overview_layout->addWidget(queue_title_);
+
+    queue_pages_ = new QStackedWidget(queue_overview_);
+    queue_pages_->setObjectName(QStringLiteral("queue_overview_pages"));
+
+    auto* list_page = new QWidget(queue_pages_);
+    auto* list_layout = new QVBoxLayout(list_page);
+    list_layout->setContentsMargins(0, 0, 0, 0);
+    auto* list_hint = new QLabel(tr("Select a queue to open its downloads."), list_page);
+    list_hint->setObjectName(QStringLiteral("queue_overview_hint"));
+    list_hint->setStyleSheet(QStringLiteral("color:#a0a0a0;"));
+    list_layout->addWidget(list_hint);
+    queue_list_ = new QListWidget(list_page);
+    queue_list_->setObjectName(QStringLiteral("queue_overview_list"));
+    queue_list_->setIconSize(QSize(24, 24));
+    queue_list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    list_layout->addWidget(queue_list_, 1);
+    connect(queue_list_, &QListWidget::itemClicked, this,
+            &MainWindow::on_queue_overview_clicked);
+    queue_pages_->addWidget(list_page);
+
+    auto* empty_page = new QWidget(queue_pages_);
+    auto* empty_layout = new QVBoxLayout(empty_page);
+    empty_layout->addStretch(1);
+    queue_empty_label_ = new QLabel(empty_page);
+    queue_empty_label_->setObjectName(QStringLiteral("queue_overview_empty"));
+    queue_empty_label_->setAlignment(Qt::AlignCenter);
+    queue_empty_label_->setWordWrap(true);
+    empty_layout->addWidget(queue_empty_label_);
+    queue_empty_button_ =
+        new QPushButton(tinted_icon(QStringLiteral(":/icons/queue-add.svg"),
+                                    colors::kActionBlue),
+                        tr("New Queue"), empty_page);
+    queue_empty_button_->setObjectName(QStringLiteral("queue_overview_new"));
+    connect(queue_empty_button_, &QPushButton::clicked, this, &MainWindow::on_new_queue);
+    empty_layout->addWidget(queue_empty_button_, 0, Qt::AlignCenter);
+    empty_layout->addStretch(1);
+    queue_pages_->addWidget(empty_page);
+
+    overview_layout->addWidget(queue_pages_, 1);
+    right_stack_->addWidget(table_);
+    right_stack_->addWidget(queue_overview_);
+    right_stack_->setCurrentWidget(table_);
+    refresh_queue_overview();
+
     splitter->addWidget(tree_);
-    splitter->addWidget(table_);
+    splitter->addWidget(right_stack_);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     setCentralWidget(splitter);
@@ -706,10 +873,10 @@ void MainWindow::on_new_url() {
     if (dialog.exec() != QDialog::Accepted) return;
     const QString url = dialog.url();
     if (url.isEmpty()) return;
-    add_download(url);
+    add_download(url, selected_queue_id_);
 }
 
-void MainWindow::add_download(const QString& url) {
+void MainWindow::add_download(const QString& url, qint64 queue_id) {
     const QUrl parsed = QUrl::fromUserInput(url.trimmed());
     const QString scheme = parsed.scheme().toLower();
     const bool supported_scheme = scheme == QStringLiteral("http") ||
@@ -726,7 +893,9 @@ void MainWindow::add_download(const QString& url) {
     options.url = request_url;
     options.output_dir = QString::fromStdString(settings_.download_dir);
     // New downloads start from the global limiter state; the Options tab can
-    // override both the toggle and the value per download.
+    // override both the toggle and the value per download. The row keeps this
+    // value even when it is added to a queue: the queue ignores it while the
+    // item belongs there, but a later move back to Downloads can use it again.
     options.limit_enabled = settings_.bandwidth_limit_enabled;
     options.limit_kbps = settings_.bandwidth_limit_kbps;
 
@@ -737,6 +906,9 @@ void MainWindow::add_download(const QString& url) {
     item.category =
         QString::fromStdString(swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = options.output_dir;
+    item.queue_id = queue_id;
+    item.bandwidth_limit_enabled = options.limit_enabled;
+    item.bandwidth_limit_kbps = options.limit_kbps;
     probe_and_confirm(std::move(options), std::move(item));
 }
 
@@ -807,6 +979,10 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     item.category = QString::fromStdString(
         swiftdm::category_folder_for(item.file_name.toStdString()));
     item.output_dir = options.output_dir;
+    // Keep the global per-item limit as the row's stored value. A queue item
+    // ignores it while it belongs to a queue; moving it back can use it again.
+    item.bandwidth_limit_enabled = options.limit_enabled;
+    item.bandwidth_limit_kbps = options.limit_kbps;
     item.page_url = data.value(QStringLiteral("pageUrl")).toString();
     item.page_title = data.value(QStringLiteral("pageTitle")).toString();
     // Adaptive video+audio handoffs share a token (validated by the protocol
@@ -851,6 +1027,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
         auto* dialog = new ConfirmDownloadDialog(
             fallback_name, 0, flow->options.url,
             QString::fromStdString(settings_.download_dir), settings_.category_folders);
+        dialog->set_queues(queue_choices(), flow->item.queue_id);
+        if (flow->item.queue_id > 0) dialog->set_queue_default(true);
         dialog->set_probe_pending();
         flow->dialog = dialog;
         connect(dialog, &QDialog::finished, this, [flow](int result) {
@@ -940,12 +1118,18 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
         DownloadTask::Options start_options = flow->options;
         start_options.filename = flow->resolved_name;
         start_options.category = draft.category;
+        qint64 target_queue = flow->item.queue_id;
         if (flow->dialog) {
             draft.category = flow->dialog->category();
             draft.output_dir = flow->dialog->location();
             start_options.category = draft.category;
             start_options.apply_category_folder = false;
             start_options.output_dir = draft.output_dir;
+            // Download Now always means the main list; Add to queue keeps the
+            // queue chosen in the confirmation dialog.
+            target_queue = flow->dialog->queue_requested()
+                               ? flow->dialog->selected_queue_id()
+                               : 0;
             flow->dialog->deleteLater();
             flow->dialog = nullptr;
         } else {
@@ -954,6 +1138,17 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
                 settings_.category_folders);
             start_options.output_dir = draft.output_dir;
             start_options.apply_category_folder = false;
+        }
+        draft.queue_id = target_queue;
+        if (target_queue > 0) {
+            const swiftdm::HistoryStore::QueueRecord* queue = queue_for(target_queue);
+            // A queue overrides the per-item connection count; 0 there means
+            // the global Settings value.
+            start_options.connections = queue ? queue->connections : 0;
+            // The queue budget replaces the per-item limiter for the transfer;
+            // the row keeps its stored per-item value for a later move back.
+            start_options.limit_enabled = false;
+            start_options.limit_kbps = 0;
         }
         start_confirmed_download(std::move(draft), std::move(start_options),
                                  flow->probe_result);
@@ -969,13 +1164,45 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
 
 void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options,
                                           const swiftdm::ProbeResult& probe) {
-    item.bandwidth_limit_enabled = options.limit_enabled;
-    item.bandwidth_limit_kbps = options.limit_kbps;
+    // The queue can disappear while a background probe runs (confirmation
+    // disabled); fall back to the main list instead of hiding the row in a
+    // workspace that no longer exists.
+    if (item.queue_id > 0 && !queue_for(item.queue_id)) item.queue_id = 0;
+    const qint64 queue_id = item.queue_id;
+    const bool queue_item = queue_id > 0;
+    if (queue_item) {
+        item.state = DownloadItem::State::Queued;
+        const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+        // The queue's connection rule always wins; 0 means global Settings.
+        options.connections = queue ? queue->connections : 0;
+    } else {
+        item.bandwidth_limit_enabled = options.limit_enabled;
+        item.bandwidth_limit_kbps = options.limit_kbps;
+        item.connections = options.connections;
+    }
     const int row = model_->add_item(item);
     DownloadItem* added = model_->item_at(row);
     if (!added) return;
     if (history_.is_open()) {
         added->history_id = history_.insert(history_record_for(*added, &options));
+    }
+    if (queue_item) {
+        // A new item means the queue is no longer complete: stop any pending
+        // shutdown countdown, then let the scheduler decide whether a slot is
+        // free. No progress window opens for a queued item.
+        //
+        // Keep an inactive task as the option carrier so the scheduler (and a
+        // later Start) still has the cookies, headers and POST body that the
+        // browser/confirmation supplied.
+        auto* queued_task = new DownloadTask(settings_, options, model_);
+        added->task = queued_task;
+        wire_task(queued_task);
+        cancel_queue_shutdown(queue_id);
+        complete_notified_.remove(queue_id);
+        if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+        rebuild_queue_tree();
+        update_status_bar();
+        return;
     }
     const int id = added->id;
     start_task_at_row(row, &options, &probe);
@@ -987,17 +1214,27 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     DownloadItem* item = model_->item_at(row);
     if (!item) return;
 
-    // Replace the previous (inactive) task so that current settings apply.
+    // Replace the previous (inactive) task so that current settings apply, but
+    // keep its options: they carry cookies, headers and POST data that cannot
+    // be rebuilt from the row alone.
+    std::optional<DownloadTask::Options> previous_options;
     if (item->task && !item->task->active()) {
+        previous_options = item->task->options();
         item->task->deleteLater();
         item->task = nullptr;
     }
 
     if (item->task && item->task->active()) return;
 
+    const qint64 queue_id = item->queue_id;
+    const bool queue_item = queue_id > 0;
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_item ? queue_for(queue_id) : nullptr;
+
     DownloadTask::Options options;
     if (options_override) {
         options = *options_override;
+    } else if (previous_options) {
+        options = *previous_options;
     } else {
         options.url = item->url;
         options.output_dir = item->output_dir;
@@ -1006,10 +1243,20 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
         options.limit_enabled = item->bandwidth_limit_enabled;
         options.limit_kbps = item->bandwidth_limit_kbps;
     }
-    // The per-item values are authoritative after live edits, including when
-    // an older Options snapshot was supplied by the resume action.
-    options.limit_enabled = item->bandwidth_limit_enabled;
-    options.limit_kbps = item->bandwidth_limit_kbps;
+    if (queue_item) {
+        // Queue items share the queue budget; the per-item limiter is kept in
+        // the row (for a later move back to Downloads) but never used here.
+        options.limit_enabled = false;
+        options.limit_kbps = 0;
+        // The queue's connection rule always wins; 0 there means global Settings.
+        options.connections = queue ? queue->connections : 0;
+    } else {
+        // The per-item values are authoritative after live edits, including when
+        // an older Options snapshot was supplied by the resume action.
+        options.limit_enabled = item->bandwidth_limit_enabled;
+        options.limit_kbps = item->bandwidth_limit_kbps;
+        options.connections = item->connections;
+    }
     if (options.output_dir.isEmpty()) {
         options.output_dir = QString::fromStdString(settings_.download_dir);
         if (settings_.category_folders && !options.category.isEmpty()) {
@@ -1023,8 +1270,14 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     auto* task = new DownloadTask(settings_, options, model_);
     if (probe) task->set_cached_probe(*probe);
     item->task = task;
-    item->bandwidth_limit_enabled = options.limit_enabled;
-    item->bandwidth_limit_kbps = options.limit_kbps;
+    if (queue_item) {
+        // Include this not-yet-started task in the share so it does not start
+        // with a burst before the scheduler recomputes the split.
+        task->set_transfer_limit(queue_share_for_new_task(queue_id));
+    } else {
+        item->bandwidth_limit_enabled = options.limit_enabled;
+        item->bandwidth_limit_kbps = options.limit_kbps;
+    }
     item->state = DownloadItem::State::Downloading;
     item->file_missing = false;
     item->last_try = now_stamp();
@@ -1036,6 +1289,7 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
 
     model_->touch_row(row);
     task->start();
+    if (queue_item) apply_queue_speed_limits(queue_id);
     update_status_bar();
 }
 
@@ -1070,11 +1324,36 @@ void MainWindow::persist_progress(DownloadTask* task) {
 
 void MainWindow::on_task_finished(DownloadTask* task, int status, const QString& path,
                                   const QString& error) {
+    if (shutting_down_) {
+        model_->task_finished(task, status, path, error);
+        update_status_bar();
+        return;
+    }
+    // Remember the row identity before the model removes canceled rows.
+    const int before_row = model_->row_for_task(task);
+    int item_id = 0;
+    qint64 queue_id = 0;
+    if (const DownloadItem* before = model_->item_at(before_row)) {
+        item_id = before->id;
+        queue_id = before->queue_id;
+    }
     model_->task_finished(task, status, path, error);
     const int row = model_->row_for_task(task);
     if (row >= 0) {
         DownloadItem* item = model_->item_at(row);
         if (item) {
+            if (queue_id > 0 && status == static_cast<int>(DownloadTask::Status::Paused) &&
+                limit_paused_items_.remove(item_id)) {
+                // The limit (not the user) paused this row. Put it back in the
+                // queue when its workspace is still running; the scheduler will
+                // start it again once a slot frees up.
+                item->state = running_queues_.contains(queue_id)
+                                  ? DownloadItem::State::Queued
+                                  : DownloadItem::State::Paused;
+                item->error.clear();
+            } else if (status != static_cast<int>(DownloadTask::Status::Paused)) {
+                limit_paused_items_.remove(item_id);
+            }
             item->last_try_epoch = swiftdm::unix_now();
             if (!task->workspace_dir().isEmpty()) item->temp_path = task->workspace_dir();
             if (status == static_cast<int>(DownloadTask::Status::Completed)) {
@@ -1096,8 +1375,22 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
             if (settings_.open_folder_after_completion && !path.isEmpty()) {
                 open_download_folder(path);
             }
+            if (item && queue_id > 0) {
+                const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+                if (queue && queue->notify_item) {
+                    notify_queue(queue_id, tr("Download Complete"),
+                                 tr("Queue \"%1\": %2 completed.")
+                                     .arg(QString::fromStdString(queue->name),
+                                          item->file_name));
+                }
+            }
         } else if (status == static_cast<int>(DownloadTask::Status::Failed) && item) {
             show_error_dialog(item->url, error, item->page_url);
+        }
+        if (queue_id > 0) {
+            apply_queue_speed_limits(queue_id);
+            if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+            check_queue_completion(queue_id);
         }
     } else {
         // The row was removed while the task was running; clean up leftovers.
@@ -1105,6 +1398,12 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
             QDir(task->workspace_dir()).removeRecursively();
         }
         task->deleteLater();
+        limit_paused_items_.remove(item_id);
+        if (queue_id > 0 && queue_for(queue_id)) {
+            apply_queue_speed_limits(queue_id);
+            if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+            check_queue_completion(queue_id);
+        }
     }
     update_status_bar();
 }
@@ -1255,6 +1554,43 @@ void MainWindow::on_context_menu(const QPoint& pos) {
         tinted_icon(QStringLiteral(":/icons/folder.svg"), colors::kNeutral),
         tr("Open File Location"));
     menu.addSeparator();
+
+    const bool item_active = item->task && item->task->active();
+    QAction* start_item = nullptr;
+    QAction* pause_item = nullptr;
+    QAction* move_to_downloads = nullptr;
+    QMenu* move_menu = nullptr;
+    QHash<QAction*, qint64> move_targets;
+    if (!item->is_complete() || selected_queue_id_ > 0 || !item_active) {
+        if (selected_queue_id_ > 0) {
+            start_item = menu.addAction(
+                tinted_icon(QStringLiteral(":/icons/resume-start.svg"), colors::kActionBlue),
+                tr("Start"));
+            start_item->setEnabled(!item_active && !item->is_complete());
+            pause_item = menu.addAction(
+                tinted_icon(QStringLiteral(":/icons/stop.svg"), colors::kActionBlue),
+                tr("Pause"));
+            pause_item->setEnabled(item_active);
+            move_to_downloads = menu.addAction(
+                tinted_icon(QStringLiteral(":/icons/folder.svg"), colors::kNeutral),
+                tr("Move to Downloads"));
+            move_to_downloads->setEnabled(!item_active);
+        } else {
+            move_menu = menu.addMenu(tr("Move to Queue"));
+            move_menu->setEnabled(!item_active);
+            for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+                QAction* action =
+                    move_menu->addAction(QString::fromStdString(queue.name));
+                move_targets.insert(action, queue.id);
+            }
+            if (queues_.isEmpty()) {
+                QAction* none = move_menu->addAction(tr("No queues"));
+                none->setEnabled(false);
+            }
+        }
+        menu.addSeparator();
+    }
+
     QAction* properties = menu.addAction(
         tinted_icon(QStringLiteral(":/icons/properties.svg"), colors::kNeutral), tr("Properties"));
     // A completed row stays actionable even when the file is gone: the action
@@ -1272,6 +1608,17 @@ void MainWindow::on_context_menu(const QPoint& pos) {
         open_folder_for_row(row);
     } else if (chosen == properties) {
         show_properties_for_row(row);
+    } else if (chosen == start_item) {
+        if (item->queue_id <= 0 || allow_queue_item_start(item->queue_id)) {
+            start_task_at_row(row);
+        }
+    } else if (chosen == pause_item) {
+        limit_paused_items_.remove(item->id);
+        if (item->task) item->task->pause();
+    } else if (chosen == move_to_downloads) {
+        move_item_to_downloads(row);
+    } else if (move_targets.contains(chosen)) {
+        move_item_to_queue(row, move_targets.value(chosen));
     }
 }
 
@@ -1351,10 +1698,12 @@ void MainWindow::show_properties_for_row(int row) {
     dialog.exec();
 }
 
-void MainWindow::remove_row_with_cleanup(int row) {
+void MainWindow::remove_row_with_cleanup(int row, bool check_queue) {
     DownloadItem* item = model_->item_at(row);
     if (!item) return;
     const int id = item->id;
+    const qint64 queue_id = item->queue_id;
+    limit_paused_items_.remove(id);
     if (item->history_id > 0 && history_.is_open()) {
         history_.remove(item->history_id);
         last_progress_save_ms_.remove(item->history_id);
@@ -1374,20 +1723,21 @@ void MainWindow::remove_row_with_cleanup(int row) {
     if (QPointer<DownloadWindow> window = windows_.value(id)) window->close();
     windows_.remove(id);
     model_->remove_row(row);
+
+    if (check_queue && queue_id > 0) {
+        const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+        if (!queue) return;
+        if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+        check_queue_completion(queue_id);
+        rebuild_queue_tree();
+    }
 }
 
 void MainWindow::update_action_states() {
     const QList<int> rows = selected_rows();
-    ToolbarActionState actions;
-    for (const int row : rows) {
-        const DownloadItem* item = model_->item_at(row);
-        if (!item) continue;
-        merge_toolbar_action_state(actions, item->state, item->task != nullptr,
-                                   item->task && item->task->active());
-    }
-    act_resume_->setEnabled(actions.resume);
-    act_stop_->setEnabled(actions.stop);
-    act_delete_->setEnabled(!rows.isEmpty());
+    const bool overview = queue_mode_ && selected_queue_id_ <= 0;
+    const swiftdm::HistoryStore::QueueRecord* queue =
+        selected_queue_id_ > 0 ? queue_for(selected_queue_id_) : nullptr;
 
     bool can_delete_file = false;
     for (const int row : rows) {
@@ -1398,7 +1748,44 @@ void MainWindow::update_action_states() {
             break;
         }
     }
-    act_delete_file_->setEnabled(!rows.isEmpty() && can_delete_file);
+    // The table is hidden in the overview, so row actions stay off even if a
+    // selection survived the view switch.
+    act_delete_->setEnabled(!overview && !rows.isEmpty());
+    act_delete_file_->setEnabled(!overview && !rows.isEmpty() && can_delete_file);
+    act_new_->setEnabled(!queue_mode_);
+    act_queue_add_->setEnabled(queue != nullptr);
+    act_new_queue_->setEnabled(queue_features_available());
+    act_delete_queue_->setEnabled(queue != nullptr);
+    act_queue_props_->setEnabled(queue != nullptr);
+
+    if (queue != nullptr) {
+        const std::vector<QueueItemView> views = queue_views(selected_queue_id_);
+        act_resume_->setEnabled(false);
+        act_stop_->setEnabled(false);
+        act_start_queue_->setEnabled(
+            !queue_start_order(views, selected_queue_id_, true).empty());
+        act_pause_queue_->setEnabled(
+            queue_active_count(views, selected_queue_id_) > 0 ||
+            running_queues_.contains(selected_queue_id_));
+    } else if (queue_mode_) {
+        act_resume_->setEnabled(false);
+        act_stop_->setEnabled(false);
+        act_start_queue_->setEnabled(false);
+        act_pause_queue_->setEnabled(false);
+    } else {
+        ToolbarActionState actions;
+        for (const int row : rows) {
+            const DownloadItem* item = model_->item_at(row);
+            if (!item) continue;
+            merge_toolbar_action_state(actions, item->state, item->task != nullptr,
+                                       item->task && item->task->active());
+        }
+        act_resume_->setEnabled(actions.resume);
+        act_stop_->setEnabled(actions.stop);
+        act_start_queue_->setEnabled(false);
+        act_pause_queue_->setEnabled(false);
+    }
+    update_queue_action_visibility();
 }
 
 void MainWindow::on_delete_file() {
@@ -1454,6 +1841,7 @@ void MainWindow::on_resume() {
         DownloadItem* item = model_->item_at(row);
         if (!item || !item->task) continue;
         if (!item_can_resume(item->state, true, item->task->active())) continue;
+        if (item->queue_id > 0 && !allow_queue_item_start(item->queue_id)) continue;
         const int id = item->id;
         DownloadTask::Options options = item->task->options();
         options.limit_enabled = item->bandwidth_limit_enabled;
@@ -1469,6 +1857,7 @@ void MainWindow::on_stop() {
         DownloadItem* item = model_->item_at(row);
         if (!item || !item->task) continue;
         if (!item_can_stop(item->state, true, item->task->active())) continue;
+        limit_paused_items_.remove(item->id);
         item->task->pause();
     }
 }
@@ -1539,6 +1928,39 @@ void MainWindow::on_tree_selection() {
     const QList<QTreeWidgetItem*> items = tree_->selectedItems();
     const QString key =
         items.isEmpty() ? QString() : items.first()->data(0, Qt::UserRole).toString();
+
+    qint64 queue_id = 0;
+    if (key.startsWith(QStringLiteral("queue:"))) {
+        bool ok = false;
+        const qint64 parsed = key.mid(6).toLongLong(&ok);
+        if (ok && queue_for(parsed)) queue_id = parsed;
+    }
+    selected_queue_id_ = queue_id;
+
+    if (key == QStringLiteral("__queues")) {
+        queue_mode_ = true;
+        selected_queue_id_ = 0;
+        if (table_) table_->clearSelection();
+        if (right_stack_) right_stack_->setCurrentWidget(queue_overview_);
+        proxy_->set_queue_id(-1);
+        proxy_->set_category(QString());
+        proxy_->set_completion_only(false);
+        refresh_queue_overview();
+        update_status_bar();
+        return;
+    }
+
+    if (queue_id > 0) {
+        queue_mode_ = true;
+        if (right_stack_) right_stack_->setCurrentWidget(table_);
+        proxy_->set_queue_id(queue_id);
+        update_status_bar();
+        return;
+    }
+
+    queue_mode_ = false;
+    if (right_stack_) right_stack_->setCurrentWidget(table_);
+    proxy_->set_queue_id(-1);
     if (key == QStringLiteral("__complete")) {
         proxy_->set_category(QString());
         proxy_->set_completion_only(true);
@@ -1549,6 +1971,7 @@ void MainWindow::on_tree_selection() {
         proxy_->set_category(key);
         proxy_->set_completion_only(false);
     }
+    update_status_bar();
 }
 
 void MainWindow::on_row_activated(const QModelIndex& index) {
@@ -1570,6 +1993,17 @@ void MainWindow::open_download_window(int id) {
     QPointer<DownloadWindow> window = windows_.value(id);
     if (!window) {
         window = new DownloadWindow(model_, id, settings_, this);
+        const int row = model_->row_for_id(id);
+        if (const DownloadItem* item = model_->item_at(row)) {
+            if (item->queue_id > 0) {
+                if (const swiftdm::HistoryStore::QueueRecord* queue =
+                        queue_for(item->queue_id)) {
+                    window->set_queue_context(QString::fromStdString(queue->name),
+                                              queue->bandwidth_limit_enabled,
+                                              queue->bandwidth_limit_kbps);
+                }
+            }
+        }
         windows_.insert(id, window);
         connect(window, &QObject::destroyed, this, [this, id] { windows_.remove(id); });
         connect(window, &DownloadWindow::resumeRequested, this, [this](int item_id) {
@@ -1577,10 +2011,22 @@ void MainWindow::open_download_window(int id) {
             if (row < 0) return;
             DownloadItem* item = model_->item_at(row);
             if (!item || !item->task) return;
+            if (item->queue_id > 0 && !allow_queue_item_start(item->queue_id)) {
+                return;
+            }
             DownloadTask::Options options = item->task->options();
             options.limit_enabled = item->bandwidth_limit_enabled;
             options.limit_kbps = item->bandwidth_limit_kbps;
             start_task_at_row(row, &options);
+        });
+        connect(window, &DownloadWindow::pauseRequested, this, [this](int item_id) {
+            const int row = model_->row_for_id(item_id);
+            if (row < 0) return;
+            DownloadItem* item = model_->item_at(row);
+            if (!item || !item->task) return;
+            // A manual pause overrides a pause that the queue limit started.
+            limit_paused_items_.remove(item->id);
+            item->task->pause();
         });
         connect(window, &DownloadWindow::optionsApplied, this, [this](int item_id) {
             const int row = model_->row_for_id(item_id);
@@ -1589,9 +2035,16 @@ void MainWindow::open_download_window(int id) {
             if (!item || !item->task) return;
             const DownloadTask::Options& options = item->task->options();
             item->output_dir = options.output_dir;
-            item->bandwidth_limit_enabled = options.limit_enabled;
-            item->bandwidth_limit_kbps = options.limit_kbps;
-            item->task->set_live_limit(options.limit_enabled, options.limit_kbps);
+            if (item->queue_id == 0) {
+                item->bandwidth_limit_enabled = options.limit_enabled;
+                item->bandwidth_limit_kbps = options.limit_kbps;
+                item->connections = options.connections;
+                item->task->set_live_limit(options.limit_enabled, options.limit_kbps);
+            } else {
+                // Queue items ignore the per-item editor; only the queue budget
+                // applies.
+                apply_queue_speed_limits(item->queue_id);
+            }
             if (!options.category.isEmpty()) {
                 item->category = options.category;
             }
@@ -1613,10 +2066,17 @@ void MainWindow::open_download_window(int id) {
                     if (row < 0) return;
                     DownloadItem* item = model_->item_at(row);
                     if (!item || !item->task) return;
-            item->bandwidth_limit_enabled = enabled;
-            item->bandwidth_limit_kbps = kbps;
-            item->task->set_live_limit(enabled, kbps);
-            if (item->history_id > 0 && history_.is_open()) {
+                    if (item->queue_id > 0) {
+                        // The per-item editor is disabled for queue items, but
+                        // keep the row's value untouched if a stale signal
+                        // arrives and reapply the queue split.
+                        apply_queue_speed_limits(item->queue_id);
+                        return;
+                    }
+                    item->bandwidth_limit_enabled = enabled;
+                    item->bandwidth_limit_kbps = kbps;
+                    item->task->set_live_limit(enabled, kbps);
+                    if (item->history_id > 0 && history_.is_open()) {
                         history_.update(item->history_id,
                                         history_record_for(*item, &item->task->options()));
                     }
@@ -1627,6 +2087,10 @@ void MainWindow::open_download_window(int id) {
             if (row < 0) return;
             DownloadItem* item = model_->item_at(row);
             if (!item || !item->task) return;
+            if (item->queue_id > 0) {
+                apply_queue_speed_limits(item->queue_id);
+                return;
+            }
             // Keep the last debounced editor state across a pause/resume cycle.
             item->task->set_live_limit(item->bandwidth_limit_enabled,
                                        item->bandwidth_limit_kbps);
@@ -1637,19 +2101,811 @@ void MainWindow::open_download_window(int id) {
     window->activateWindow();
 }
 
+void MainWindow::load_queues() {
+    queues_.clear();
+    if (!history_.is_open()) return;
+    std::vector<swiftdm::HistoryStore::QueueRecord> records;
+    std::string error;
+    if (!history_.load_queues(&records, &error)) {
+        qWarning() << "queues: cannot load:" << QString::fromStdString(error);
+        return;
+    }
+    for (swiftdm::HistoryStore::QueueRecord& record : records) {
+        queues_.append(record);
+    }
+}
+
+void MainWindow::refresh_queue_overview() {
+    // rebuild_queue_tree() runs before the overview widgets exist in
+    // build_body(), so a null guard is required.
+    if (!queue_list_ || !queue_pages_) return;
+
+    // The theme can change while the app runs. Labels with an explicitly set
+    // palette do not follow QApplication::setPalette(), so refresh their text
+    // color from the current palette whenever the overview is rebuilt.
+    const QColor text_color =
+        QApplication::palette().color(QPalette::Active, QPalette::WindowText);
+    for (QLabel* label : {queue_title_, queue_empty_label_}) {
+        if (!label) continue;
+        QPalette palette = label->palette();
+        palette.setColor(QPalette::WindowText, text_color);
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, text_color);
+        label->setPalette(palette);
+    }
+
+    queue_list_->clear();
+    for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        const int count = queue_item_count(queue.id);
+        const QString label =
+            tr("%1 — %2").arg(QString::fromStdString(queue.name),
+                              tr("%n item(s)", nullptr, count));
+        auto* item = new QListWidgetItem(
+            tinted_icon(QStringLiteral(":/icons/queue.svg"), colors::kActionBlue),
+            label, queue_list_);
+        item->setData(Qt::UserRole, static_cast<qlonglong>(queue.id));
+        item->setToolTip(label);
+    }
+    const bool has_queues = !queues_.isEmpty();
+    queue_pages_->setCurrentIndex(has_queues ? 0 : 1);
+    if (queue_empty_label_) {
+        queue_empty_label_->setText(
+            queue_features_available()
+                ? tr("No queues yet.\nCreate a queue to group related downloads.")
+                : tr("Queues need the download history database."));
+    }
+    if (queue_empty_button_) {
+        queue_empty_button_->setEnabled(queue_features_available());
+        queue_empty_button_->setIcon(
+            tinted_icon(QStringLiteral(":/icons/queue-add.svg"), colors::kActionBlue));
+    }
+}
+
+void MainWindow::rebuild_queue_tree(qint64 select_id) {
+    if (!queues_root_) return;
+    qint64 target = select_id;
+    if (target < 0) target = selected_queue_id_;
+    while (queues_root_->childCount() > 0) delete queues_root_->takeChild(0);
+
+    QTreeWidgetItem* found = nullptr;
+    for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        auto* child = new QTreeWidgetItem(
+            queues_root_, {QString::fromStdString(queue.name)});
+        child->setData(0, Qt::UserRole, QStringLiteral("queue:%1").arg(queue.id));
+        child->setIcon(
+            0, tinted_icon(QStringLiteral(":/icons/queue.svg"), colors::kActionBlue));
+        child->setToolTip(
+            0, tr("%n item(s)", nullptr, queue_item_count(queue.id)));
+        if (queue.id == target) found = child;
+    }
+    if (queues_.isEmpty()) {
+        auto* none = new QTreeWidgetItem(queues_root_, {tr("No queues")});
+        none->setFlags(Qt::NoItemFlags);
+        none->setData(0, Qt::UserRole, QStringLiteral("__noqueues"));
+    }
+    queues_root_->setExpanded(true);
+    refresh_queue_overview();
+    if (target > 0 && found) {
+        tree_->setCurrentItem(found);
+    } else if (target > 0) {
+        // The selected queue disappeared; fall back to the overview instead
+        // of the main Downloads list.
+        selected_queue_id_ = 0;
+        queue_mode_ = true;
+        tree_->setCurrentItem(queues_root_);
+    } else if (queue_mode_ && selected_queue_id_ <= 0) {
+        tree_->setCurrentItem(queues_root_);
+    }
+}
+
+const swiftdm::HistoryStore::QueueRecord* MainWindow::queue_for(qint64 id) const {
+    for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        if (queue.id == id) return &queue;
+    }
+    return nullptr;
+}
+
+swiftdm::HistoryStore::QueueRecord* MainWindow::mutable_queue_for(qint64 id) {
+    for (swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        if (queue.id == id) return &queue;
+    }
+    return nullptr;
+}
+
+QVector<QueueChoice> MainWindow::queue_choices() const {
+    QVector<QueueChoice> choices;
+    choices.reserve(queues_.size());
+    for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        choices.append({queue.id, QString::fromStdString(queue.name)});
+    }
+    return choices;
+}
+
+int MainWindow::queue_item_count(qint64 queue_id) const {
+    int count = 0;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (item && item->queue_id == queue_id) ++count;
+    }
+    return count;
+}
+
+int MainWindow::row_for_history(qint64 history_id) const {
+    if (history_id <= 0) return -1;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (item && item->history_id == history_id) return row;
+    }
+    return -1;
+}
+
+std::vector<QueueItemView> MainWindow::queue_views(qint64 queue_id) const {
+    std::vector<QueueItemView> views;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item || item->queue_id != queue_id) continue;
+        QueueItemView view;
+        view.history_id = item->history_id;
+        view.queue_id = item->queue_id;
+        view.state = item->state;
+        view.active = item->task && item->task->active();
+        views.push_back(view);
+    }
+    return views;
+}
+
+bool MainWindow::allow_queue_item_start(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue || queue->max_simultaneous <= 0) return true;
+    if (queue_active_count(queue_views(queue_id), queue_id) <
+        queue->max_simultaneous) {
+        return true;
+    }
+    statusBar()->showMessage(
+        tr("Queue \"%1\" is at its simultaneous download limit.")
+            .arg(QString::fromStdString(queue->name)),
+        6000);
+    return false;
+}
+
+int MainWindow::queue_share_for_new_task(qint64 queue_id) const {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue || !queue->bandwidth_limit_enabled) return 0;
+    const int active = queue_active_count(queue_views(queue_id), queue_id) + 1;
+    return queue_speed_share_kbps(queue->bandwidth_limit_kbps, active);
+}
+
+void MainWindow::apply_queue_speed_limits(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) return;
+    const std::vector<QueueItemView> views = queue_views(queue_id);
+    const int active = queue_active_count(views, queue_id);
+    const int share = queue->bandwidth_limit_enabled
+                          ? queue_speed_share_kbps(queue->bandwidth_limit_kbps, active)
+                          : 0;
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item || item->queue_id != queue_id || !item->task) continue;
+        if (!item->task->active()) continue;
+        item->task->set_transfer_limit(share);
+    }
+}
+
+void MainWindow::start_queue(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) return;
+    running_queues_.insert(queue_id);
+    const bool unlimited = queue->max_simultaneous <= 0;
+    int active = queue_active_count(queue_views(queue_id), queue_id);
+    const std::vector<qint64> order =
+        queue_start_order(queue_views(queue_id), queue_id, true);
+    for (const qint64 history_id : order) {
+        if (!unlimited && active >= queue->max_simultaneous) break;
+        const int row = row_for_history(history_id);
+        DownloadItem* item = model_->item_at(row);
+        if (!item || (item->task && item->task->active())) continue;
+        start_task_at_row(row);
+        ++active;
+    }
+    apply_queue_speed_limits(queue_id);
+    update_status_bar();
+}
+
+void MainWindow::pause_queue(qint64 queue_id) {
+    running_queues_.remove(queue_id);
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item || item->queue_id != queue_id || !item->task) continue;
+        if (item->task->active()) item->task->pause();
+    }
+    update_status_bar();
+}
+
+void MainWindow::schedule_queue(qint64 queue_id) {
+    if (!running_queues_.contains(queue_id)) return;
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) {
+        running_queues_.remove(queue_id);
+        return;
+    }
+    const bool unlimited = queue->max_simultaneous <= 0;
+    int active = queue_active_count(queue_views(queue_id), queue_id);
+    if (!unlimited && active >= queue->max_simultaneous) {
+        apply_queue_speed_limits(queue_id);
+        return;
+    }
+    const std::vector<qint64> waiting = queue_waiting_order(queue_views(queue_id), queue_id);
+    for (const qint64 history_id : waiting) {
+        if (!unlimited && active >= queue->max_simultaneous) break;
+        const int row = row_for_history(history_id);
+        DownloadItem* item = model_->item_at(row);
+        if (!item || (item->task && item->task->active())) continue;
+        start_task_at_row(row);
+        ++active;
+    }
+    apply_queue_speed_limits(queue_id);
+    update_status_bar();
+}
+
+void MainWindow::enforce_queue_limit(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) return;
+    if (queue->max_simultaneous > 0) {
+        const std::vector<qint64> excess =
+            queue_items_to_pause(queue_views(queue_id), queue_id, queue->max_simultaneous);
+        for (const qint64 history_id : excess) {
+            const int row = row_for_history(history_id);
+            DownloadItem* item = model_->item_at(row);
+            if (!item || !item->task || !item->task->active()) continue;
+            limit_paused_items_.insert(item->id);
+            item->task->pause();
+        }
+    }
+    if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+    apply_queue_speed_limits(queue_id);
+    update_status_bar();
+}
+
+void MainWindow::notify_queue(qint64 queue_id, const QString& title, const QString& text) {
+    (void)queue_id;
+    if (tray_ && tray_->isVisible() && QSystemTrayIcon::supportsMessages()) {
+        tray_->showMessage(title, text, QSystemTrayIcon::Information, 6000);
+        return;
+    }
+    // No tray (or no notification support): the status bar is the fallback.
+    statusBar()->showMessage(text, 8000);
+}
+
+void MainWindow::check_queue_completion(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) return;
+    const std::vector<QueueItemView> views = queue_views(queue_id);
+    int count = 0;
+    if (!queue_all_complete(views, queue_id, &count)) {
+        complete_notified_.remove(queue_id);
+        if (shutdown_scheduler_.pending(queue_id)) cancel_queue_shutdown(queue_id);
+        return;
+    }
+    if (queue->notify_complete && !complete_notified_.contains(queue_id)) {
+        complete_notified_.insert(queue_id);
+        notify_queue(queue_id, tr("Queue Complete"),
+                     tr("All %1 downloads in queue \"%2\" are complete.")
+                         .arg(count)
+                         .arg(QString::fromStdString(queue->name)));
+    }
+    if (queue->shutdown_when_complete) {
+        // A poweroff is global, so only one countdown is active at a time. If
+        // another queue already asked for one, keep that deadline instead of
+        // arming a second timer that the dialog cannot show.
+        if (shutdown_scheduler_.pending_count() == 0) {
+            shutdown_scheduler_.arm(queue_id, queue->shutdown_delay, now_ms());
+            show_shutdown_countdown(queue_id);
+        }
+    }
+}
+
+void MainWindow::show_shutdown_countdown(qint64 queue_id) {
+    if (shutdown_box_) {
+        shutdown_box_->disconnect(this);
+        shutdown_box_->close();
+        shutdown_box_->deleteLater();
+        shutdown_box_ = nullptr;
+    }
+    shutdown_queue_id_ = queue_id;
+    auto* box = new QMessageBox(this);
+    box->setObjectName(QStringLiteral("shutdown_countdown"));
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->setWindowTitle(tr("Shutdown"));
+    box->setIconPixmap(dialog_warning_pixmap());
+    QPushButton* now = box->addButton(tr("Shut Down Now"), QMessageBox::AcceptRole);
+    QPushButton* cancel = box->addButton(QMessageBox::Cancel);
+    box->setDefaultButton(cancel);
+    connect(now, &QPushButton::clicked, this, [this, queue_id] {
+        perform_shutdown(queue_id);
+    });
+    connect(box, &QDialog::rejected, this, [this, queue_id] {
+        cancel_queue_shutdown(queue_id, true);
+    });
+    connect(box, &QObject::destroyed, this, [this, box] {
+        if (shutdown_box_ == box) shutdown_box_ = nullptr;
+    });
+    shutdown_box_ = box;
+    update_shutdown_text();
+    box->adjustSize();
+    box->move(frameGeometry().center() - box->rect().center());
+    box->show();
+    box->raise();
+    if (shutdown_timer_) shutdown_timer_->start();
+}
+
+void MainWindow::update_shutdown_text() {
+    if (!shutdown_box_ || shutdown_queue_id_ <= 0) return;
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(shutdown_queue_id_);
+    const int seconds =
+        shutdown_scheduler_.remaining_seconds(shutdown_queue_id_, now_ms());
+    const QString when = seconds > 0 ? tr("in %1 seconds").arg(seconds) : tr("now");
+    shutdown_box_->setText(
+        tr("All items in queue \"%1\" are complete.\n\n"
+           "Other active downloads and queues will be paused before the computer "
+           "shuts down.\n\nShutting down %2.")
+            .arg(queue ? QString::fromStdString(queue->name) : QString(), when));
+}
+
+void MainWindow::on_shutdown_tick() {
+    const qint64 due = shutdown_scheduler_.poll_due(now_ms());
+    if (due > 0) {
+        perform_shutdown(due);
+        return;
+    }
+    if (shutdown_scheduler_.pending_count() == 0 && shutdown_timer_) {
+        shutdown_timer_->stop();
+    }
+    update_shutdown_text();
+}
+
+void MainWindow::cancel_queue_shutdown(qint64 queue_id, bool user_cancelled) {
+    shutdown_scheduler_.cancel(queue_id);
+    if (shutdown_queue_id_ != queue_id) return;
+    shutdown_queue_id_ = 0;
+    if (shutdown_timer_) shutdown_timer_->stop();
+    if (shutdown_box_) {
+        QMessageBox* box = shutdown_box_;
+        shutdown_box_ = nullptr;
+        box->disconnect(this);
+        box->close();
+        box->deleteLater();
+    }
+    if (!user_cancelled) return;
+    statusBar()->showMessage(tr("Shutdown cancelled."), 6000);
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (queue && queue->notify_complete && !complete_notified_.contains(queue_id)) {
+        complete_notified_.insert(queue_id);
+        notify_queue(queue_id, tr("Queue Complete"),
+                     tr("All downloads in queue \"%1\" are complete.")
+                         .arg(QString::fromStdString(queue->name)));
+    }
+}
+
+void MainWindow::perform_shutdown(qint64 queue_id) {
+    if (shutting_down_) return;
+    if (!queue_all_complete(queue_views(queue_id), queue_id)) {
+        cancel_queue_shutdown(queue_id);
+        return;
+    }
+    shutting_down_ = true;
+    shutdown_queue_id_ = 0;
+    shutdown_scheduler_.cancel_all();
+    if (shutdown_timer_) shutdown_timer_->stop();
+    if (shutdown_box_) {
+        QMessageBox* box = shutdown_box_;
+        shutdown_box_ = nullptr;
+        box->disconnect(this);
+        box->close();
+        box->deleteLater();
+    }
+
+    // No queue may schedule a new task while the machine is going down.
+    running_queues_.clear();
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        DownloadItem* item = model_->item_at(row);
+        if (!item || !item->task) continue;
+        if (!item->task->active()) continue;
+        item->task->pause_and_wait();
+        const DownloadTask::Snapshot snapshot = item->task->snapshot();
+        if (!item->is_complete() && snapshot.done > 0) {
+            item->done = snapshot.done;
+            if (snapshot.total > 0) item->size = snapshot.total;
+            item->percent =
+                item->size > 0 ? swiftdm::percent_of(item->done, item->size) : 0;
+        }
+        if (!item->task->workspace_dir().isEmpty()) {
+            item->temp_path = item->task->workspace_dir();
+        }
+        item->state = item->queue_id > 0 ? DownloadItem::State::Queued
+                                         : DownloadItem::State::Paused;
+        if (item->history_id > 0 && history_.is_open()) {
+            history_.update(item->history_id,
+                            history_record_for(*item, &item->task->options()));
+        }
+    }
+    update_status_bar();
+    statusBar()->showMessage(tr("All downloads paused; shutting down…"), 0);
+    qInfo() << "shutdown: queue" << queue_id << "complete; powering off";
+
+    bool started = QProcess::startDetached(QStringLiteral("systemctl"),
+                                           {QStringLiteral("poweroff")});
+    if (!started) {
+        started = QProcess::startDetached(QStringLiteral("shutdown"),
+                                          {QStringLiteral("-h"), QStringLiteral("now")});
+    }
+    if (started) return;
+
+    shutting_down_ = false;
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Shutdown Failed"));
+    box.setIconPixmap(dialog_warning_pixmap());
+    box.setText(tr("Could not start the shutdown command.\n\n"
+                   "Your active downloads were paused."));
+    box.addButton(QMessageBox::Close);
+    box.exec();
+    update_status_bar();
+}
+
+void MainWindow::start_autostart_queues() {
+    for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+        if (queue.autostart) start_queue(queue.id);
+    }
+}
+
+void MainWindow::move_item_to_queue(int row, qint64 queue_id) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item || item->queue_id == queue_id) return;
+    if (item->task && item->task->active()) return;
+    if (queue_id > 0 && !queue_for(queue_id)) return;
+
+    const qint64 old_queue = item->queue_id;
+    item->queue_id = queue_id;
+    if (queue_id > 0 && item->state == DownloadItem::State::Paused) {
+        item->state = DownloadItem::State::Queued;
+    } else if (queue_id == 0 && item->state == DownloadItem::State::Queued) {
+        item->state = DownloadItem::State::Paused;
+    }
+    if (item->history_id > 0 && history_.is_open()) {
+        history_.update_queue_id(item->history_id, queue_id, history_status(item->state));
+    }
+    if (QPointer<DownloadWindow> window = windows_.value(item->id)) {
+        if (const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id)) {
+            window->set_queue_context(QString::fromStdString(queue->name),
+                                      queue->bandwidth_limit_enabled,
+                                      queue->bandwidth_limit_kbps);
+        } else {
+            window->clear_queue_context();
+        }
+    }
+    model_->touch_row(row);
+    if (proxy_) proxy_->set_queue_id(selected_queue_id_ > 0 ? selected_queue_id_ : -1);
+
+    if (old_queue > 0) {
+        if (running_queues_.contains(old_queue)) schedule_queue(old_queue);
+        check_queue_completion(old_queue);
+    }
+    if (queue_id > 0) {
+        // Moving an already-complete row into a queue is not new work: keep a
+        // pending all-complete countdown and the one-shot notification state
+        // intact. Any other state makes the queue incomplete again.
+        if (item->state != DownloadItem::State::Complete) {
+            cancel_queue_shutdown(queue_id);
+            complete_notified_.remove(queue_id);
+            if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
+            check_queue_completion(queue_id);
+        }
+    }
+    rebuild_queue_tree();
+    update_status_bar();
+}
+
+void MainWindow::move_item_to_downloads(int row) {
+    move_item_to_queue(row, 0);
+}
+
+void MainWindow::move_selected_to_downloads() {
+    for (const int row : selected_rows()) move_item_to_downloads(row);
+}
+
+void MainWindow::open_queue_properties(qint64 queue_id) {
+    swiftdm::HistoryStore::QueueRecord* queue = mutable_queue_for(queue_id);
+    if (!queue) return;
+    QueuePropertiesDialog dialog(*queue, queue_item_count(queue_id), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const swiftdm::HistoryStore::QueueRecord updated = dialog.result();
+    if (history_.is_open()) {
+        std::string error;
+        if (!history_.update_queue(updated, &error)) {
+            show_error_dialog(QString(), QString::fromStdString(error));
+            return;
+        }
+    }
+    *queue = updated;
+    if (!updated.shutdown_when_complete) cancel_queue_shutdown(queue_id);
+    rebuild_queue_tree(queue_id);
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item || item->queue_id != queue_id) continue;
+        if (QPointer<DownloadWindow> window = windows_.value(item->id)) {
+            window->set_queue_context(QString::fromStdString(updated.name),
+                                      updated.bandwidth_limit_enabled,
+                                      updated.bandwidth_limit_kbps);
+        }
+    }
+    enforce_queue_limit(queue_id);
+    update_status_bar();
+}
+
+void MainWindow::rename_queue(qint64 queue_id) {
+    swiftdm::HistoryStore::QueueRecord* queue = mutable_queue_for(queue_id);
+    if (!queue) return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, tr("Rename Queue"), tr("Queue name:"), QLineEdit::Normal,
+        QString::fromStdString(queue->name), &ok);
+    if (!ok) return;
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) return;
+    swiftdm::HistoryStore::QueueRecord updated = *queue;
+    updated.name = trimmed.toStdString();
+    if (history_.is_open()) {
+        std::string error;
+        if (!history_.update_queue(updated, &error)) {
+            show_error_dialog(QString(), QString::fromStdString(error));
+            return;
+        }
+    }
+    *queue = updated;
+    rebuild_queue_tree(queue_id);
+    for (int row = 0; row < model_->rowCount(); ++row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (!item || item->queue_id != queue_id) continue;
+        if (QPointer<DownloadWindow> window = windows_.value(item->id)) {
+            window->set_queue_context(QString::fromStdString(updated.name),
+                                      updated.bandwidth_limit_enabled,
+                                      updated.bandwidth_limit_kbps);
+        }
+    }
+    update_status_bar();
+}
+
+void MainWindow::delete_queue(qint64 queue_id) {
+    const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);
+    if (!queue) return;
+    const QString name = QString::fromStdString(queue->name);
+    const int count = queue_item_count(queue_id);
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Delete Queue"));
+    box.setIconPixmap(dialog_warning_pixmap());
+    box.setText(tr("Delete queue \"%1\" and its %2 download(s)?").arg(name).arg(count));
+    box.setInformativeText(
+        tr("Partial downloads and temporary files will be removed. Completed files "
+           "stay on disk."));
+    QPushButton* delete_button = box.addButton(tr("Delete Queue"), QMessageBox::DestructiveRole);
+    QPushButton* cancel_button = box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(cancel_button);
+    box.exec();
+    if (box.clickedButton() != delete_button) return;
+
+    cancel_queue_shutdown(queue_id);
+    running_queues_.remove(queue_id);
+    complete_notified_.remove(queue_id);
+    for (int row = model_->rowCount() - 1; row >= 0; --row) {
+        const DownloadItem* item = model_->item_at(row);
+        if (item && item->queue_id == queue_id) remove_row_with_cleanup(row, false);
+    }
+    if (history_.is_open()) {
+        std::string error;
+        if (!history_.remove_queue(queue_id, &error)) {
+            show_error_dialog(QString(), QString::fromStdString(error));
+        }
+    }
+    for (int i = 0; i < queues_.size(); ++i) {
+        if (queues_[i].id == queue_id) {
+            queues_.removeAt(i);
+            break;
+        }
+    }
+    selected_queue_id_ = 0;
+    queue_mode_ = true;
+    rebuild_queue_tree();
+    if (queues_root_) tree_->setCurrentItem(queues_root_);
+    proxy_->set_queue_id(-1);
+    proxy_->set_category(QString());
+    proxy_->set_completion_only(false);
+    if (table_) table_->clearSelection();
+    if (right_stack_) right_stack_->setCurrentWidget(queue_overview_);
+    refresh_queue_overview();
+    update_status_bar();
+}
+
+void MainWindow::on_new_queue() {
+    if (!queue_features_available()) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Queues Unavailable"));
+        box.setIconPixmap(dialog_warning_pixmap());
+        box.setText(tr("Queues need the download history database, which is not "
+                       "available right now."));
+        box.addButton(QMessageBox::Close);
+        box.exec();
+        return;
+    }
+    const bool from_overview = queue_mode_ && selected_queue_id_ <= 0;
+    bool ok = false;
+    const QString suggested = tr("Queue %1").arg(queues_.size() + 1);
+    const QString name = QInputDialog::getText(this, tr("New Queue"), tr("Queue name:"),
+                                               QLineEdit::Normal, suggested, &ok);
+    if (!ok) return;
+    QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) trimmed = suggested;
+
+    swiftdm::HistoryStore::QueueRecord queue;
+    queue.name = trimmed.toStdString();
+    queue.max_simultaneous = 1;
+    queue.connections = 0;
+    queue.bandwidth_limit_enabled = false;
+    queue.bandwidth_limit_kbps = 1024;
+    queue.shutdown_delay = 60;
+    std::string error;
+    const int64_t id = history_.insert_queue(queue, &error);
+    if (id <= 0) {
+        show_error_dialog(QString(), QString::fromStdString(error));
+        return;
+    }
+    queue.id = id;
+    queues_.append(queue);
+    if (from_overview) {
+        // Keep the overview visible so the new queue shows up in the list.
+        rebuild_queue_tree();
+    } else {
+        rebuild_queue_tree(id);
+    }
+    update_status_bar();
+}
+
+void MainWindow::on_delete_queue() {
+    if (selected_queue_id_ > 0) delete_queue(selected_queue_id_);
+}
+
+void MainWindow::on_queue_overview_clicked(QListWidgetItem* item) {
+    if (!item || !queues_root_) return;
+    const qint64 queue_id = item->data(Qt::UserRole).toLongLong();
+    if (queue_id <= 0) return;
+    const QString key = QStringLiteral("queue:%1").arg(queue_id);
+    for (int i = 0; i < queues_root_->childCount(); ++i) {
+        QTreeWidgetItem* child = queues_root_->child(i);
+        if (child && child->data(0, Qt::UserRole).toString() == key) {
+            tree_->setCurrentItem(child);
+            return;
+        }
+    }
+}
+
+void MainWindow::on_start_queue() {
+    if (selected_queue_id_ > 0) start_queue(selected_queue_id_);
+}
+
+void MainWindow::on_pause_queue() {
+    if (selected_queue_id_ > 0) pause_queue(selected_queue_id_);
+}
+
+void MainWindow::on_queue_properties() {
+    if (selected_queue_id_ > 0) open_queue_properties(selected_queue_id_);
+}
+
+void MainWindow::on_tree_context_menu(const QPoint& pos) {
+    QTreeWidgetItem* tree_item = tree_->itemAt(pos);
+    if (!tree_item) return;
+    qint64 queue_id = 0;
+    const QString key = tree_item->data(0, Qt::UserRole).toString();
+    if (key.startsWith(QStringLiteral("queue:"))) {
+        bool ok = false;
+        const qint64 parsed = key.mid(6).toLongLong(&ok);
+        if (ok) queue_id = parsed;
+    }
+    if (tree_item != queues_root_ && queue_id <= 0) return;
+
+    QMenu menu(this);
+    QAction* new_queue = menu.addAction(
+        tinted_icon(QStringLiteral(":/icons/queue-add.svg"), colors::kActionBlue),
+        tr("New Queue"));
+    QAction* start = nullptr;
+    QAction* pause = nullptr;
+    QAction* add_url = nullptr;
+    QAction* rename = nullptr;
+    QAction* properties = nullptr;
+    QAction* delete_action = nullptr;
+    if (queue_id > 0) {
+        menu.addSeparator();
+        start = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/resume-start.svg"), colors::kActionBlue),
+            tr("Start Queue"));
+        pause = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/stop.svg"), colors::kActionBlue),
+            tr("Stop Queue"));
+        add_url = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/link-plus.svg"), colors::kActionBlue),
+            tr("New URL"));
+        menu.addSeparator();
+        rename = menu.addAction(tr("Rename"));
+        properties = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/queue-settings.svg"), colors::kNeutral),
+            tr("Properties"));
+        delete_action = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/queue-delete.svg"), colors::kDanger),
+            tr("Delete Queue"));
+    }
+
+    QAction* chosen = menu.exec(tree_->viewport()->mapToGlobal(pos));
+    if (!chosen) return;
+    if (chosen == new_queue) {
+        on_new_queue();
+    } else if (chosen == start) {
+        start_queue(queue_id);
+    } else if (chosen == pause) {
+        pause_queue(queue_id);
+    } else if (chosen == add_url) {
+        tree_->setCurrentItem(tree_item);
+        on_new_url();
+    } else if (chosen == rename) {
+        rename_queue(queue_id);
+    } else if (chosen == properties) {
+        open_queue_properties(queue_id);
+    } else if (chosen == delete_action) {
+        delete_queue(queue_id);
+    }
+}
+
+void MainWindow::update_queue_action_visibility() {
+    if (!act_start_queue_) return;
+    const bool queue_mode = queue_mode_;
+    act_new_->setVisible(!queue_mode);
+    act_resume_->setVisible(!queue_mode);
+    act_stop_->setVisible(!queue_mode);
+    act_queue_add_->setVisible(queue_mode);
+    act_start_queue_->setVisible(queue_mode);
+    act_pause_queue_->setVisible(queue_mode);
+    act_queue_props_->setVisible(queue_mode);
+    act_new_queue_->setVisible(queue_mode);
+    act_delete_queue_->setVisible(queue_mode);
+    if (sep_after_new_) sep_after_new_->setVisible(!queue_mode);
+    if (sep_download_actions_) sep_download_actions_->setVisible(!queue_mode);
+    if (sep_queue_actions_) sep_queue_actions_->setVisible(queue_mode);
+    if (sep_queue_transfer_actions_) sep_queue_transfer_actions_->setVisible(queue_mode);
+}
+
 void MainWindow::update_status_bar() {
     int active = 0;
+    int queued = 0;
     int paused = 0;
     int complete = 0;
     int failed = 0;
+    int scoped_total = 0;
+    int global_active = 0;
     for (int row = 0; row < model_->rowCount(); ++row) {
         const DownloadItem* item = model_->item_at(row);
         if (!item) continue;
+        const bool is_active = item->state == DownloadItem::State::Downloading ||
+                               item->state == DownloadItem::State::Probing;
+        if (is_active) ++global_active;
+        const bool in_scope = selected_queue_id_ > 0
+                                  ? item->queue_id == selected_queue_id_
+                                  : (!queue_mode_ && item->queue_id == 0);
+        if (!in_scope) continue;
+        ++scoped_total;
         switch (item->state) {
             case DownloadItem::State::Downloading:
-            case DownloadItem::State::Queued:
             case DownloadItem::State::Probing:
                 ++active;
+                break;
+            case DownloadItem::State::Queued:
+                ++queued;
                 break;
             case DownloadItem::State::Paused:
                 ++paused;
@@ -1662,17 +2918,41 @@ void MainWindow::update_status_bar() {
                 break;
         }
     }
-    status_label_->setText(
-        tr("%1 downloads — %2 active, %3 paused, %4 complete, %5 error")
-            .arg(model_->rowCount())
-            .arg(active)
-            .arg(paused)
-            .arg(complete)
-            .arg(failed));
+    if (queue_mode_ && selected_queue_id_ <= 0) {
+        int queue_items = 0;
+        for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
+            queue_items += queue_item_count(queue.id);
+        }
+        status_label_->setText(
+            tr("Queues — %1 — %2")
+                .arg(tr("%n queue(s)", nullptr, static_cast<int>(queues_.size())),
+                     tr("%n item(s)", nullptr, queue_items)));
+    } else if (selected_queue_id_ > 0) {
+        const swiftdm::HistoryStore::QueueRecord* queue = queue_for(selected_queue_id_);
+        status_label_->setText(
+            tr("Queue \"%1\" — %2 items — %3 active, %4 queued, %5 paused, %6 complete, "
+               "%7 error")
+                .arg(queue ? QString::fromStdString(queue->name) : QString())
+                .arg(scoped_total)
+                .arg(active)
+                .arg(queued)
+                .arg(paused)
+                .arg(complete)
+                .arg(failed));
+    } else {
+        status_label_->setText(
+            tr("%1 downloads — %2 active, %3 queued, %4 paused, %5 complete, %6 error")
+                .arg(scoped_total)
+                .arg(active)
+                .arg(queued)
+                .arg(paused)
+                .arg(complete)
+                .arg(failed));
+    }
     // Push the app status to subscribed extension sockets (idle/busy), which is
     // the local equivalent of the original application's waiting/nowaiting
     // notifications.
-    if (browser_integration_) browser_integration_->set_status(active == 0, active);
+    if (browser_integration_) browser_integration_->set_status(global_active == 0, global_active);
     update_action_states();
 }
 

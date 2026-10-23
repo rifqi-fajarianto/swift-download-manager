@@ -34,7 +34,9 @@ worker tasks, download window (segment bar + connections table), settings
 dialog, tray icon and completion/error dialogs; CMake install rules and a
 `.deb` package. The download list is restored from SQLite at startup (0.17.0),
 and every transfer — manual or browser-sent — is confirmed before it starts,
-with category and location overrides (0.18.0). Verified by CLI, integration
-tests and a headless icon-rendering test (see CHANGELOG.md). Remaining gaps
-(per-download log file and editable URL, passwords UI, queue scheduling,
-Firefox extension) are tracked in `06-parity-checklist.md`.
+with category and location overrides (0.18.0). Named queues with independent
+scheduling, limits, notifications and optional shutdown are implemented in
+0.19.0; the queue overview and queue-mode toolbar arrived in 0.19.1. Verified
+by CLI, integration tests and headless UI tests (see
+CHANGELOG.md). Remaining gaps (per-download log file and editable URL,
+passwords UI, Firefox extension) are tracked in `06-parity-checklist.md`.

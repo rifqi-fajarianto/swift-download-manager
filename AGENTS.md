@@ -46,14 +46,27 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-22**, versi kerja **0.18.22**. Status ini cepat
+> Snapshot terakhir: **2026-10-23**, versi kerja **0.19.1**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit merge di `main`**: `dd6b179` — merge branch `ux` (0.18.8).
-- **Branch kerja saat snapshot**: `engine`.
-- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.8.
-- **Versi kerja**: 0.18.22. Window Download Properties memakai empat section
+- **Commit terakhir di `main`**: `d76d45a` — refactor(ui): group the download
+  confirmation into labeled sections (0.18.22).
+- **Branch kerja saat snapshot**: `queue`.
+- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.22.
+- **Versi kerja**: 0.19.1. Named queues: cabang `Queues` di sidebar, tabel
+  `queues` + kolom `downloads.queueid`, dialog `Queue Properties` (max
+  simultaneous 0 = Unlimited, connections 0 = global, limit kecepatan total
+  queue, autostart, notifikasi, shutdown dengan delay), `Start Queue`/`Stop
+  Queue` dengan urutan insertion, pemindahan item antara Downloads dan queue,
+  hapus queue, notifikasi all-complete, dan shutdown countdown yang bisa
+  dibatalkan. Memilih cabang `Queues` langsung mengaktifkan mode toolbar queue
+  dan menampilkan overview queue (nama + jumlah item, atau prompt `New Queue`
+  bila kosong); memilih queue dari overview membuka daftar unduhannya. Urutan
+  toolbar queue: `New Queue`, `Delete Queue`, `Queue Properties` | `Start
+  Queue`, `Stop Queue` | `New URL`, `Delete`, `Delete File`, dengan aksi
+  queue-specific nonaktif sampai satu queue dibuka. Window Download Properties
+  memakai empat section
   berlabel (`General`, `Location`, `Source`, `Time`) dengan judul bold dan
   label sentence case; field dan perilakunya tidak berubah. Window dibuka
   650×690, nama file panjang di-elide di tengah dengan tooltip, dan baris
@@ -131,7 +144,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.18.22
+### Sudah tersedia sampai 0.19.1
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -142,7 +155,14 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 - Resolusi interstitial Google Drive dan ringkasan alasan penolakan host
   (JSON/HTML body) pada pesan error.
 - CLI headless `swiftdm get` dan GUI Qt6 lengkap dengan tray, kategori,
-  properties, konfirmasi download, serta pemulihan riwayat dari SQLite.
+  properties, konfirmasi download, queue, serta pemulihan riwayat dari SQLite.
+- Named queues (0.19.0): workspace terpisah dari daftar utama, Queue
+  Properties, scheduling dan batas simultan, limit kecepatan bersama,
+  koneksi per queue, autostart, notifikasi, shutdown, pemindahan item, dan
+  penghapusan queue. Sejak 0.19.1, cabang `Queues` menampilkan overview queue
+  dan toolbar queue dengan urutan `New Queue`, `Delete Queue`, `Queue
+  Properties` | `Start Queue`, `Stop Queue` | `New URL`, `Delete`,
+  `Delete File`.
 - Integrasi Chromium MV3: handoff otomatis/manual, cookie opsional, deteksi
   HLS dan pasangan video+audio, status push lewat WebSocket; socket command
   dipakai ulang untuk handoff berurutan selama masih terbuka.
@@ -152,8 +172,26 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.18.22 — riwayat fitur
+### 0.18.1–0.19.1 — riwayat fitur
 
+- 0.19.1 memilih cabang `Queues` langsung mengaktifkan toolbar queue dan
+  menampilkan overview queue di panel kanan; queue-specific actions
+  dinonaktifkan sampai satu queue dipilih. Toolbar queue memakai urutan `New
+  Queue`, `Delete Queue`, `Queue Properties` | `Start Queue`, `Stop Queue` |
+  `New URL`, `Delete`, `Delete File`, dan icon queue baru (`queue.svg`,
+  `queue-add.svg`, `queue-delete.svg`, `queue-settings.svg`). `Move to
+  Downloads` hanya ada di context menu item. Judul overview memakai warna teks
+  tema aktif dengan font bold sedikit lebih besar, dan warna judul/empty-state
+  di-refresh saat tema berubah agar terbaca di mode terang maupun gelap.
+- 0.19.0 menambahkan named queues: tabel `queues` dan kolom
+  `downloads.queueid` (migrasi additive), cabang `Queues` di sidebar,
+  dialog `Queue Properties`, scheduling `Start Queue`/`Pause Queue` dengan
+  urutan insertion, batas simultan (0 = Unlimited), koneksi per queue (0 =
+  global), limit kecepatan total yang dibagi ke item aktif, autostart,
+  notifikasi per item/all-complete, shutdown countdown, pemindahan item
+  Downloads ↔ queue, dan hapus queue. Test baru `queue_logic` dan
+  `queue_dialog`; `history`, `confirm_dialog`, dan `download_window`
+  diperluas.
 - Toggle "Enable speed limiter" global (`BandWidthLimitEnabled`) dan
   per-download (`bandwidthlimit_enabled` di history).
 - `SpeedLimitEditor` bersama untuk Settings dan tab Options Download window:
@@ -284,8 +322,6 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ### Rencana / gap yang diketahui
 
-- Queue scheduling dan batas unduhan simultan; tombol "Add to queue" masih
-  placeholder.
 - Per-download log file dan URL yang dapat diedit di Properties.
 - UI saved passwords (`auths`).
 - Penerapan "Get File Creation Date From Server" ke mtime file.
@@ -304,8 +340,8 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 | `src/core/` | Logging (`log.*`) dan utilitas umum: format byte/speed/durasi, path XDG, sanitasi nama file, pencarian file hasil unduhan. |
 | `src/engine/` | `DownloadEngine::run`, request/result/progress, workspace, segment plan + state `segments.json`, kategori, HLS. |
 | `src/net/` | Lapisan libcurl: `probe_url`, `fetch_text`, `stream_download`, `SegmentDownloader`, resolver interstitial Google Drive. |
-| `src/store/` | `Settings` (INI) dan `HistoryStore` (SQLite: `downloads`, `headers`, `auths`). |
-| `src/ui/` | Qt6 Widgets: `MainWindow`, model/filter, `DownloadTask` (worker thread), dialog-dialog, tema/ikon, dan `BrowserIntegration` (WebSocket loopback). |
+| `src/store/` | `Settings` (INI) dan `HistoryStore` (SQLite: `downloads`, `headers`, `auths`, `queues`). |
+| `src/ui/` | Qt6 Widgets: `MainWindow`, model/filter, `DownloadTask` (worker thread), dialog-dialog, `queue_logic`/`queue_dialog`, tema/ikon, dan `BrowserIntegration` (WebSocket loopback). |
 | `ext/chromium/` | Ekstensi Chromium Manifest V3 (popup, service worker, cookie permission, ikon). |
 | `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, dan test protokol browser. |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
@@ -317,15 +353,15 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 ### Alur data utama
 
 1. **Manual / browser** → probe URL tanpa membuat row/DB entry → dialog
-   konfirmasi (kategori + lokasi) → `DownloadItem` + `DownloadTask`.
+   konfirmasi (kategori + lokasi + queue) → `DownloadItem` + `DownloadTask`.
 2. **`DownloadTask`** berjalan di worker thread → `DownloadEngine::run` →
    `probe_url` → segmented download atau sequential stream (HTTP/FTP/HLS) →
    workspace sementara → file final.
 3. **Progress** dikirim lewat signal Qt ke model/UI; checkpoint progress
    ditulis ke SQLite sekitar tiap 5 detik dan saat keluar.
 4. **Startup** → `HistoryStore::load_all` → `MainWindow::restore_history`
-   membangun ulang daftar; row yang masih aktif menjadi Paused dan tidak
-   dimulai otomatis.
+   membangun ulang daftar; row aktif di main menjadi Paused, row queue menjadi
+   Queued, dan queue dengan autostart dijalankan.
 5. **Browser** → WebSocket `swiftdm.v1` di `127.0.0.1:10007` →
    `BrowserIntegration` → `MainWindow` → konfirmasi yang sama seperti manual.
 
@@ -362,8 +398,9 @@ Menjalankan aplikasi:
 Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
 `media`, `filenames`, `http`, `extension_logic` (butuh Node), `icons` (offscreen),
 `confirm_dialog` (offscreen), `settings_dialog` (offscreen),
-`properties_dialog` (offscreen), `download_window` (offscreen), `action_state`,
-`theme` (offscreen), dan `browser_protocol` (tanpa GUI). Test HTTP/FTP memakai
+`properties_dialog` (offscreen), `download_window` (offscreen), `queue_logic`,
+`queue_dialog` (offscreen), `action_state`, `theme` (offscreen), dan
+`browser_protocol` (tanpa GUI). Test HTTP/FTP memakai
 server lokal di `tests/http_test_server.h` dan `tests/ftp_test_server.h`.
 
 Regenerasi ikon setelah mengubah SVG:
@@ -460,7 +497,8 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
   (default `~/.config/swiftdm/swiftdm.ini`).
 - Database: `$XDG_DATA_HOME/swiftdm/swiftdm.db`
   (default `~/.local/share/swiftdm/swiftdm.db`); tabel `downloads`, `headers`,
-  `auths`.
+  `auths`, `queues`; `downloads.queueid` menunjuk queue pemilik row
+  (0/NULL = daftar utama).
 - Temp/workspace: default `$XDG_DATA_HOME/swiftdm/tmp`, satu direktori
   `download-<hash>/` berisi `<nama>.part` dan `segments.json`. Workspace
   dipertahankan saat pause/error/keluar dan dihapus saat selesai atau row

@@ -34,6 +34,11 @@ struct DownloadItem {
     QString page_title;  // title of that page
     QString group;       // adaptive pair token (video + audio), empty otherwise
     qint64 history_id = 0;  // row id in the SQLite history (0 = not stored)
+    // 0 = the main Downloads list; otherwise the owning queue.
+    qint64 queue_id = 0;
+    // Per-item connection count (0 = global Settings). Queue transfers use the
+    // queue's value instead, but the row keeps this for a move back.
+    int connections = 0;
     bool resumable = false;
     // Per-download speed limiter (mirrors the task options/history row so the
     // progress window can show them for restored/completed rows too).
@@ -131,6 +136,9 @@ class DownloadFilterProxy : public QSortFilterProxyModel {
     void set_category(const QString& category);  // empty = all
     void set_completion_only(bool complete_only);
     void set_incomplete_only(bool incomplete_only);
+    // 0/-1 = the main Downloads list; > 0 = that queue. A queue
+    // view ignores the category and completion filters.
+    void set_queue_id(qint64 queue_id);
 
   protected:
     bool filterAcceptsRow(int source_row, const QModelIndex& source_parent) const override;
@@ -139,6 +147,7 @@ class DownloadFilterProxy : public QSortFilterProxyModel {
     QString category_;
     bool complete_only_ = false;
     bool incomplete_only_ = false;
+    qint64 queue_id_ = -1;
 };
 
 }  // namespace swiftdm::ui

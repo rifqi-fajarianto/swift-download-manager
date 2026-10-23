@@ -89,6 +89,14 @@ are our own choices where the original is UNKNOWN (E23).
   Pause/cancel interrupts a pacing wait. The history value is updated when the
   debounced UI edit is applied. Other Options fields still take effect on
   resume only.
+- **Queue limit (0.19.0)**: a queue with `bandwidthlimit_enabled` sets a total
+  KB/s budget. Every active item in the queue gets
+  `max(1 KB/s, total / active_count)` through the same live rate gate; the
+  split is recomputed when an item starts or finishes and when the queue
+  properties change. Queue transfers are started with their per-item limiter
+  off, so the queue budget is the only rate limit while the item belongs to
+  the queue. Moving the item back to Downloads restores its stored per-item
+  value.
 
 ## 5. Retry and error handling
 
@@ -127,11 +135,39 @@ are our own choices where the original is UNKNOWN (E23).
   Remaining Time = remaining bytes / current speed, falling back to `--` when
   speed is 0. Table refresh interval **[design: 1 s]**.
 
-## 7. Scheduling and limits **[design]**
+## 7. Scheduling and limits (0.19.0)
 
-- Queue: sequential; downloads not complete count against the "simultaneous
-  downloads" concept only when active. v1: unlimited simultaneous active
-  downloads (original behavior UNKNOWN), but a setting is reserved.
+A queue is a named workspace, not a FIFO status in the main table. The
+scheduler works on the rows whose `downloads.queueid` equals the queue id.
+
+- `Start Queue` resumes `Queued`, `Paused` and `Error` rows in insertion order
+  (`history_id` ascending). The automatic scheduler (`schedule_queue`) starts
+  only `Queued` rows; a manual pause therefore stays paused, and a failed row
+  waits for an explicit start.
+- `max_simultaneous` (0 = unlimited, maximum 64) caps the number of active
+  tasks in the queue. When the limit is lowered, the newest active rows are
+  paused and marked as limit-paused; when their pause completes they return to
+  `Queued` and may be picked up when a slot is free. A pause requested by the
+  user is not marked, so it stays `Paused`. A manual start from the context
+  menu or the progress window is refused with a status-bar message while the
+  queue is already at its limit.
+- A queue with autostart starts at application launch after the history has
+  been restored. Active rows from the previous run are restored as `Queued`;
+  without autostart they wait for `Start Queue`.
+- `connections` (0 = global Settings) overrides the per-item connection count
+  for every transfer started from the queue. The item's stored per-item value
+  is preserved for a later move to Downloads.
+- Queue completion is detected when the last item reaches `Complete`. The
+  queue can notify once, and/or arm a cancellable shutdown countdown
+  (`shutdown_delay`, minimum 5 s). Only one countdown runs at a time; a second
+  complete queue keeps the pending deadline. Before powering off, the app
+  pauses every active download and queue, persists progress and state, and
+  runs `systemctl poweroff`; `shutdown -h now` is the fallback when that
+  command cannot be started. Adding a new item or moving an incomplete item
+  into the queue cancels a pending countdown. Changing queue settings on an
+  already complete queue does not re-trigger completion actions.
+- Queue rows and their settings are persisted in SQLite (`02-data-model.md`
+  §1); no queue key is added to the INI file.
 
 ## 8. Threading **[design]**
 

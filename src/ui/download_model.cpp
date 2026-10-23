@@ -269,6 +269,11 @@ void DownloadFilterProxy::set_incomplete_only(bool incomplete_only) {
     invalidateFilter();
 }
 
+void DownloadFilterProxy::set_queue_id(qint64 queue_id) {
+    queue_id_ = queue_id > 0 ? queue_id : -1;
+    invalidateFilter();
+}
+
 bool DownloadFilterProxy::filterAcceptsRow(int source_row,
                                            const QModelIndex& source_parent) const {
     auto* model = qobject_cast<DownloadModel*>(sourceModel());
@@ -276,6 +281,15 @@ bool DownloadFilterProxy::filterAcceptsRow(int source_row,
     const DownloadItem* item = model->item_at(source_row);
     if (!item) return true;
     (void)source_parent;
+    if (queue_id_ < 0) {
+        if (item->queue_id != 0) return false;
+    } else if (item->queue_id != queue_id_) {
+        return false;
+    } else {
+        // A queue view shows every status of its own workspace, including
+        // completed items; the main-list filters do not apply there.
+        return true;
+    }
     if (!category_.isEmpty() && item->category != category_) return false;
     if (complete_only_ && !item->is_complete()) return false;
     if (incomplete_only_ && item->is_complete()) return false;

@@ -35,8 +35,14 @@ taken from the application used as a behavioral reference.
 - Pause, resume, and restore downloads after restarting the application.
 - Organize downloads by category and destination folder; view progress, speed,
   estimated time remaining, and active connections/segments.
-- Configure global and per-download speed limits, including changing the limit
-  while a transfer is running.
+- Group downloads into named queues. Selecting the `Queues` branch shows a
+  queue overview and switches the toolbar to queue mode. Each queue has its own
+  workspace, simultaneous-download limit, connection count, shared speed limit,
+  autostart, completion notifications, and an optional shutdown when it
+  finishes. Queues keep completed items visible and can be started or paused
+  independently.
+- Configure global, per-download, and per-queue speed limits, including
+  changing the limit while a transfer is running.
 - Use HTTP, SOCKS4, or SOCKS5 proxies; configure HTTP headers, cookies, referer,
   User-Agent, and POST data.
 - Store download history in SQLite and application settings in an INI file.
@@ -52,10 +58,10 @@ taken from the application used as a behavioral reference.
   initial transfer reuses that probe instead of repeating network checks.
 - Resolve supported Google Drive download link formats.
 
-> Note: queue scheduling, a Firefox extension, and muxing paired audio/video
-> tracks are not available yet. The Chromium extension is a development preview.
-> See the [parity checklist](docs/spec/06-parity-checklist.md) for feature
-> status and limitations.
+> Note: a Firefox extension and muxing paired audio/video tracks are not
+> available yet. The Chromium extension is a development preview. See the
+> [parity checklist](docs/spec/06-parity-checklist.md) for feature status and
+> limitations.
 
 ## Running SwiftDM
 
@@ -135,7 +141,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.22_amd64.deb
+sudo apt install ./swiftdm_0.19.1_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

@@ -99,10 +99,45 @@ task (E4). The per-download row also stores the limiter toggle
 is kept for a later resume. Proxy/auth are global; saved credentials live in
 the `auths` table and are matched per host/target (E4, E18 Passwords tab).
 
+A download inside a queue is an exception while it stays there: the queue's
+`connections` and shared speed budget control the transfer, and the stored
+per-item values are ignored. Moving the item back to Downloads makes the stored
+per-item values effective again. The Download window disables both per-item
+editors for a queue item and shows a note naming the queue (0.19.0).
+
+## Queue settings (0.19.0)
+
+Queue settings are not INI keys. Each queue is a row in the `queues` table and
+is edited through `Queue Properties`; the dialog writes the record through
+`HistoryStore::update_queue()`.
+
+| Field | Range / values | Default | Meaning |
+|---|---|---|---|
+| `name` | non-empty text | `Queue N` | sidebar label |
+| `max_simultaneous` | 0–64 | 1 | active items allowed at once; 0 = `Unlimited` |
+| `connections` | 0–64 | 0 | connection count per item; 0 = global `MaxConnections` |
+| `bandwidthlimit_enabled` | 0/1 | 0 | queue-wide speed limiter |
+| `bandwidthlimit` | KB/s | 1024 | total queue budget, kept while the toggle is off |
+| `autostart` | 0/1 | 0 | start the queue after the history is restored |
+| `notify_item` | 0/1 | 0 | notify when an item completes |
+| `notify_complete` | 0/1 | 0 | notify once when all items complete |
+| `shutdown_when_complete` | 0/1 | 0 | arm the shutdown countdown on completion |
+| `shutdown_delay` | 5–3600 s | 60 | cancellable countdown before poweroff |
+
+`Queue Properties` also displays the current item count. Renaming a queue, the
+simultaneous limit and the speed budget apply immediately; a connection-count
+change applies to the next transfer started from the queue (a running transfer
+keeps its segments), and autostart applies on the next launch. Completion
+notifications and shutdown are triggered by a completion event, not by saving
+the dialog, so enabling them on an already complete queue does not run them
+retroactively.
+
 ## Startup behavior
 
-- Load settings, open DB, mark stale "downloading" rows as `Paused` (resume
-  manually), start tray icon and main window.
+- Load settings, open DB, restore the history, mark stale "downloading" rows in
+  the main list as `Paused` (resume manually) and stale queue rows as `Queued`,
+  then start queues whose `autostart` is set, followed by the tray icon and
+  main window.
 - With `--autostart` (used by the login entry), the main window stays hidden
   and only the tray icon appears. If no system tray is available, the window is
   shown as a fallback so the application remains reachable.
@@ -130,3 +165,10 @@ The appearance settings take effect as soon as the settings dialog is
 confirmed: the theme is applied to the whole application, the toolbar is
 resized and the tray icon is replaced. The tray icon can also be created or
 removed while the app runs (`ShowTrayIcon`).
+
+Queue properties are applied immediately after their dialog is confirmed: a
+new simultaneous limit can pause or start items, a new speed limit is split
+across the active items, and a renamed queue updates the sidebar and any open
+Download window. Disabling `shutdown_when_complete` cancels a pending
+countdown. The per-queue values are persisted in SQLite, so they survive a
+restart.

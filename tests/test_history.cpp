@@ -72,6 +72,79 @@ int main() {
           "exact destination folder round-trips");
     check(loaded.bandwidth_limit_kbps == 512 && loaded.bandwidth_limit_enabled,
           "speed limiter toggle and value round-trip");
+    check(loaded.queue_id == 0, "a new row belongs to the main Downloads list");
+
+    // Queue CRUD and the owning queue column. A row keeps its headers and
+    // options when it moves between the main list and a queue.
+    swiftdm::HistoryStore::QueueRecord queue;
+    queue.name = "Batch";
+    queue.max_simultaneous = 3;
+    queue.connections = 4;
+    queue.bandwidth_limit_enabled = true;
+    queue.bandwidth_limit_kbps = 2048;
+    queue.autostart = true;
+    queue.notify_item = true;
+    queue.notify_complete = true;
+    queue.shutdown_when_complete = true;
+    queue.shutdown_delay = 30;
+    const int64_t queue_id = store.insert_queue(queue, &error);
+    check(queue_id > 0, "insert_queue returns a queue id");
+
+    std::vector<swiftdm::HistoryStore::QueueRecord> queues;
+    check(store.load_queues(&queues, &error) && queues.size() == 1,
+          "load_queues returns the stored queue");
+    if (!queues.empty()) {
+        const swiftdm::HistoryStore::QueueRecord& stored = queues.front();
+        check(stored.id == queue_id && stored.name == "Batch",
+              "the queue name and id round-trip");
+        check(stored.max_simultaneous == 3 && stored.connections == 4,
+              "the queue concurrency settings round-trip");
+        check(stored.bandwidth_limit_enabled && stored.bandwidth_limit_kbps == 2048,
+              "the queue speed limit round-trips");
+        check(stored.autostart && stored.notify_item && stored.notify_complete,
+              "the queue behavior toggles round-trip");
+        check(stored.shutdown_when_complete && stored.shutdown_delay == 30,
+              "the shutdown option and delay round-trip");
+    }
+
+    queue.id = queue_id;
+    queue.name = "Renamed";
+    queue.max_simultaneous = 0;  // Unlimited
+    queue.connections = 0;
+    queue.bandwidth_limit_enabled = false;
+    queue.autostart = false;
+    queue.notify_item = false;
+    queue.notify_complete = false;
+    queue.shutdown_when_complete = false;
+    check(store.update_queue(queue, &error), "update_queue succeeds");
+    check(store.load_queues(&queues, &error) && queues.size() == 1 &&
+              queues.front().name == "Renamed" &&
+              queues.front().max_simultaneous == 0 &&
+              queues.front().connections == 0 && !queues.front().autostart &&
+              !queues.front().bandwidth_limit_enabled,
+          "updated queue settings are visible");
+
+    check(store.update_queue_id(id, queue_id, "Queued", &error),
+          "a row can move into a queue");
+    check(store.fetch(id, &loaded, &error) && loaded.queue_id == queue_id &&
+              loaded.status == "Queued",
+          "the owning queue and status round-trip");
+    check(loaded.headers.size() == 1 && loaded.headers[0] == "x-api-key: secret",
+          "moving a row keeps its stored headers");
+    check(loaded.post_data == "q=1" && loaded.bandwidth_limit_kbps == 512 &&
+              loaded.bandwidth_limit_enabled,
+          "moving a row keeps its options and speed limit");
+
+    check(store.update_queue_id(id, 0, "Paused", &error),
+          "a row can move back to the main list");
+    check(store.fetch(id, &loaded, &error) && loaded.queue_id == 0 &&
+              loaded.status == "Paused",
+          "the row leaves the queue cleanly");
+
+    check(store.remove_queue(queue_id, &error), "remove_queue succeeds");
+    check(store.load_queues(&queues, &error) && queues.empty(),
+          "removing a queue deletes only the queue record");
+    check(store.count(&error) == 1, "removing a queue keeps its downloads");
 
     check(store.update_progress(id, 524288, 0, &error), "progress update succeeds");
     check(store.fetch(id, &loaded, &error) && loaded.done == 524288 &&
@@ -167,6 +240,8 @@ int main() {
           "legacy rows keep the base-folder semantics after migration");
     check(loaded.bandwidth_limit_enabled,
           "legacy non-zero limits migrate to the toggle being on");
+    check(loaded.queue_id == 0,
+          "legacy rows are migrated into the main Downloads list");
     const int64_t legacy_id = legacy_store.insert(record, &error);
     check(legacy_id > 0, "the migrated database accepts new rows");
     check(legacy_store.fetch(legacy_id, &loaded, &error) &&

@@ -20,6 +20,7 @@
 #include <cstdio>
 
 #include "ui/download_model.h"
+#include "ui/download_task.h"
 #include "ui/download_window.h"
 #include "ui/speed_limit_editor.h"
 
@@ -238,6 +239,56 @@ int main(int argc, char** argv) {
     }
     check(is_in_section(connections_page, QString(), "download_connections_table"),
           "the table sits inside the Connections frame");
+
+    // A queue item shares the queue budget: the per-item editor stays visible
+    // for reference but is disabled, and the Transfer section explains the
+    // queue context.
+    auto* queue_note =
+        qobject_cast<QLabel*>(named_widget(&window, "download_queue_limit_note"));
+    check(queue_note && queue_note->isHidden(),
+          "the queue note is hidden for a main-list item");
+    if (auto* item = model.item_at(0)) {
+        item->state = swiftdm::ui::DownloadItem::State::Paused;
+        item->connections = 4;
+        swiftdm::ui::DownloadTask::Options options;
+        options.url = item->url;
+        options.output_dir = directory;
+        item->task = new swiftdm::ui::DownloadTask(settings, options, &model);
+        model.touch_row(0);
+    }
+    check(limit_editor && limit_editor->isEnabled() && connections &&
+              connections->isEnabled(),
+          "an incomplete main-list item keeps its per-item limiter and connections");
+    window.set_queue_context(QStringLiteral("Batch"), true, 2048);
+    check(limit_info && limit_info->text() == QStringLiteral("Queue limit: 2 MB/s"),
+          "the queue budget replaces the per-item limit label");
+    check(connections && connections->value() == 4,
+          "the queue context keeps the row's stored per-item connection count");
+    check(limit_editor && !limit_editor->isEnabled(),
+          "the per-item limiter is disabled for a queue item");
+    check(connections && !connections->isEnabled(),
+          "the per-item connection count is disabled for a queue item");
+    check(queue_note && !queue_note->isHidden() &&
+              queue_note->text().contains(QStringLiteral("Batch")) &&
+              queue_note->text().contains(QStringLiteral("2 MB/s")),
+          "the queue note names the queue and its shared limit");
+    check(is_in_section(options_page, QStringLiteral("Transfer"),
+                        "download_queue_limit_note"),
+          "the queue note sits in the Transfer section");
+    window.set_queue_context(QStringLiteral("Batch"), false, 0);
+    check(limit_info && limit_info->text().isEmpty(),
+          "an unlimited queue clears the limit label");
+    check(queue_note && queue_note->text().contains(
+                            QStringLiteral("queue controls both")),
+          "an unlimited queue still disables the per-item editors");
+    window.clear_queue_context();
+    check(queue_note && queue_note->isHidden(),
+          "moving back to Downloads hides the queue note");
+    check(limit_editor && limit_editor->isEnabled() && connections &&
+              connections->isEnabled(),
+          "moving back to Downloads restores the per-item editors");
+    check(connections && connections->value() == 4,
+          "moving back to Downloads preserves the stored connection count");
 
     if (failures == 0) std::printf("download_window: all checks passed\n");
     return failures == 0 ? 0 : 1;

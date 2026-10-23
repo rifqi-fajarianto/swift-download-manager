@@ -1,6 +1,67 @@
 # Changelog
 
-## Unreleased
+## 0.19.1 — 2026-10-23
+
+Switch the toolbar to queue mode when the `Queues` branch is selected and show
+a queue overview there.
+
+- The `Queues` branch in the sidebar is now selectable. Selecting it switches
+  the toolbar to queue mode and shows a list of queues (name + item count) in
+  the right panel; with no queues, the panel shows a `New Queue` prompt.
+  Selecting a queue from the list opens its downloads.
+- Queue mode toolbar order: `New Queue`, `Delete Queue`, `Queue Properties` |
+  `Start Queue`, `Stop Queue` | `New URL`, `Delete`, `Delete File`. Queue
+  actions that need a specific queue stay disabled while only the branch is
+  selected, and `Move to Downloads` remains available from the item context
+  menu.
+- New queue icons from `ui-assets/`: `queue.svg` (branch/children),
+  `queue-add.svg` (`New Queue`), `queue-delete.svg` (`Delete Queue`) and
+  `queue-settings.svg` (`Queue Properties`).
+- The queue overview title uses the active theme text color with a slightly
+  larger bold font, and the title/empty-state colors refresh when the theme
+  changes while the app runs, so they stay readable in light and dark mode.
+
+## 0.19.0 — 2026-10-23
+
+Add named download queues with independent scheduling, limits and completion
+actions.
+
+- The left panel now has a `Queues` branch. A queue is a named workspace:
+  selecting it shows only its items, while `All Downloads`, the categories,
+  `Complete` and `Incomplete` show only items outside queues. `New Queue`
+  creates a queue from the toolbar or the sidebar context menu.
+- `Queue Properties` controls the simultaneous-download limit (0 = Unlimited),
+  the connection count per item (0 = the global setting), a total speed limit
+  shared by the active items, autostart, per-item and all-complete
+  notifications, and an optional shutdown with a cancellable delay (5-3600 s,
+  default 60 s). These settings live in the `queues` table, not in the INI
+  file.
+- `Start Queue` resumes queued, paused and failed items in insertion order;
+  the automatic scheduler starts only queued items and respects the
+  simultaneous limit. Manual starts from the context menu or the progress
+  window honor the same limit. Lowering the limit pauses the newest active
+  items and returns them to `Queued`; a manual pause stays `Paused`. A queue
+  speed limit is split across the active items (minimum 1 KB/s) and replaces
+  the per-item limit while the item belongs to the queue. A queue connection
+  count replaces the per-item value in the same way.
+- Inactive items can be moved between `Downloads` and a queue from the context
+  menu or the queue toolbar; completed items can move too and remain visible
+  in the queue. Deleting a queue asks for confirmation, deletes its rows and
+  temporary workspaces, and leaves completed files on disk.
+- The Download Confirmation window has a `Queue` row (`None (Downloads)` plus
+  the existing queues). `Add to queue` is enabled only when a queue is
+  selected; with the confirmation dialog disabled, `New URL` from a queue view
+  adds to that queue while the main view and browser handoff use the main
+  Downloads list.
+- At startup, unfinished rows in a queue return as `Queued`; a queue with
+  autostart starts immediately. Queue completion can show a tray notification
+  (status-bar fallback), and the shutdown option pauses every active download
+  and queue, persists their state, and runs `systemctl poweroff` (falling back
+  to `shutdown -h now`).
+- Queue state is persisted in SQLite: a `queues` table plus an additive
+  `downloads.queueid` column (0/NULL = main Downloads). Existing rows keep
+  working. Tests: `queue_logic`, `queue_dialog`, and extended `history`,
+  `confirm_dialog`, `download_window`.
 
 - The system tray now shows the colored SwiftDM mark (the same artwork as the
   browser integration) instead of the monochrome variant. The mark keeps its

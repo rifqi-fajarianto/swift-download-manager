@@ -148,6 +148,33 @@ DownloadWindow::DownloadWindow(DownloadModel* model, int item_id,
     refresh();
 }
 
+void DownloadWindow::set_queue_context(const QString& name, bool limit_enabled,
+                                       int limit_kbps) {
+    queue_controlled_ = true;
+    queue_name_ = name;
+    queue_limit_enabled_ = limit_enabled;
+    queue_limit_kbps_ = limit_kbps;
+    // The editor stays disabled but keeps showing the row's stored per-item
+    // value, so a later move back to Downloads restores the right number.
+    const int row = model_->row_for_id(item_id_);
+    if (const DownloadItem* item = model_->item_at(row)) {
+        if (connections_spin_) connections_spin_->setValue(item->connections);
+    }
+    refresh();
+}
+
+void DownloadWindow::clear_queue_context() {
+    queue_controlled_ = false;
+    queue_name_.clear();
+    queue_limit_enabled_ = false;
+    queue_limit_kbps_ = 0;
+    const int row = model_->row_for_id(item_id_);
+    if (const DownloadItem* item = model_->item_at(row)) {
+        if (connections_spin_) connections_spin_->setValue(item->connections);
+    }
+    refresh();
+}
+
 QWidget* DownloadWindow::build_download_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
@@ -234,7 +261,9 @@ QWidget* DownloadWindow::build_download_tab() {
         if (!item || !item->task) return;
         DownloadTask* task = item->task;
         if (task->active()) {
-            if (item->state == DownloadItem::State::Downloading) task->pause();
+            if (item->state == DownloadItem::State::Downloading) {
+                emit pauseRequested(item_id_);
+            }
         } else if (item->state == DownloadItem::State::Paused ||
                    item->state == DownloadItem::State::Error ||
                    item->state == DownloadItem::State::Queued) {
@@ -246,7 +275,7 @@ QWidget* DownloadWindow::build_download_tab() {
     connect(cancel_button_, &QPushButton::clicked, this, [this] {
         const int row = model_->row_for_id(item_id_);
         DownloadItem* item = model_->item_at(row);
-        if (item && item->task && item->task->active()) item->task->pause();
+        if (item && item->task && item->task->active()) emit pauseRequested(item_id_);
         close();
     });
     return page;
@@ -305,6 +334,15 @@ QWidget* DownloadWindow::build_options_tab() {
     note->setStyleSheet("color:#a0a0a0;");
     note->setWordWrap(true);
     transfer->addWidget(note);
+
+    // Queue items share one aggregate budget; the per-item editor is replaced
+    // by this explanation so two limits cannot compete.
+    queue_limit_note_ = new QLabel(page);
+    queue_limit_note_->setObjectName("download_queue_limit_note");
+    queue_limit_note_->setWordWrap(true);
+    queue_limit_note_->setStyleSheet("color:#e0a85a;");
+    queue_limit_note_->setVisible(false);
+    transfer->addWidget(queue_limit_note_);
     layout->addStretch(1);
 
     apply_button_ = new QPushButton(tr("Apply"), page);
@@ -392,7 +430,14 @@ void DownloadWindow::refresh() {
         QString("%1 ( %2% )").arg(format_bytes_q(item->done)).arg(item->percent));
     bandwidth_label_->setText(item->speed_bps > 0 ? format_speed_q(item->speed_bps)
                                                   : QString());
-    if (item->bandwidth_limit_enabled && item->bandwidth_limit_kbps > 0) {
+    if (queue_controlled_) {
+        if (queue_limit_enabled_ && queue_limit_kbps_ > 0) {
+            limit_info_label_->setText(
+                tr("Queue limit: %1").arg(format_speed_limit(queue_limit_kbps_)));
+        } else {
+            limit_info_label_->clear();
+        }
+    } else if (item->bandwidth_limit_enabled && item->bandwidth_limit_kbps > 0) {
         limit_info_label_->setText(
             tr("Speed limit: %1").arg(format_speed_limit(item->bandwidth_limit_kbps)));
     } else {
@@ -421,9 +466,24 @@ void DownloadWindow::refresh() {
     const bool other_options_enabled = !active && item->state != DownloadItem::State::Complete;
     dir_edit_->setEnabled(other_options_enabled);
     name_edit_->setEnabled(other_options_enabled);
-    connections_spin_->setEnabled(other_options_enabled);
+    connections_spin_->setEnabled(other_options_enabled && !queue_controlled_);
     referer_edit_->setEnabled(other_options_enabled);
-    limit_editor_->setEnabled(task != nullptr && item->state != DownloadItem::State::Complete);
+    limit_editor_->setEnabled(!queue_controlled_ && task != nullptr &&
+                              item->state != DownloadItem::State::Complete);
+    if (queue_controlled_) {
+        queue_limit_note_->setText(
+            queue_limit_enabled_ && queue_limit_kbps_ > 0
+                ? tr("This download belongs to queue \"%1\". Its per-item speed limit "
+                     "and connection count are disabled; the queue's total limit (%2) "
+                     "is shared by its active downloads.")
+                      .arg(queue_name_, format_speed_limit(queue_limit_kbps_))
+                : tr("This download belongs to queue \"%1\". Per-item speed limits and "
+                     "the connection count are disabled; the queue controls both.")
+                      .arg(queue_name_));
+        queue_limit_note_->setVisible(true);
+    } else {
+        queue_limit_note_->setVisible(false);
+    }
 
     if (!options_initialized_) {
         QString dir = item->output_dir;
@@ -435,7 +495,10 @@ void DownloadWindow::refresh() {
         }
         dir_edit_->setText(dir);
         name_edit_->setText(item->file_name);
-        connections_spin_->setValue(task ? task->options().connections : 0);
+        // The row's stored per-item value, not the task options: queue tasks
+        // carry the queue's connection override in their options, and moving
+        // the item back to Downloads must not overwrite the stored value.
+        connections_spin_->setValue(item->connections);
         limit_editor_->set_value(item->bandwidth_limit_enabled,
                                  item->bandwidth_limit_kbps);
         referer_edit_->setText(task ? task->options().referer : QString());
@@ -449,6 +512,7 @@ void DownloadWindow::refresh() {
 }
 
 void DownloadWindow::apply_live_limit() {
+    if (queue_controlled_) return;
     const int row = model_->row_for_id(item_id_);
     DownloadItem* item = model_->item_at(row);
     if (!item || !item->task) return;

@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.18.19.
+Status as of 0.19.1.
 
 ## v1 — core engine + GUI
 
@@ -10,8 +10,8 @@ Status as of 0.18.19.
 |---|---|---|
 | Segmented HTTP/HTTPS downloads | Replicated | libcurl multi, Range segments |
 | Pause / resume / restart | Replicated | JSON state + probe validation; Pause/Resume toggle in the download window |
-| Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished rows stay Paused until the user resumes |
-| Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts (queue scheduling is v1.1) |
+| Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished main-list rows stay Paused until the user resumes, while unfinished queue rows return as Queued and start only when their queue is running or autostart is on (0.19.0) |
+| Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts. Named queues and scheduling are implemented in 0.19.0 (see the v1.1 rows below) |
 | Categories + category folders | Replicated | tree filter + extension-based routing |
 | Per-download bandwidth limit | Replicated | enable toggle + presets; active limit shown in orange. 0.18.2: live changes apply across transfer paths with 500 ms UI debounce; other Options fields require pause. |
 | Speed + remaining time display | Replicated | 250 ms engine progress → 1 Hz effective UI refresh |
@@ -29,7 +29,7 @@ Status as of 0.18.19.
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) runs `swiftdm --autostart`; the app starts in the tray without showing the main window (0.18.7), with a visible-window fallback when no tray is available |
 | New URL dialog | Replicated | URL field + Download/Cancel; confirmation opens while probing, initially shows fallback name and `Checking…`, and enables Download Now when metadata arrives; initial transfer reuses the probe; Resume probes fresh (0.18.19) |
 | Progress window opens when a transfer starts | Replicated | manual adds and browser handoff (both after confirmation), plus toolbar Resume |
-| Download confirmation window | Implemented | shown immediately for manual and browser-sent downloads while a worker probes; fallback name + `Checking…`, Download Now disabled until metadata arrives, user category/location choices preserved, no row/DB entry on Cancel; initial transfer reuses the successful probe; independent of main-window visibility; `File`/`Save` sections, default 650×330 (minimum 560×320), elided filename, separate size row, uniform controls, Cancel on the left and Add to queue/Download Now on the right (0.18.9, latency improvement 0.18.19, section layout 0.18.22). The General tab can switch the window off; the download then starts with default category/folder (0.18.17) |
+| Download confirmation window | Implemented | shown immediately for manual and browser-sent downloads while a worker probes; fallback name + `Checking…`, Download Now disabled until metadata arrives, user category/location choices preserved, no row/DB entry on Cancel; initial transfer reuses the successful probe; independent of main-window visibility; `File`/`Save` sections, default 650×330 (minimum 560×320), elided filename, separate size row, uniform controls, Cancel on the left and Add to queue/Download Now on the right (0.18.9, latency improvement 0.18.19, section layout 0.18.22). The `Save` section has a `Queue` selector; Add to queue is enabled only for a real queue, and Download Now stays the default (0.19.0). The General tab can switch the window off; the download then starts with default category/folder, and New URL from a queue view targets that queue (0.18.17, queue behavior 0.19.0) |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
 | Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |
@@ -44,14 +44,21 @@ Status as of 0.18.19.
 | Tray icon style | Implemented | Interface tab: the colored browser-integration mark or the monochrome mark, tinted for the current theme (0.18.12) |
 | Message-box icons | Diverges | the message boxes use the app's own filled glyphs (info, alert, question, completion) instead of the built-in platform icons; only the icon area changes, the title bar keeps the app icon (0.18.16) |
 
-## v1.1 — GUI completion (planned)
+## v1.1 — GUI completion
+
+Remaining gaps in this section are marked `Planned`; the implemented rows are
+kept here as the completion history of the release line.
 
 | Feature | Status |
 |---|---|
-| SQLite download history (`downloads` table) + restore list at startup | Implemented | Rows (incl. `pageurl`/`pagetitle`, POST data, headers, `done`) are written/updated via `src/store/history.cpp`; `MainWindow::restore_history()` rebuilds Complete/Paused/Error rows at startup, and deletes remove rows from `downloads`+`headers`. Missing completed files are flagged in the list (0.17.0); the startup summary dialog was removed in 0.18.6, so the warning appears only on Open File |
+| SQLite download history (`downloads` table) + restore list at startup | Implemented | Rows (incl. `pageurl`/`pagetitle`, POST data, headers, `done`) are written/updated via `src/store/history.cpp`; `MainWindow::restore_history()` rebuilds Complete/Paused/Error rows at startup, and deletes remove rows from `downloads`+`headers`. Missing completed files are flagged in the list (0.17.0); the startup summary dialog was removed in 0.18.6, so the warning appears only on Open File. 0.19.0 adds the `queues` table and `downloads.queueid` (additive migration); queue rows restore as Queued |
+| Named queue workspaces (sidebar filter, main list excludes queue rows) | Implemented | `Queues` branch in the sidebar; selecting the branch shows a queue overview (name + item count) in the right panel and switches the toolbar to queue mode; selecting a queue opens its rows. A queue view shows every status of its own rows; `All Downloads`, categories, Complete and Incomplete show only `queueid = 0` (0.19.0, overview/toolbar 0.19.1) |
+| Queue overview and queue toolbar | Implemented | With no queues the overview shows a `New Queue` prompt; otherwise it lists the queues and a click opens that queue. Queue toolbar order is `New Queue`, `Delete Queue`, `Queue Properties` · `Start Queue`, `Stop Queue` · `New URL`, `Delete`, `Delete File`; actions that need a specific queue stay disabled until one is open. Icons come from `queue.svg`, `queue-add.svg`, `queue-delete.svg` and `queue-settings.svg` (0.19.1) |
+| Queue scheduling and limits | Implemented | `Start Queue` resumes Queued/Paused/Error in insertion order; the scheduler starts only Queued; max simultaneous 0–64 (0 = Unlimited); lowering the limit pauses the newest active rows and returns them to Queued, manual pauses stay Paused; manual starts from the context menu/progress window also honor the limit; queue speed budget is split across active items (min 1 KB/s) and queue connections override per-item values; autostart queues start after restore (0.19.0) |
+| Queue completion actions | Implemented | Per-item and all-complete notifications via the tray (status-bar fallback); optional cancellable shutdown countdown (5–3600 s, default 60 s, one active countdown at a time) pauses every active download and queue, persists state, then runs `systemctl poweroff` with a `shutdown -h now` fallback (0.19.0) |
+| Move items between Downloads and queues; delete queue | Implemented | Inactive and completed items can move; completed items stay visible in the queue; `Move to Downloads` lives in the item context menu (not the toolbar); deleting a queue asks for confirmation, removes its rows and workspaces, and leaves completed files on disk (0.19.0, context-menu-only 0.19.1) |
 | Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |
-| Queue scheduling (manual start, limit simultaneous downloads) | Planned |
 | "Get File Creation Date From Server" applied to file mtime | Planned (setting saved, not applied) |
 | Firefox extension | Planned |
 
@@ -132,4 +139,9 @@ URL (`download`, `view`, or a Drive folder id).
   concatenation, mid-download pause plus resume, and the encrypted-playlist
   refusal. The extension-side pairing logic runs in the Node `vm` harness
   (`extension_logic`) with mocked `webRequest`/`tabs` APIs.
+- Queue rules are verified by `queue_logic` (start/wait ordering, limit pauses,
+  speed sharing, all-complete detection, shutdown countdown) and
+  `queue_dialog` (defaults, Unlimited/Default values, section layout, result
+  round-trip). Persistence is covered by `history`, and the queue selector and
+  queue context by `confirm_dialog` and `download_window`.
 - GUI verification is manual by the user with a per-milestone checklist.

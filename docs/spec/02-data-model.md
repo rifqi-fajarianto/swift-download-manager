@@ -38,6 +38,7 @@ CREATE TABLE "downloads" (
     "temppath"        TEXT,
     "groupid"         TEXT,   -- adaptive pair token (video + audio handoff)
     "done"            NUMERIC, -- bytes already written (restore/resume progress)
+    "queueid"         NUMERIC, -- 0/NULL = main Downloads list; queues.id otherwise
     PRIMARY KEY("id")
 );
 CREATE TABLE headers (id NUMERIC, header TEXT);      -- extra request headers per download
@@ -45,11 +46,28 @@ CREATE TABLE auths (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target TEXT, protocol TEXT, user TEXT, pass TEXT  -- saved credentials (passwords tab)
 );
+CREATE TABLE "queues" (                                -- named queue workspaces (0.19.0)
+    "id"                     INTEGER,
+    "name"                   TEXT,
+    "max_simultaneous"       NUMERIC, -- 0 = unlimited
+    "connections"            NUMERIC, -- 0 = global setting
+    "bandwidthlimit_enabled" NUMERIC, -- queue-wide speed limiter toggle
+    "bandwidthlimit"         NUMERIC, -- total queue limit in KB/s
+    "autostart"              NUMERIC,
+    "notify_item"            NUMERIC,
+    "notify_complete"        NUMERIC,
+    "shutdown_when_complete" NUMERIC,
+    "shutdown_delay"         NUMERIC, -- seconds, minimum 5
+    PRIMARY KEY("id")
+);
 ```
 
 Migration note: the original appended `folderpath`/`temppath` columns with
 `ALTER TABLE downloads ADD COLUMN ... DEFAULT ''` (observed migration string),
-so schema migrations must be additive.
+so schema migrations must be additive. SwiftDM 0.19.0 follows the same rule:
+`queues` is created with `CREATE TABLE IF NOT EXISTS`, and `downloads.queueid`
+is appended when an older database is opened. Existing rows read `queueid` as
+0, so they remain in the main Downloads list.
 
 Field semantics:
 
@@ -79,6 +97,10 @@ Field semantics:
 | `temppath` | temporary directory for this download |
 | `groupid` | adaptive pair token shared by the video and audio halves of a browser handoff (empty otherwise) |
 | `done` | bytes already written; added by SwiftDM 0.17.0 (additive `ALTER TABLE`) for progress restore. Older rows read as 0 and fall back to `segments.json`. |
+| `queueid` | queue workspace that owns the row; 0/NULL means the main Downloads list. Added by SwiftDM 0.19.0 (additive `ALTER TABLE`). The main-list views filter on 0; a queue view shows every status of its own rows, including completed ones. |
+
+Queue rows (`queues` table) have their own defaults and ranges; see
+`05-settings.md` §Queue settings. They are not stored in the INI file.
 
 ## 2. On-disk download state (behavioral)
 
@@ -86,11 +108,13 @@ The SQLite `downloads` row is written by SwiftDM as downloads are added and
 updated (`HistoryStore`), including `pageurl`/`pagetitle`, method, POST body, and
 extra header rows. `MainWindow::restore_history()` reloads every row at startup
 (newest first) and rebuilds the list: `Complete` stays complete, `Paused`/`Error`
-stay inactive with a Resume action, and stale `Downloading`/`Queued` rows are
-normalized to `Paused` (nothing starts automatically). Progress is checkpointed
-every ~5 s and on exit; a paused row also reads `segments.json` so a hard kill
-loses at most the last engine checkpoint. Rows deleted by the user are removed
-from `downloads` and `headers`.
+stay inactive with a Resume action, and stale `Downloading`/`Queued` rows in the
+main list are normalized to `Paused` (nothing starts automatically). Rows with a
+non-zero `queueid` are restored as `Queued`; a queue with autostart starts them,
+otherwise the user presses `Start Queue`. Progress is checkpointed every ~5 s
+and on exit; a paused row also reads `segments.json` so a hard kill loses at
+most the last engine checkpoint. Rows deleted by the user are removed from
+`downloads` and `headers`.
 
 Completed rows store the actual saved basename, so a file saved as
 `name (1).ext` is found again. If the file is gone, the row shows
@@ -134,6 +158,10 @@ preserving the old layout.
     well, and the workspace is deleted immediately for an inactive task or
     once the worker acknowledges the cancel of a running one. Restored rows
     re-seed their workspace, so Delete cleans them too.
+  - **Queue deletion** removes every row of the queue (and its workspace) with
+    the same rules, then removes the `queues` row. Completed files are left on
+    disk. Moving an item between Downloads and a queue does not move or rename
+    its workspace.
   - A cancelled confirmation dialog creates no workspace (probe only).
   - Known race: deleting a running item and quitting before its
     `finished(Canceled)` signal is processed leaves one `download-*`
