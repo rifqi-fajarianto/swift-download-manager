@@ -10,6 +10,12 @@ This project is a clean-room implementation based on behavioral specifications
 documented in [`docs/spec/`](docs/spec/). No code, assets, icons, or branding are
 taken from the application used as a behavioral reference.
 
+SwiftDM is inspired by [Neat Download Manager](https://www.neatdownloadmanager.com/index.php/en/),
+a download manager for Windows. Credit for the original concept and user
+experience goes to its authors. SwiftDM is an independent project: it is not
+affiliated with, endorsed by, or sharing code, assets, icons, or branding with
+Neat Download Manager.
+
 ## Screenshots
 
 ![SwiftDM main window](screenshots/main-window.png)
