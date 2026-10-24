@@ -220,8 +220,6 @@ int main(int argc, char** argv) {
     const QLabel* size_label = label_with_text(&dialog, size_text);
     const QComboBox* category_box =
         qobject_cast<QComboBox*>(named_widget(&dialog, "confirm_category"));
-    const QComboBox* queue_box =
-        qobject_cast<QComboBox*>(named_widget(&dialog, "confirm_queue_box"));
     const QLineEdit* url_edit = nullptr;
     const QLineEdit* location_edit = nullptr;
     for (const QLineEdit* edit : dialog.findChildren<QLineEdit*>()) {
@@ -242,7 +240,6 @@ int main(int argc, char** argv) {
         {"URL", label_with_text(&dialog, "URL:"), url_edit},
         {"Category", label_with_text(&dialog, "Category:"), category_box},
         {"Location", label_with_text(&dialog, "Location:"), location_edit},
-        {"Queue", label_with_text(&dialog, "Queue:"), queue_box},
     };
     for (const Row& row : rows) {
         check(row.description != nullptr && row.value != nullptr,
@@ -260,9 +257,10 @@ int main(int argc, char** argv) {
     check(is_in_section(&dialog, QStringLiteral("Save"), "confirm_url") &&
               is_in_section(&dialog, QStringLiteral("Save"), "confirm_category") &&
               is_in_section(&dialog, QStringLiteral("Save"), "confirm_location") &&
-              is_in_section(&dialog, QStringLiteral("Save"), "confirm_queue_box") &&
               is_in_section(&dialog, QStringLiteral("Save"), "confirm_browse"),
-          "the URL, category, location and queue sit in the Save section");
+          "the URL, category and location sit in the Save section");
+    check(named_widget(&dialog, "confirm_queue_box") == nullptr,
+          "the inline queue selector is gone: the picker owns the choice");
 
     auto* cancel_button =
         qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_cancel"));
@@ -276,42 +274,78 @@ int main(int argc, char** argv) {
           "Add to queue is part of the button row");
     check(queue_button && !queue_button->isEnabled(),
           "Add to queue is disabled when no queue exists");
+    check(named_widget(&dialog, "confirm_queue_hint") == nullptr,
+          "the inline queue hint label is gone");
     check(download_button_widget && download_button_widget->text() == QStringLiteral("Download Now"),
           "Download Now is on the right side of the button row");
     check(download_button_widget && download_button_widget->isDefault(),
           "Download Now is the default button");
-    auto* hint =
-        qobject_cast<QLabel*>(named_widget(&dialog, "confirm_queue_hint"));
-    check(hint && hint->isHidden(), "the queue hint is hidden until Add to queue is used");
 
-    // With queues the selector opens on the requested queue and Add to queue
-    // can be made the default (used by Add URL from a queue view).
+    // From a queue view the target is known: Add to queue uses it directly and
+    // becomes the default action, without a picker.
     ConfirmDownloadDialog queued(QStringLiteral("movie.mp4"), 1500000,
                                  QStringLiteral("https://example.com/movie.mp4"),
                                  QStringLiteral("/tmp"), true);
-    queued.set_queues({{7, QStringLiteral("Batch")}, {9, QStringLiteral("Parts")}}, 9);
-    auto* queued_box =
-        qobject_cast<QComboBox*>(named_widget(&queued, "confirm_queue_box"));
+    queued.set_queue_choices({{7, QStringLiteral("Batch"), 2},
+                              {9, QStringLiteral("Parts"), 0}},
+                             9);
     auto* queued_button =
         qobject_cast<QPushButton*>(named_widget(&queued, "confirm_queue"));
-    check(queued_box && queued_box->count() == 3,
-          "the queue selector holds None and the two queues");
-    check(queued.selected_queue_id() == 9, "the requested queue is preselected");
+    check(queued.selected_queue_id() == 9,
+          "the queue the download came from is the target");
     check(queued_button && queued_button->isEnabled(),
           "Add to queue is enabled when a queue exists");
-    queued.set_queue_default(true);
     check(queued_button && queued_button->isDefault(),
-          "Add to queue can be the default button");
-    queued_button->click();
+          "a known target makes Add to queue the default");
+    if (queued_button) queued_button->click();
     check(queued.queue_requested(), "Add to queue reports the queue action");
+    check(queued.selected_queue_id() == 9, "the known queue is kept");
     check(queued.result() == QDialog::Accepted, "Add to queue accepts the dialog");
 
-    ConfirmDownloadDialog first_queue(QStringLiteral("movie.mp4"), 1500000,
-                                      QStringLiteral("https://example.com/movie.mp4"),
-                                      QStringLiteral("/tmp"), true);
-    first_queue.set_queues({{7, QStringLiteral("Batch")}, {9, QStringLiteral("Parts")}}, 0);
-    check(first_queue.selected_queue_id() == 7,
-          "without a requested queue the first queue is preselected");
+    // With several queues and no target the button opens the picker, so the
+    // dialog itself stays open and no queue is guessed.
+    ConfirmDownloadDialog choose(QStringLiteral("movie.mp4"), 1500000,
+                                 QStringLiteral("https://example.com/movie.mp4"),
+                                 QStringLiteral("/tmp"), true);
+    choose.set_queue_choices({{7, QStringLiteral("Batch"), 2},
+                              {9, QStringLiteral("Parts"), 0}},
+                             0);
+    auto* choose_button =
+        qobject_cast<QPushButton*>(named_widget(&choose, "confirm_queue"));
+    check(choose.selected_queue_id() == 0, "no queue is guessed when several exist");
+    check(choose_button && choose_button->isEnabled(),
+          "Add to queue can open the picker");
+    check(choose_button && !choose_button->isDefault(),
+          "Download Now stays the default without a target");
+
+    // A single queue leaves nothing to choose: Add to queue uses it directly.
+    ConfirmDownloadDialog single(QStringLiteral("movie.mp4"), 1500000,
+                                 QStringLiteral("https://example.com/movie.mp4"),
+                                 QStringLiteral("/tmp"), true);
+    single.set_queue_choices({{7, QStringLiteral("Batch"), 2}}, 0);
+    auto* single_button =
+        qobject_cast<QPushButton*>(named_widget(&single, "confirm_queue"));
+    check(single_button && single_button->isEnabled(),
+          "Add to queue is enabled for one queue");
+    if (single_button) single_button->click();
+    check(single.selected_queue_id() == 7,
+          "the only queue is used without a picker");
+    check(single.result() == QDialog::Accepted,
+          "the single queue is accepted directly");
+
+    // Download Now always targets the main list, even after a target was set.
+    ConfirmDownloadDialog main_list(QStringLiteral("movie.mp4"), 1500000,
+                                    QStringLiteral("https://example.com/movie.mp4"),
+                                    QStringLiteral("/tmp"), true);
+    main_list.set_queue_choices({{7, QStringLiteral("Batch"), 2},
+                                 {9, QStringLiteral("Parts"), 0}},
+                                9);
+    auto* main_download =
+        qobject_cast<QPushButton*>(named_widget(&main_list, "confirm_download"));
+    if (main_download) main_download->click();
+    check(main_list.selected_queue_id() == 0,
+          "Download Now clears the queue target");
+    check(!main_list.queue_requested(), "Download Now is not a queue action");
 
     // Every input and button shares one height.
     QList<int> control_heights;
@@ -322,7 +356,7 @@ int main(int argc, char** argv) {
             control_heights << widget->height();
         }
     }
-    check(control_heights.size() == 8, "the dialog has eight controls");
+    check(control_heights.size() == 7, "the dialog has seven controls");
     bool same_height = !control_heights.isEmpty();
     for (const int height : control_heights) {
         if (height != control_heights.first()) same_height = false;

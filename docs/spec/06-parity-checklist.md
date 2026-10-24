@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.19.1.
+Status as of 0.19.2.
 
 ## v1 — core engine + GUI
 
@@ -29,7 +29,7 @@ Status as of 0.19.1.
 | Start at login setting | Replicated | XDG autostart (`~/.config/autostart/swiftdm.desktop`) runs `swiftdm --autostart`; the app starts in the tray without showing the main window (0.18.7), with a visible-window fallback when no tray is available |
 | New URL dialog | Replicated | URL field + Download/Cancel; confirmation opens while probing, initially shows fallback name and `Checking…`, and enables Download Now when metadata arrives; initial transfer reuses the probe; Resume probes fresh (0.18.19) |
 | Progress window opens when a transfer starts | Replicated | manual adds and browser handoff (both after confirmation), plus toolbar Resume |
-| Download confirmation window | Implemented | shown immediately for manual and browser-sent downloads while a worker probes; fallback name + `Checking…`, Download Now disabled until metadata arrives, user category/location choices preserved, no row/DB entry on Cancel; initial transfer reuses the successful probe; independent of main-window visibility; `File`/`Save` sections, default 650×330 (minimum 560×320), elided filename, separate size row, uniform controls, Cancel on the left and Add to queue/Download Now on the right (0.18.9, latency improvement 0.18.19, section layout 0.18.22). The `Save` section has a `Queue` selector; Add to queue is enabled only for a real queue, and Download Now stays the default (0.19.0). The General tab can switch the window off; the download then starts with default category/folder, and New URL from a queue view targets that queue (0.18.17, queue behavior 0.19.0) |
+| Download confirmation window | Implemented | shown immediately for manual and browser-sent downloads while a worker probes; fallback name + `Checking…`, Download Now disabled until metadata arrives, user category/location choices preserved, no row/DB entry on Cancel; initial transfer reuses the successful probe; independent of main-window visibility; `File`/`Save` sections, default 650×330 (minimum 560×320), elided filename, separate size row, uniform controls, Cancel on the left and Add to queue/Download Now on the right (0.18.9, latency improvement 0.18.19, section layout 0.18.22). Add to queue opens a `Choose Queue` picker (name + item count, no preselection) when several queues exist; a single queue is used directly, a download started from a queue view keeps that queue without a picker, and Download Now stays the default otherwise and targets Downloads (0.19.0, picker 0.19.2). The General tab can switch the window off; the download then starts with default category/folder, and New URL from a queue view targets that queue (0.18.17, queue behavior 0.19.0) |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
 | Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |

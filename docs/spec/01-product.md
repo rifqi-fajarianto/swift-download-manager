@@ -64,7 +64,7 @@ Layout (from `main-window.png`):
    `Category` dropdown (file-type default, user overridable) and `Location`
    (category folder by default, user overridable). `Download Now` adds the
    item to the main Downloads list and starts the transfer; `Cancel` leaves no
-   trace; `Add to queue` adds it to the selected queue and starts it only when
+   trace; `Add to queue` adds it to the chosen queue and starts it only when
    that queue is running (0.19.0). While probing, the fallback filename and
    `Checking…` size are shown and Download Now is disabled; server metadata
    replaces them when ready. The successful probe is reused by the initial
@@ -77,10 +77,14 @@ Layout (from `main-window.png`):
      none); `Save` holds `URL` (read-only field), `Category` and `Location`.
      The size is no longer inline with the file name (0.18.9). Every
      description is vertically centered with the widget next to it (0.18.9).
-   - The `Save` section also has a `Queue` row with `None (Downloads)` plus
-     the existing queues. The first queue is preselected when one exists, but
-     `Download Now` stays the default and targets Downloads; `Add to queue`
-     is enabled only while a real queue is selected. With the confirmation
+   - `Add to queue` asks for the target queue (0.19.2): with more than one
+     queue it opens a `Choose Queue` picker that lists every queue with its
+     item count, starts without a selection and enables its accept button only
+     after a choice; `Cancel` returns to the confirmation window. A single
+     queue is used directly, and a download started from a queue view targets
+     that queue without a picker (`Add to queue` is the default button then).
+     `Download Now` stays the default otherwise and targets Downloads. The
+     confirmation window has no inline queue row. With the confirmation
      window off, `New URL` from a queue view targets that queue, while the
      main view and browser handoff target Downloads (0.19.0).
    - The buttons sit in one row: `Cancel` on the left, `Add to queue` and

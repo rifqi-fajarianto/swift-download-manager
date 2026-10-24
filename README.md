@@ -141,7 +141,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.19.1_amd64.deb
+sudo apt install ./swiftdm_0.19.2_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

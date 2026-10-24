@@ -1027,8 +1027,7 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
         auto* dialog = new ConfirmDownloadDialog(
             fallback_name, 0, flow->options.url,
             QString::fromStdString(settings_.download_dir), settings_.category_folders);
-        dialog->set_queues(queue_choices(), flow->item.queue_id);
-        if (flow->item.queue_id > 0) dialog->set_queue_default(true);
+        dialog->set_queue_choices(queue_choices(), flow->item.queue_id);
         dialog->set_probe_pending();
         flow->dialog = dialog;
         connect(dialog, &QDialog::finished, this, [flow](int result) {
@@ -1126,10 +1125,9 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             start_options.apply_category_folder = false;
             start_options.output_dir = draft.output_dir;
             // Download Now always means the main list; Add to queue keeps the
-            // queue chosen in the confirmation dialog.
-            target_queue = flow->dialog->queue_requested()
-                               ? flow->dialog->selected_queue_id()
-                               : 0;
+            // queue chosen in the confirmation dialog (or the queue the
+            // download came from, which the dialog resolves without a picker).
+            target_queue = flow->dialog->selected_queue_id();
             flow->dialog->deleteLater();
             flow->dialog = nullptr;
         } else {
@@ -2215,7 +2213,8 @@ QVector<QueueChoice> MainWindow::queue_choices() const {
     QVector<QueueChoice> choices;
     choices.reserve(queues_.size());
     for (const swiftdm::HistoryStore::QueueRecord& queue : queues_) {
-        choices.append({queue.id, QString::fromStdString(queue.name)});
+        choices.append({queue.id, QString::fromStdString(queue.name),
+                        queue_item_count(queue.id)});
     }
     return choices;
 }

@@ -70,6 +70,7 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(test_confirm_dialog
         test_confirm_dialog.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
     )
     target_include_directories(test_confirm_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")
@@ -82,6 +83,18 @@ if(SWIFTSDM_BUILD_UI)
     )
     add_test(NAME confirm_dialog COMMAND test_confirm_dialog)
     set_tests_properties(confirm_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Headless (offscreen) check of the queue picker: the queue entries, their
+    # item counts and the deliberate selection rule. Never shown.
+    add_executable(test_queue_picker
+        test_queue_picker.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
+    )
+    target_include_directories(test_queue_picker PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_queue_picker PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_queue_picker PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME queue_picker COMMAND test_queue_picker)
+    set_tests_properties(queue_picker PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Headless (offscreen) check of the settings window structure: five tabs
     # and every control on the tab that owns it. The dialog is never shown.

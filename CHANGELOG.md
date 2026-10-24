@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.2 — 2026-10-24
+
+Ask which queue a download belongs to instead of silently using the first one.
+
+- `Add to queue` in the Download Confirmation window opens a `Choose Queue`
+  picker when more than one queue exists. The picker lists every queue with its
+  item count, starts without a selection, and enables `Add to queue` only after
+  the user picks one; `Cancel` returns to the confirmation window.
+- With a single queue, `Add to queue` uses it directly. A download started from
+  a queue view still targets that queue without a picker and keeps
+  `Add to queue` as the default button.
+- The inline `Queue` row and its dropdown are removed from the confirmation
+  window, so the target is chosen in one place. The window returns to its
+  650×330 size (minimum 560×320).
+- `Download Now` continues to target the main Downloads list.
+- This is a UX change shipped as a patch (0.19.2) at the maintainer's request;
+  the normal policy for UX changes is MINOR +1.
+
 ## 0.19.1 — 2026-10-23
 
 Switch the toolbar to queue mode when the `Queues` branch is selected and show

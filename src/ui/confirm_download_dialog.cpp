@@ -12,7 +12,6 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QShowEvent>
-#include <QSignalBlocker>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -150,30 +149,6 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     location_container->setLayout(location_row);
     save_section->addRow(tr("Location:"), location_container);
 
-    // Queue: the target workspace for Add to queue. It is intentionally part
-    // of the Save section so the destination and the queue are visible
-    // together. "None" is the main Downloads list.
-    queue_box_ = new QComboBox(this);
-    queue_box_->setObjectName("confirm_queue_box");
-    queue_box_->addItem(tr("None (Downloads)"), qint64(0));
-    queue_box_->setToolTip(tr("Workspace that will own this download."));
-    queue_box_->setMaximumWidth(240);
-    auto* queue_row = new QWidget(this);
-    auto* queue_layout = new QHBoxLayout(queue_row);
-    queue_layout->setContentsMargins(0, 0, 0, 0);
-    queue_layout->setSpacing(0);
-    queue_layout->addWidget(queue_box_);
-    queue_layout->addStretch(1);
-    save_section->addRow(tr("Queue:"), queue_row);
-
-    queue_hint_ = new QLabel(this);
-    queue_hint_->setObjectName("confirm_queue_hint");
-    queue_hint_->setWordWrap(true);
-    queue_hint_->setStyleSheet(QStringLiteral("color:#e0a85a;"));
-    // Like the file name, the hint must not stretch the window.
-    queue_hint_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    queue_hint_->setVisible(false);
-    layout->addWidget(queue_hint_);
     layout->addStretch(1);
 
     auto* buttons = new QHBoxLayout;
@@ -182,7 +157,6 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     cancel_button->setObjectName("confirm_cancel");
     queue_button_ = new QPushButton(tr("Add to queue"), this);
     queue_button_->setObjectName("confirm_queue");
-    queue_button_->setToolTip(tr("Add this download to the selected queue."));
     queue_button_->setEnabled(false);
     download_button_ = new QPushButton(tr("Download Now"), this);
     download_button_->setObjectName("confirm_download");
@@ -194,7 +168,7 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     layout->addLayout(buttons);
 
     // Every input and button gets the same height.
-    const QList<QWidget*> controls = {url_edit, category_box_, queue_box_, location_edit_,
+    const QList<QWidget*> controls = {url_edit, category_box_, location_edit_,
                                       browse_button, download_button_, queue_button_,
                                       cancel_button};
     const int control_height = common_control_height(controls);
@@ -214,37 +188,18 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 s
     connect(location_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
         const bool valid = probe_ready_ && !text.trimmed().isEmpty();
         download_button_->setEnabled(valid);
-        queue_button_->setEnabled(valid && selected_queue_id() > 0);
+        queue_button_->setEnabled(valid && !queue_choices_.isEmpty());
     });
     connect(browse_button, &QPushButton::clicked, this,
             &ConfirmDownloadDialog::choose_location);
     connect(download_button_, &QPushButton::clicked, this, [this] {
         queue_requested_ = false;
+        queue_target_ = 0;
         confirm_download();
     });
-    connect(queue_button_, &QPushButton::clicked, this, [this] {
-        if (selected_queue_id() <= 0) {
-            queue_hint_->setText(
-                tr("Choose a queue first, or create one from the sidebar."));
-            queue_hint_->setVisible(true);
-            return;
-        }
-        queue_requested_ = true;
-        confirm_download();
-    });
+    connect(queue_button_, &QPushButton::clicked, this,
+            &ConfirmDownloadDialog::confirm_queue);
     connect(cancel_button, &QPushButton::clicked, this, &QDialog::reject);
-    connect(queue_box_, &QComboBox::currentIndexChanged, this, [this] {
-        queue_hint_->setVisible(false);
-        const bool valid = probe_ready_ && !location_edit_->text().trimmed().isEmpty();
-        queue_button_->setEnabled(valid && selected_queue_id() > 0);
-        if (queue_default_ && selected_queue_id() > 0) {
-            queue_button_->setDefault(true);
-            download_button_->setDefault(false);
-        } else {
-            queue_button_->setDefault(false);
-            download_button_->setDefault(true);
-        }
-    });
 
     // Elide the file name right away: the window size is already known here.
     update_file_label();
@@ -261,40 +216,69 @@ QString ConfirmDownloadDialog::location() const {
     return QDir::cleanPath(text);
 }
 
-void ConfirmDownloadDialog::set_queues(const QVector<QueueChoice>& queues,
-                                       qint64 selected_id) {
-    {
-        const QSignalBlocker blocker(queue_box_);
-        queue_box_->clear();
-        queue_box_->addItem(tr("None (Downloads)"), qint64(0));
-        for (const QueueChoice& queue : queues) {
-            queue_box_->addItem(queue.name, queue.id);
+void ConfirmDownloadDialog::set_queue_choices(const QVector<QueueChoice>& queues,
+                                              qint64 target_id) {
+    queue_choices_ = queues;
+    queue_target_ = 0;
+    if (target_id > 0) {
+        for (const QueueChoice& queue : queue_choices_) {
+            if (queue.id == target_id) {
+                queue_target_ = target_id;
+                break;
+            }
         }
-        int index = selected_id > 0 ? queue_box_->findData(selected_id) : -1;
-        if (index < 0 && queue_box_->count() > 1) index = 1;
-        if (index < 0) index = 0;
-        queue_box_->setCurrentIndex(index);
     }
-    queue_button_->setEnabled(probe_ready_ && !location_edit_->text().trimmed().isEmpty() &&
-                              selected_queue_id() > 0);
-    if (queue_default_ && selected_queue_id() > 0) {
-        queue_button_->setDefault(true);
-        download_button_->setDefault(false);
+
+    const bool valid = probe_ready_ && !location_edit_->text().trimmed().isEmpty();
+    queue_button_->setEnabled(valid && !queue_choices_.isEmpty());
+    // A known target (the queue the download came from) keeps Add to queue as
+    // the default action; otherwise Download Now stays the default.
+    const bool queue_default = queue_target_ > 0;
+    queue_button_->setDefault(queue_default);
+    download_button_->setDefault(!queue_default);
+    if (queue_choices_.isEmpty()) {
+        queue_button_->setToolTip(
+            tr("No queues yet. Create one from the Queues branch first."));
+    } else if (queue_target_ > 0) {
+        queue_button_->setToolTip(
+            tr("Add this download to \"%1\".").arg(queue_target_name()));
     } else {
-        queue_button_->setDefault(false);
-        download_button_->setDefault(true);
+        queue_button_->setToolTip(tr("Choose the queue this download is added to."));
     }
 }
 
-qint64 ConfirmDownloadDialog::selected_queue_id() const {
-    return queue_box_->currentData().toLongLong();
+QString ConfirmDownloadDialog::queue_target_name() const {
+    for (const QueueChoice& queue : queue_choices_) {
+        if (queue.id == queue_target_) return queue.name;
+    }
+    return {};
 }
 
-void ConfirmDownloadDialog::set_queue_default(bool enabled) {
-    queue_default_ = enabled;
-    const bool queue_ready = selected_queue_id() > 0;
-    queue_button_->setDefault(enabled && queue_ready);
-    download_button_->setDefault(!(enabled && queue_ready));
+void ConfirmDownloadDialog::confirm_queue() {
+    if (queue_choices_.isEmpty()) return;
+
+    qint64 target = queue_target_;
+    if (target <= 0) {
+        if (queue_choices_.size() == 1) {
+            // A single queue leaves nothing to choose.
+            target = queue_choices_.first().id;
+        } else {
+            QueuePickerDialog picker(queue_choices_, this);
+            if (picker.exec() != QDialog::Accepted) return;
+            target = picker.selected_queue_id();
+        }
+    }
+    if (target <= 0) return;
+
+    const qint64 previous = queue_target_;
+    queue_target_ = target;
+    queue_requested_ = true;
+    if (!confirm_download()) {
+        // Keep the dialog open and ask again on the next click instead of
+        // silently reusing a target the user has not confirmed.
+        queue_target_ = previous;
+        queue_requested_ = false;
+    }
 }
 
 void ConfirmDownloadDialog::set_probe_pending() {
@@ -323,7 +307,7 @@ void ConfirmDownloadDialog::set_probe_result(const QString& file_name, quint64 s
     }
     download_button_->setEnabled(!location_edit_->text().trimmed().isEmpty());
     queue_button_->setEnabled(!location_edit_->text().trimmed().isEmpty() &&
-                              selected_queue_id() > 0);
+                              !queue_choices_.isEmpty());
 }
 
 QString ConfirmDownloadDialog::default_location() const {
@@ -346,7 +330,7 @@ void ConfirmDownloadDialog::choose_location() {
     location_edit_->setText(QDir::cleanPath(dir));
 }
 
-void ConfirmDownloadDialog::confirm_download() {
+bool ConfirmDownloadDialog::confirm_download() {
     const QString dir = location();
     if (dir.isEmpty()) {
         QMessageBox box(this);
@@ -354,7 +338,7 @@ void ConfirmDownloadDialog::confirm_download() {
         box.setWindowTitle(tr("Download Confirmation"));
         box.setText(tr("Choose a folder the file is saved to."));
         box.exec();
-        return;
+        return false;
     }
     if (!QDir(dir).exists() && !QDir().mkpath(dir)) {
         QMessageBox box(this);
@@ -362,9 +346,10 @@ void ConfirmDownloadDialog::confirm_download() {
         box.setWindowTitle(tr("Download Confirmation"));
         box.setText(tr("The folder cannot be created:\n%1").arg(dir));
         box.exec();
-        return;
+        return false;
     }
     accept();
+    return true;
 }
 
 void ConfirmDownloadDialog::update_file_label() {

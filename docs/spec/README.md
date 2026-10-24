@@ -36,7 +36,8 @@ dialog, tray icon and completion/error dialogs; CMake install rules and a
 and every transfer — manual or browser-sent — is confirmed before it starts,
 with category and location overrides (0.18.0). Named queues with independent
 scheduling, limits, notifications and optional shutdown are implemented in
-0.19.0; the queue overview and queue-mode toolbar arrived in 0.19.1. Verified
-by CLI, integration tests and headless UI tests (see
+0.19.0; the queue overview and queue-mode toolbar arrived in 0.19.1, and the
+confirmation window asks for the target queue when several exist (0.19.2).
+Verified by CLI, integration tests and headless UI tests (see
 CHANGELOG.md). Remaining gaps (per-download log file and editable URL,
 passwords UI, Firefox extension) are tracked in `06-parity-checklist.md`.

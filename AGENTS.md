@@ -46,15 +46,23 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-23**, versi kerja **0.19.1**. Status ini cepat
+> Snapshot terakhir: **2026-10-24**, versi kerja **0.19.2**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit terakhir di `main`**: `d76d45a` — refactor(ui): group the download
-  confirmation into labeled sections (0.18.22).
+- **Commit terakhir di `main`**: `9169ab2` — feat(queue): add named queues with
+  queue overview and toolbar (0.19.1).
 - **Branch kerja saat snapshot**: `queue`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.22.
-- **Versi kerja**: 0.19.1. Named queues: cabang `Queues` di sidebar, tabel
+- **Versi kerja**: 0.19.2. `Add to queue` pada Download Confirmation tidak lagi
+  memakai queue pertama secara diam-diam: bila ada lebih dari satu queue,
+  tombol membuka dialog `Choose Queue` berisi nama + jumlah item, tanpa
+  preseleksi. Satu queue langsung dipakai, dan download yang dimulai dari view
+  queue tetap menarget queue itu tanpa picker. Row `Queue:` di dialog
+  konfirmasi dihapus dan tinggi window kembali ke 650×330 (minimum 560×320).
+  Perubahan UX ini memakai patch 0.19.2 atas keputusan maintainer, meskipun
+  kebijakan normal untuk UX adalah MINOR +1.
+  Named queues: cabang `Queues` di sidebar, tabel
   `queues` + kolom `downloads.queueid`, dialog `Queue Properties` (max
   simultaneous 0 = Unlimited, connections 0 = global, limit kecepatan total
   queue, autostart, notifikasi, shutdown dengan delay), `Start Queue`/`Stop
@@ -144,7 +152,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.1
+### Sudah tersedia sampai 0.19.2
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -172,8 +180,13 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.19.1 — riwayat fitur
+### 0.18.1–0.19.2 — riwayat fitur
 
+- 0.19.2 meminta user memilih queue lewat dialog `Choose Queue` saat `Add to
+  queue` dipakai dan ada lebih dari satu queue; picker menampilkan nama +
+  jumlah item dan tidak mempreseleksi apa pun. Satu queue langsung dipakai,
+  download dari view queue memakai queue tersebut tanpa picker, dan row
+  `Queue:` di dialog konfirmasi dihapus. Patch UX ini disetujui maintainer.
 - 0.19.1 memilih cabang `Queues` langsung mengaktifkan toolbar queue dan
   menampilkan overview queue di panel kanan; queue-specific actions
   dinonaktifkan sampai satu queue dipilih. Toolbar queue memakai urutan `New

@@ -4,18 +4,14 @@
 #include <QString>
 #include <QVector>
 
+#include "ui/queue_picker_dialog.h"
+
 class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
 
 namespace swiftdm::ui {
-
-// One entry of the confirmation dialog's queue selector.
-struct QueueChoice {
-    qint64 id = 0;
-    QString name;
-};
 
 // Default destination folder of a download: the download root plus the
 // category folder when the category folders are enabled. The dialog and the
@@ -28,8 +24,9 @@ QString default_download_location(const QString& download_dir, const QString& ca
 // browser handoff): the server-resolved file name and size, the category
 // (extension-based default, user overridable), the destination folder
 // (category folder by default, user overridable) and the target queue.
-// "Download Now" targets the main Downloads list, while "Add to queue" uses
-// the selected queue; Cancel leaves no row and no database entry behind.
+// "Download Now" targets the main Downloads list, while "Add to queue" asks
+// for the queue (or uses the one the download came from); Cancel leaves no row
+// and no database entry behind.
 //
 // The window keeps a fixed geometry: the file name is elided in the middle
 // and the URL sits in a read-only field, so neither of them can widen the
@@ -39,9 +36,9 @@ class ConfirmDownloadDialog : public QDialog {
   public:
     // Fixed window geometry (see the class comment).
     static constexpr int kDefaultWindowWidth = 650;
-    static constexpr int kDefaultWindowHeight = 370;
+    static constexpr int kDefaultWindowHeight = 330;
     static constexpr int kMinWindowWidth = 560;
-    static constexpr int kMinWindowHeight = 350;
+    static constexpr int kMinWindowHeight = 320;
 
     ConfirmDownloadDialog(const QString& file_name, quint64 size, const QString& url,
                           const QString& download_dir, bool category_folders,
@@ -50,14 +47,14 @@ class ConfirmDownloadDialog : public QDialog {
     QString category() const;
     // Exact destination folder, tilde-expanded and cleaned.
     QString location() const;
-    // Fills the Queue row. A selected id that is not present falls back to the
-    // first queue, so Add to queue is usable as soon as a queue exists.
-    void set_queues(const QVector<QueueChoice>& queues, qint64 selected_id = 0);
-    qint64 selected_queue_id() const;
+    // Queues offered by Add to queue. A target id that exists in the list is
+    // used directly (no picker) and makes Add to queue the default button,
+    // which is how a download started from a queue view keeps its queue.
+    void set_queue_choices(const QVector<QueueChoice>& queues, qint64 target_id = 0);
+    // Queue chosen with Add to queue; 0 while Download Now is the action.
+    qint64 selected_queue_id() const { return queue_target_; }
     // True when the user accepted with Add to queue rather than Download Now.
     bool queue_requested() const { return queue_requested_; }
-    // Makes Add to queue the default button (used by Add URL in a queue view).
-    void set_queue_default(bool enabled);
     void set_probe_pending();
     void set_probe_result(const QString& file_name, quint64 size);
 
@@ -68,11 +65,16 @@ class ConfirmDownloadDialog : public QDialog {
   private:
     void use_default_location();
     void choose_location();
-    void confirm_download();
+    // Returns false when the destination is invalid and the dialog stays open.
+    bool confirm_download();
+    // Opens the queue picker (or resolves a single queue) and confirms.
+    void confirm_queue();
     // Elides the file name so a long name never widens the window.
     void update_file_label();
 
     QString default_location() const;
+    // Name of the queue that Add to queue would use, empty when there is none.
+    QString queue_target_name() const;
 
     QString download_dir_;
     bool category_folders_ = true;
@@ -82,16 +84,16 @@ class ConfirmDownloadDialog : public QDialog {
     bool category_custom_ = false;
     bool probe_ready_ = true;
     bool queue_requested_ = false;
-    bool queue_default_ = false;
     // Full file name; the label shows an elided form of it.
     QString file_name_;
+    QVector<QueueChoice> queue_choices_;
+    // Target queue when it is already known (queue view) or was picked.
+    qint64 queue_target_ = 0;
 
     QComboBox* category_box_ = nullptr;
-    QComboBox* queue_box_ = nullptr;
     QLineEdit* location_edit_ = nullptr;
     QLabel* file_label_ = nullptr;
     QLabel* size_label_ = nullptr;
-    QLabel* queue_hint_ = nullptr;
     QPushButton* download_button_ = nullptr;
     QPushButton* queue_button_ = nullptr;
 };
