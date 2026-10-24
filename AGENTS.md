@@ -628,6 +628,9 @@ Catatan:
   (`workflow_dispatch`). Tag tidak perlu dipindahkan.
 - Jika tag tidak sama dengan versi di `CMakeLists.txt` atau section changelog
   tidak ada, workflow gagal sebelum menerbitkan apa pun.
+- `workflow_dispatch` hanya bisa memakai tag yang sudah di-push ke `origin`.
+  Step pemeriksaan tag berjalan sebelum checkout dan gagal dengan pesan yang
+  menyebutkan perintah `git tag`/`git push` bila tag belum ada.
 - Badge CI di `README.md` menunjuk ke repository
   `rifqi-fajarianto/swift-download-manager`; perbarui URL badge jika
   repository dipindahkan atau diganti nama.

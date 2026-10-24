@@ -15,7 +15,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  # A manual dispatch runs on a branch, so key on the tag being released to
+  # keep it from running alongside the tag push for the same version.
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -34,6 +36,19 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
+
+      # A manual dispatch names an existing tag. Check that first: checkout
+      # only reports a bare "git fetch failed" when the tag was never pushed.
+      - name: Verify the release tag exists
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if ! git ls-remote --exit-code --tags "$remote" "refs/tags/${TAG}" > /dev/null; then
+            echo "::error::Tag ${TAG} is not on the remote. Create and push it first:"
+            echo "::error::git tag -a ${TAG} -m \"SwiftDM ${TAG#v}\" && git push origin ${TAG}"
+            exit 1
+          fi
 
       # A manual dispatch can rebuild an existing tag (for example after a
       # workflow fix) without moving the tag.
