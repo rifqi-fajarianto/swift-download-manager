@@ -507,6 +507,29 @@ void test_plain_page_download(const std::string& dir, testutil::TestHttpServer& 
     CHECK(text.find("<title>Plain page</title>") != std::string::npos);
 }
 
+// A page may only steer the transparent confirmation step to its own origin
+// (audit finding 2). The fixture's form points at `localhost` while the page is
+// served from `127.0.0.1`, so following it would prove the vulnerability.
+void test_confirmation_form_cross_origin(const std::string& dir,
+                                         testutil::TestHttpServer& server) {
+    const int before = testutil::g_confirm_form_requests.load();
+    HttpOptions opts;
+    opts.url = server.base_url() + "/confirm-form-page";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK_EQ(probe.error, std::string(kConfirmationPendingError));
+    CHECK_EQ(testutil::g_confirm_form_requests.load(), before);
+
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/confirm-form-page";
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK(result.error.find("confirmation page") != std::string::npos);
+    CHECK_EQ(testutil::g_confirm_form_requests.load(), before);
+}
+
 void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -743,6 +766,7 @@ int main() {
     test_drive_page_unresolved(server);
     test_signin_page(server);
     test_plain_page_download(dir + "/page", server);
+    test_confirmation_form_cross_origin(dir + "/confirm-cross-origin", server);
     test_categories();
     test_download_url_scheme_allowlist(dir + "/scheme");
     test_unique_path(dir);

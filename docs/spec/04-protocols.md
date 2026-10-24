@@ -177,6 +177,13 @@ Drive is the case this section covers (verified against the live service):
   every file with `Content-Disposition` — an HTML response without it is never
   the file itself. A plain HTML document from an ordinary host is still
   downloadable as a file.
+- **Same-origin rule (0.19.4/0.19.5)** — a confirmation form is only followed
+  when its `action` stays on the origin (scheme, host and effective port) that
+  served the page, or when both the page and the action are Google Drive hosts.
+  Any other action fails the probe with
+  `kConfirmationPendingError` and no second request is made, so a page cannot
+  point the follow-up request (and the source of the saved file) at another
+  host, including one on the local network.
 - The resolved URL is used for the transfer (`ProbeResult::download_url`,
   03-engine.md §5); the probe result otherwise flows through the pipeline
   unchanged.

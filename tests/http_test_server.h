@@ -16,6 +16,9 @@
 //   GET/HEAD /drive-loop/N          virus-scan notice that never resolves
 //   GET/HEAD /signin                Google sign-in page (private-file wall)
 //   GET/HEAD /page                  plain HTML page (no file download)
+//   GET/HEAD /confirm-form-page     HTML page whose Drive-shaped form points at
+//                                   another origin (must not be followed)
+//   GET/HEAD /confirm-target        counts requests; the off-origin form target
 //   GET/HEAD /html-error            403 HTML page with a <title>
 //   GET/HEAD /html-error-plain      403 HTML page without a <title>
 //   GET/HEAD /hls/master.m3u8       HLS master playlist (variant-1/-2)
@@ -48,6 +51,7 @@ inline std::atomic<int> g_non_matching_cookie_requests{0};
 inline std::atomic<int> g_head_requests{0};
 inline std::atomic<int> g_limited_active{0};
 inline std::atomic<int> g_limited_refusals{0};
+inline std::atomic<int> g_confirm_form_requests{0};
 
 inline uint8_t content_byte(uint64_t i) {
     uint32_t x = static_cast<uint32_t>(i) * 2654435761u + 12345u;
@@ -292,6 +296,12 @@ class TestHttpServer {
             serve_signin_page(fd);
         } else if (path == "/page") {
             serve_plain_page(fd);
+        } else if (path == "/confirm-form-page") {
+            serve_confirm_form_page(fd, port);
+        } else if (path == "/confirm-target") {
+            // If a probe follows the off-origin form, this counter proves it.
+            ++g_confirm_form_requests;
+            serve_file(fd, method, "1024", range, false);
         } else if (path == "/stream-forbidden") {
             // Unknown-size probe succeeds (chunked), the streamed GET is refused.
             if (method == "HEAD") {
@@ -395,6 +405,22 @@ class TestHttpServer {
     static void serve_plain_page(int fd) {
         const std::string body =
             "<html><head><title>Plain page</title></head><body>hello</body></html>";
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                     "Content-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+    }
+
+    // A page from a normal host that carries a Drive-shaped confirmation form
+    // whose action points at a different origin. The form must not be followed
+    // (audit finding 2): `localhost` and `127.0.0.1` are different origins even
+    // though they reach the same server, so the counter stays at zero.
+    static void serve_confirm_form_page(int fd, uint16_t port) {
+        const std::string body =
+            "<html><head><title>Not a Drive notice</title></head><body>"
+            "<form action=\"http://localhost:" + std::to_string(port) + "/confirm-target\" "
+            "method=\"get\">"
+            "<input type=\"hidden\" name=\"id\" value=\"test-file-id\"/>"
+            "<input type=\"hidden\" name=\"confirm\" value=\"t\"/></form></body></html>";
         send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                      "Content-Length: " +
                          std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body);

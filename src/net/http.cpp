@@ -755,6 +755,48 @@ bool is_web_page(const ProbeResult& probe) {
            !probe.accept_ranges;
 }
 
+// scheme://host:port with the scheme's default port filled in, so two URLs
+// compare equal regardless of how the port is written. Empty for a URL without
+// a scheme or authority.
+std::string url_origin(const std::string& url) {
+    const size_t scheme_end = url.find("://");
+    if (scheme_end == std::string::npos) return {};
+    const std::string scheme = to_lower(url.substr(0, scheme_end));
+    const size_t authority_start = scheme_end + 3;
+    const size_t authority_end = url.find_first_of("/?#", authority_start);
+    std::string authority = url.substr(
+        authority_start, authority_end == std::string::npos ? std::string::npos
+                                                            : authority_end - authority_start);
+    const size_t userinfo = authority.rfind('@');
+    if (userinfo != std::string::npos) authority.erase(0, userinfo + 1);
+    if (authority.empty()) return {};
+
+    std::string host = authority;
+    std::string port;
+    if (host.front() == '[') {
+        const size_t bracket = host.find(']');
+        if (bracket == std::string::npos) return {};
+        if (bracket + 1 < host.size() && host[bracket + 1] == ':') {
+            port = host.substr(bracket + 2);
+        }
+        host.resize(bracket + 1);
+    } else if (const size_t colon = host.find(':'); colon != std::string::npos) {
+        port = host.substr(colon + 1);
+        host.resize(colon);
+    }
+    if (host.empty()) return {};
+    if (port.empty()) {
+        if (scheme == "https" || scheme == "ftps") {
+            port = "443";
+        } else if (scheme == "ftp") {
+            port = "21";
+        } else {
+            port = "80";
+        }
+    }
+    return scheme + "://" + to_lower(host) + ":" + port;
+}
+
 // Resolves a page that answered instead of the file (04-protocols.md §5):
 // download-confirmation notices are submitted transparently, everything else
 // is reported instead of being stored as the "file".
@@ -788,6 +830,22 @@ ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) 
         HttpOptions next = options;
         // The notice does not repeat the link's account/resource-key handoff.
         next.url = keep_drive_handoff_params(confirm, options.url);
+        // The notice may only steer the second request to the origin that
+        // served it. Without this, any page could aim the follow-up request -
+        // and the source of the saved file - at an address of its choosing,
+        // including hosts on the local network (audit finding 2). Drive's
+        // handoff between its own download hosts stays allowed.
+        const std::string page_url = body_url.empty() ? options.url : body_url;
+        const std::string page_origin = url_origin(page_url);
+        const bool same_origin =
+            !page_origin.empty() && page_origin == url_origin(next.url);
+        const bool drive_handoff =
+            is_google_drive_host(page_url) && is_google_drive_host(next.url);
+        if (!same_origin && !drive_handoff) {
+            probe.ok = false;
+            probe.error = kConfirmationPendingError;
+            return probe;
+        }
         if (!is_supported_download_url(next.url)) {
             probe.ok = false;
             probe.error = kConfirmationPendingError;

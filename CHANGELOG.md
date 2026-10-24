@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.19.5 — 2026-10-24
+
+Follow a download-confirmation form only on the origin that served it.
+
+- `resolve_interstitial()` now compares the origin (scheme, host, effective
+  port) of the confirmation form's `action` with the page that served the
+  notice. A mismatch fails the probe with
+  "download confirmation page could not be resolved" and no second request is
+  sent, so a page from any host can no longer aim the follow-up request at an
+  address of its choosing, including hosts on the local network (audit
+  finding 2).
+- Google Drive's handoff between its own download hosts
+  (`drive.google.com`, `drive.usercontent.google.com`,
+  `drive.googleusercontent.com`) stays allowed, and the existing Drive
+  virus-scan flow is unchanged.
+- Regression test: `test_http` serves a Drive-shaped form whose action points at
+  `localhost` while the page comes from `127.0.0.1`; the probe fails and the
+  request counter for the form target stays at zero.
+
 ## 0.19.4 — 2026-10-24
 
 Refuse transfer URLs outside `http`, `https`, `ftp` and `ftps`.
