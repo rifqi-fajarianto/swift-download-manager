@@ -23,6 +23,9 @@
 //   GET/HEAD /hls/seg-<v>-<s>.ts    HLS segment (deterministic content)
 //   GET/HEAD /hls/encrypted.m3u8    playlist with EXT-X-KEY (unsupported)
 //   GET/HEAD /hls/map.m3u8          playlist with EXT-X-MAP init segment
+//   GET/HEAD /hls/file-segment.m3u8 playlist whose segment is file:///etc/passwd
+//   GET/HEAD /hls/file-variant.m3u8 master playlist with a file:// variant
+//   GET/HEAD /hls/file-map.m3u8     EXT-X-MAP pointing at file:///etc/passwd
 // Content bytes are shared with the tests via content_byte().
 
 #include <arpa/inet.h>
@@ -555,6 +558,32 @@ class TestHttpServer {
                           "#EXT-X-MAP:URI=\"init.mp4\"\n"
                           "#EXTINF:4.0,\nseg-1-0.ts\n"
                           "#EXTINF:4.0,\nseg-2-1.ts\n"
+                          "#EXT-X-ENDLIST\n");
+            return;
+        }
+        // Scheme allowlist fixtures (security regression): a playlist must not
+        // be able to point the transfer at a local file.
+        if (path == "/hls/file-segment.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-TARGETDURATION:10\n"
+                          "#EXTINF:10,\n"
+                          "file:///etc/passwd\n"
+                          "#EXT-X-ENDLIST\n");
+            return;
+        }
+        if (path == "/hls/file-variant.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-STREAM-INF:BANDWIDTH=500000\n"
+                          "file:///etc/passwd\n");
+            return;
+        }
+        if (path == "/hls/file-map.m3u8") {
+            send_playlist(fd, method,
+                          "#EXTM3U\n"
+                          "#EXT-X-MAP:URI=\"file:///etc/passwd\"\n"
+                          "#EXTINF:4.0,\nseg-1-0.ts\n"
                           "#EXT-X-ENDLIST\n");
             return;
         }

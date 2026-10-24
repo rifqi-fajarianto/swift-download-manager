@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.19.4 — 2026-10-24
+
+Refuse transfer URLs outside `http`, `https`, `ftp` and `ftps`.
+
+- Every URL that reaches libcurl is now checked by
+  `is_supported_download_url()` (`src/net/http.cpp`), and every handle also
+  pins `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` (or the `_STR` variants)
+  to the same list. Redirect targets inherit the restriction.
+- HLS playlists are remote input: a `file://` segment, `EXT-X-MAP` init
+  segment, or master variant now fails the download with "the HLS playlist
+  references an unsupported URL scheme" before the part file is created,
+  instead of copying a local file into the output (audit finding 1).
+- `fetch_text()` and `stream_download()` reject an unsupported scheme even
+  when a caller skips the probe, so the guard also covers the CLI path.
+- Regression tests: `test_http` (scheme allowlist plus direct `fetch_text` /
+  `stream_download` calls) and `test_media` (three `file://` HLS fixtures).
+
 ## 0.19.3 — 2026-10-24
 
 Queue items no longer trigger the global completion actions.

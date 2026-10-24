@@ -1,3 +1,6 @@
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -641,6 +644,53 @@ void test_categories() {
     CHECK_EQ(category_folder_for("data.unknownext"), std::string("Misc"));
 }
 
+// The scheme allowlist gates every URL before it reaches libcurl: probes, HLS
+// playlist entries, range segments and sequential transfers (audit finding 1).
+void test_download_url_scheme_allowlist(const std::string& dir) {
+    CHECK(is_supported_download_url("http://example.com/file.bin"));
+    CHECK(is_supported_download_url("https://example.com/file.bin?x=1"));
+    CHECK(is_supported_download_url("ftp://example.com/file.bin"));
+    CHECK(is_supported_download_url("FTPS://example.com/file.bin"));
+    CHECK(!is_supported_download_url("file:///etc/passwd"));
+    CHECK(!is_supported_download_url("file://localhost/etc/passwd"));
+    CHECK(!is_supported_download_url("dict://example.com:2628/x"));
+    CHECK(!is_supported_download_url("gopher://example.com/1"));
+    CHECK(!is_supported_download_url("data:text/plain,x"));
+    CHECK(!is_supported_download_url("example.com/file.bin"));
+    CHECK(!is_supported_download_url("http://"));
+    CHECK(!is_supported_download_url("http://bad host/file"));
+
+    // fetch_text and stream_download refuse the scheme even when a caller
+    // skips the probe (the HLS path used to do exactly that).
+    HttpOptions options;
+    options.url = "file:///etc/passwd";
+    std::string text;
+    std::string error;
+    CHECK(!fetch_text(options, &text, nullptr, &error, 4096));
+    CHECK_EQ(error, std::string(kInvalidUrlError));
+    CHECK(text.empty());
+
+    const std::string sink = dir + "/scheme-sink.bin";
+    std::error_code ec_dir;
+    std::filesystem::create_directories(dir, ec_dir);
+    const int fd = ::open(sink.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    CHECK(fd >= 0);
+    uint64_t written = 0;
+    error.clear();
+    CHECK(stream_download(options, fd, nullptr, &written, &error) ==
+          TransferOutcome::Failed);
+    CHECK_EQ(error, std::string(kInvalidUrlError));
+    CHECK_EQ(written, uint64_t(0));
+    ::close(fd);
+
+    DownloadEngine engine(test_settings(dir));
+    DownloadRequest request;
+    request.url = "file:///etc/passwd";
+    const auto result = engine.run(request);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK_EQ(result.error, std::string(kInvalidUrlError));
+}
+
 void test_unique_path(const std::string& dir) {
     const std::string base = dir + "/unique.bin";
     {
@@ -694,6 +744,7 @@ int main() {
     test_signin_page(server);
     test_plain_page_download(dir + "/page", server);
     test_categories();
+    test_download_url_scheme_allowlist(dir + "/scheme");
     test_unique_path(dir);
 
     server.stop();

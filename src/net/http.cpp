@@ -59,30 +59,11 @@ int http_error_status(const std::string& error) {
     return static_cast<int>(std::strtol(error.c_str() + kPrefixLen, nullptr, 10));
 }
 
-namespace {
-
-constexpr int kIoTimeoutMs = 100;         // curl multi poll timeout
-constexpr int64_t kReportIntervalMs = 250;
-constexpr int kMaxRetries = 5;
-
-int64_t now_ms() {
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-}
-
-void ensure_curl_global() {
-    static std::once_flag once;
-    std::call_once(once, [] { curl_global_init(CURL_GLOBAL_DEFAULT); });
-}
-
-std::string http_error_text(long code) {
-    std::string text = "HTTP/1.1 " + std::to_string(code);
-    const std::string reason = http_reason_phrase(code);
-    if (!reason.empty()) text += " " + reason;
-    return text;
-}
-
-bool has_supported_url_shape(const std::string& url) {
+// One allowlist for every URL that reaches libcurl: the probe, HLS playlists
+// (whose segment URIs come from a remote file), sequential transfers and
+// range segments. libcurl would otherwise accept schemes such as file://,
+// which would let a page read a local file into the download.
+bool is_supported_download_url(const std::string& url) {
     const size_t scheme_end = url.find("://");
     if (scheme_end == std::string::npos) return false;
     const std::string scheme = to_lower(url.substr(0, scheme_end));
@@ -108,6 +89,29 @@ bool has_supported_url_shape(const std::string& url) {
     return !authority.empty();
 }
 
+namespace {
+
+constexpr int kIoTimeoutMs = 100;         // curl multi poll timeout
+constexpr int64_t kReportIntervalMs = 250;
+constexpr int kMaxRetries = 5;
+
+int64_t now_ms() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+
+void ensure_curl_global() {
+    static std::once_flag once;
+    std::call_once(once, [] { curl_global_init(CURL_GLOBAL_DEFAULT); });
+}
+
+std::string http_error_text(long code) {
+    std::string text = "HTTP/1.1 " + std::to_string(code);
+    const std::string reason = http_reason_phrase(code);
+    if (!reason.empty()) text += " " + reason;
+    return text;
+}
+
 std::string curl_url_error(CURLcode code) {
     return code == CURLE_URL_MALFORMAT ? std::string(kInvalidUrlError)
                                        : std::string(curl_easy_strerror(code));
@@ -131,6 +135,20 @@ void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* header
     const std::string request_url = encode_url_for_request(o.url);
     curl_easy_setopt(handle, CURLOPT_URL, request_url.c_str());
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+    // Defence in depth next to is_supported_download_url(): libcurl never
+    // opens a scheme outside this list, including on redirect targets.
+    // CURLOPT_PROTOCOLS_STR needs libcurl 7.85 (Debian 13 ships 8.x).
+#if LIBCURL_VERSION_NUM >= 0x075500
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "http,https,ftp,ftps");
+    curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS_STR, "http,https,ftp,ftps");
+#else
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS,
+                     static_cast<long>(CURLPROTO_HTTP | CURLPROTO_HTTPS | CURLPROTO_FTP |
+                                       CURLPROTO_FTPS));
+    curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS,
+                     static_cast<long>(CURLPROTO_HTTP | CURLPROTO_HTTPS | CURLPROTO_FTP |
+                                       CURLPROTO_FTPS));
+#endif
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 15L);
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT,
@@ -622,8 +640,12 @@ bool is_ftp_url(const std::string& url) {
 
 bool fetch_text(const HttpOptions& options, std::string* text, std::string* effective_url,
                 std::string* error, uint64_t max_bytes) {
-    ensure_curl_global();
     if (text) text->clear();
+    if (!is_supported_download_url(options.url)) {
+        if (error) *error = kInvalidUrlError;
+        return false;
+    }
+    ensure_curl_global();
     CURL* handle = curl_easy_init();
     if (!handle) {
         if (error) *error = "cannot initialize curl";
@@ -766,7 +788,7 @@ ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) 
         HttpOptions next = options;
         // The notice does not repeat the link's account/resource-key handoff.
         next.url = keep_drive_handoff_params(confirm, options.url);
-        if (!has_supported_url_shape(next.url)) {
+        if (!is_supported_download_url(next.url)) {
             probe.ok = false;
             probe.error = kConfirmationPendingError;
             return probe;
@@ -800,7 +822,7 @@ ProbeResult resolve_interstitial(const HttpOptions& options, ProbeResult probe) 
 }  // namespace
 
 ProbeResult probe_url(const HttpOptions& options) {
-    if (!has_supported_url_shape(options.url)) {
+    if (!is_supported_download_url(options.url)) {
         ProbeResult out;
         out.error = kInvalidUrlError;
         return out;
@@ -1285,6 +1307,10 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 uint64_t resume_from,
                                 std::shared_ptr<BandwidthLimit> bandwidth_limit) {
     ensure_curl_global();
+    if (!is_supported_download_url(options.url)) {
+        if (error) *error = kInvalidUrlError;
+        return TransferOutcome::Failed;
+    }
     curl_slist* headers = build_headers(options.headers);
     CURL* handle = curl_easy_init();
     if (!handle) {

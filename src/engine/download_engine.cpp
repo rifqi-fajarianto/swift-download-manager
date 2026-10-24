@@ -180,6 +180,11 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
             std::max_element(playlist.variants.begin(), playlist.variants.end(),
                              [](const auto& a, const auto& b) { return a.first < b.first; });
         options.url = resolve_playlist_uri(effective_url, best->second);
+        if (!is_supported_download_url(options.url)) {
+            result.status = DownloadResult::Status::Failed;
+            result.error = "the HLS master playlist references an unsupported URL scheme";
+            return result;
+        }
         text.clear();
         if (!fetch_text(options, &text, &effective_url, &fetch_error)) {
             result.status = DownloadResult::Status::Failed;
@@ -205,6 +210,22 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     if (playlist.segments.empty()) {
         result.status = DownloadResult::Status::Failed;
         result.error = "the HLS playlist has no segments";
+        return result;
+    }
+
+    // Segment URIs are remote input. A file:// entry would make libcurl copy a
+    // local file into the output, so every URI has to pass the same allowlist
+    // as a user-supplied URL before the part file is even created.
+    const auto known_scheme = [&](const std::string& uri) {
+        return is_supported_download_url(resolve_playlist_uri(effective_url, uri));
+    };
+    const bool bad_init = !playlist.init_segment.empty() && !known_scheme(playlist.init_segment);
+    const bool bad_segment = std::any_of(
+        playlist.segments.begin(), playlist.segments.end(),
+        [&](const std::string& uri) { return !known_scheme(uri); });
+    if (bad_init || bad_segment) {
+        result.status = DownloadResult::Status::Failed;
+        result.error = "the HLS playlist references an unsupported URL scheme";
         return result;
     }
 

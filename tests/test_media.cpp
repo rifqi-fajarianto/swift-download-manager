@@ -176,6 +176,29 @@ void test_hls_encrypted_is_refused(const std::string& dir,
     CHECK(result.error.find("encrypted") != std::string::npos);
 }
 
+// A playlist is remote input: file:// segments, file:// variants and a
+// file:// EXT-X-MAP must fail before anything is written (audit finding 1).
+void test_hls_unsupported_scheme(const std::string& dir,
+                                 testutil::TestHttpServer& server) {
+    for (const std::string& route : {std::string("/hls/file-segment.m3u8"),
+                                     std::string("/hls/file-variant.m3u8"),
+                                     std::string("/hls/file-map.m3u8")}) {
+        Settings settings = test_settings(dir + route);
+        DownloadEngine engine(settings);
+
+        DownloadRequest request;
+        request.url = server.base_url() + route;
+
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Failed);
+        CHECK(result.error.find("unsupported URL scheme") != std::string::npos);
+        CHECK(result.path.empty());
+        // The local file must never reach the destination directory.
+        std::error_code ec;
+        CHECK(std::filesystem::is_empty(settings.download_dir, ec));
+    }
+}
+
 std::vector<uint8_t> expected_ftp_bytes() {
     std::vector<uint8_t> expected;
     expected.reserve(static_cast<size_t>(testutil::kFtpFileSize));
@@ -271,6 +294,7 @@ int main() {
     test_hls_live_bandwidth_limit(dir + "/hls-live-limit", http);
     test_hls_resume(dir, http);
     test_hls_encrypted_is_refused(dir, http);
+    test_hls_unsupported_scheme(dir, http);
     test_ftp_probe_and_download(dir, ftp);
     test_ftp_live_bandwidth_limit(dir + "/ftp-live-limit", ftp);
     test_ftp_resume_uses_rest(dir, ftp);

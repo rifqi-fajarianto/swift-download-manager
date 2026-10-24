@@ -82,10 +82,15 @@ attached to the video and audio halves of one adaptive handoff. The app stores
 it on the item (Properties → *Pair*) and in `downloads.groupid`; nothing else
 depends on it yet — muxing both halves is future work (`03-engine.md` §9).
 
-Download URLs may use `http`, `https`, or `ftp`; referers stay HTTP(S) only, so
-an FTP handoff never carries a referer or cookies. HLS playlists need no extra
-protocol field: a `video/mp2t`/`mpegurl` URL (or a `.m3u8` path) is detected by
-the engine and downloaded segment by segment (`03-engine.md` §9).
+Download URLs may use `http`, `https`, `ftp` or `ftps`; referers stay HTTP(S)
+only, so an FTP handoff never carries a referer or cookies. HLS playlists need
+no extra protocol field: a `video/mp2t`/`mpegurl` URL (or a `.m3u8` path) is
+detected by the engine and downloaded segment by segment (`03-engine.md` §9).
+The same scheme list is enforced below the protocol layer (0.19.4): every URL
+that reaches libcurl — CLI argument, probe, redirect target, HLS variant, init
+segment or media segment — must pass `is_supported_download_url()` and the
+per-handle `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` restriction. A
+`file://` URL is refused with the invalid-URL error instead of being read.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
 accepts a well-formed extension origin (`chrome-extension://`, `extensions://`,

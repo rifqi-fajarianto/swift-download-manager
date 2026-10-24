@@ -76,6 +76,11 @@ int http_error_status(const std::string& error);
 // True for ftp:// and ftps:// URLs (case-insensitive).
 bool is_ftp_url(const std::string& url);
 
+// True when `url` uses one of the schemes this app transfers (http, https,
+// ftp, ftps) and carries a usable authority. Remote input (HLS playlist URIs,
+// redirect targets, CLI arguments) must pass this before reaching libcurl.
+bool is_supported_download_url(const std::string& url);
+
 // Probes a URL: HEAD first, falling back to GET Range: 0-0 (or POST when
 // post_data is set). FTP URLs use a NOBODY (SIZE) probe instead. Fills
 // size/range support/validators/filename hint.

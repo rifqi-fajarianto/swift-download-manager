@@ -202,6 +202,11 @@ treated as HLS by `engine/hls.cpp`:
   other than `NONE` marks the playlist encrypted). URIs are resolved against the
   post-redirect playlist URL (absolute, protocol-relative, root-relative, or
   relative).
+- **Scheme allowlist (0.19.4)** — playlist URIs are remote input, so every
+  variant, init segment and media segment must use `http`, `https`, `ftp` or
+  `ftps` (`is_supported_download_url()` in `net/http.h`). A `file://` entry
+  fails the whole download before the part file is created; libcurl handles are
+  also pinned to the same protocol list for probes, transfers and redirects.
 - **Variant selection** — a master playlist picks the highest `BANDWIDTH`
   variant (one level; nested masters are rejected).
 - **Download** — the `EXT-X-MAP` init segment (if any, fMP4) is written first,
