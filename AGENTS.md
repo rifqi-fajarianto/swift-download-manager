@@ -50,10 +50,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit terakhir di `main`**: `9169ab2` — feat(queue): add named queues with
-  queue overview and toolbar (0.19.1).
-- **Branch kerja saat snapshot**: `queue`.
-- **Rilis terakhir yang sudah di-commit di `main`**: 0.18.22.
+- **Commit terakhir di `main`**: `05e18de` — docs: credit Neat Download
+  Manager as the inspiration (queue work through 0.19.3 merged).
+- **Branch kerja saat snapshot**: `main`.
+- **Rilis terakhir yang sudah di-commit di `main`**: 0.19.3.
 - **Versi kerja**: 0.19.3. Item queue tidak lagi memicu aksi completion
   global: dialog `Download Complete` dan opsi buka folder hanya berlaku untuk
   daftar utama, sedangkan item queue memakai `Notify when an item completes`
