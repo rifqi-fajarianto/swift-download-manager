@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.19.2.
+Status as of 0.19.3.
 
 ## v1 — core engine + GUI
 
@@ -55,7 +55,7 @@ kept here as the completion history of the release line.
 | Named queue workspaces (sidebar filter, main list excludes queue rows) | Implemented | `Queues` branch in the sidebar; selecting the branch shows a queue overview (name + item count) in the right panel and switches the toolbar to queue mode; selecting a queue opens its rows. A queue view shows every status of its own rows; `All Downloads`, categories, Complete and Incomplete show only `queueid = 0` (0.19.0, overview/toolbar 0.19.1) |
 | Queue overview and queue toolbar | Implemented | With no queues the overview shows a `New Queue` prompt; otherwise it lists the queues and a click opens that queue. Queue toolbar order is `New Queue`, `Delete Queue`, `Queue Properties` · `Start Queue`, `Stop Queue` · `New URL`, `Delete`, `Delete File`; actions that need a specific queue stay disabled until one is open. Icons come from `queue.svg`, `queue-add.svg`, `queue-delete.svg` and `queue-settings.svg` (0.19.1) |
 | Queue scheduling and limits | Implemented | `Start Queue` resumes Queued/Paused/Error in insertion order; the scheduler starts only Queued; max simultaneous 0–64 (0 = Unlimited); lowering the limit pauses the newest active rows and returns them to Queued, manual pauses stay Paused; manual starts from the context menu/progress window also honor the limit; queue speed budget is split across active items (min 1 KB/s) and queue connections override per-item values; autostart queues start after restore (0.19.0) |
-| Queue completion actions | Implemented | Per-item and all-complete notifications via the tray (status-bar fallback); optional cancellable shutdown countdown (5–3600 s, default 60 s, one active countdown at a time) pauses every active download and queue, persists state, then runs `systemctl poweroff` with a `shutdown -h now` fallback (0.19.0) |
+| Queue completion actions | Implemented | Per-item and all-complete notifications via the tray (status-bar fallback); optional cancellable shutdown countdown (5–3600 s, default 60 s, one active countdown at a time) pauses every active download and queue, persists state, then runs `systemctl poweroff` with a `shutdown -h now` fallback (0.19.0). Queue items do not open the global completion dialog or the download folder; those global options apply to the main Downloads list only (0.19.3) |
 | Move items between Downloads and queues; delete queue | Implemented | Inactive and completed items can move; completed items stay visible in the queue; `Move to Downloads` lives in the item context menu (not the toolbar); deleting a queue asks for confirmation, removes its rows and workspaces, and leaves completed files on disk (0.19.0, context-menu-only 0.19.1) |
 | Per-download log file (Properties "Log File") + editable URL field | Planned |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned |

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.19.3" date="2026-10-24">
+      <description>
+        <p>Completed queue items no longer open the global Download Complete window or the download folder; a queue uses its own per-item notification instead.</p>
+      </description>
+    </release>
     <release version="0.19.2" date="2026-10-24">
       <description>
         <p>The Download Confirmation window asks which queue a download belongs to when several queues exist, instead of silently using the first one.</p>

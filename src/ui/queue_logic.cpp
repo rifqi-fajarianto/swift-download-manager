@@ -117,6 +117,8 @@ bool queue_all_complete(const std::vector<QueueItemView>& items, qint64 queue_id
     return count > 0;
 }
 
+bool uses_global_completion_actions(qint64 queue_id) { return queue_id <= 0; }
+
 void ShutdownScheduler::arm(qint64 queue_id, int delay_seconds, qint64 now_ms) {
     if (queue_id <= 0) return;
     const int delay = std::max(0, delay_seconds);

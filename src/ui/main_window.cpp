@@ -1367,11 +1367,15 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
         }
         if (status == static_cast<int>(DownloadTask::Status::Completed)) {
             qInfo() << "download completed:" << path;
-            if (settings_.completion_dialog && item) {
-                show_completion_dialog(item->file_name, path);
-            }
-            if (settings_.open_folder_after_completion && !path.isEmpty()) {
-                open_download_folder(path);
+            // A queue item completes under the queue's own rules: the global
+            // completion dialog and open-folder action belong to the main list.
+            if (uses_global_completion_actions(queue_id)) {
+                if (settings_.completion_dialog && item) {
+                    show_completion_dialog(item->file_name, path);
+                }
+                if (settings_.open_folder_after_completion && !path.isEmpty()) {
+                    open_download_folder(path);
+                }
             }
             if (item && queue_id > 0) {
                 const swiftdm::HistoryStore::QueueRecord* queue = queue_for(queue_id);

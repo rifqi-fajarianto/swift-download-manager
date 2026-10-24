@@ -61,11 +61,11 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `CategoryFolders` | download | DWORD | 2 | create per-category subfolders |
 | `TempDirectory` | download | STRING | `%APPDATA%\Roaming\NeatDM` | temp/state root |
 | `ServerCreationDate` | download | DWORD | 2 | derive file creation date from server header |
-| `CompletionDialog` | general | DWORD | 0 | show completion dialog |
+| `CompletionDialog` | general | DWORD | 0 | show completion dialog (main Downloads list only; queue items use `notify_item`, 0.19.3) |
 | `AppAutoStart` | general | DWORD | 0 | start at login (SwiftDM: XDG autostart entry) |
 | `ShowTrayIcon` | general | BOOL | 1 (SwiftDM) | show the system tray icon |
 | `CloseToTray` | general | BOOL | 1 (SwiftDM) | hide to the tray when the main window is closed |
-| `OpenFolderAfterCompletion` | general | BOOL | 0 (SwiftDM) | open the target folder after a download completes |
+| `OpenFolderAfterCompletion` | general | BOOL | 0 (SwiftDM) | open the target folder after a download completes (main Downloads list only; queue items skip it, 0.19.3) |
 | `ShowDownloadConfirmationDialog` | general | BOOL | 1 (SwiftDM) | ask for confirmation before every transfer starts; off starts the download right away |
 | `Theme` | interface | STRING | dark (SwiftDM) | app theme: `system`, `light`, `dark` |
 | `ToolbarSize` | interface | STRING | normal (SwiftDM) | toolbar size: `normal`, `small` |
@@ -130,7 +130,8 @@ change applies to the next transfer started from the queue (a running transfer
 keeps its segments), and autostart applies on the next launch. Completion
 notifications and shutdown are triggered by a completion event, not by saving
 the dialog, so enabling them on an already complete queue does not run them
-retroactively.
+retroactively. Queue items never trigger the global completion dialog or the
+global open-folder option; those belong to the main Downloads list (0.19.3).
 
 ## Startup behavior
 

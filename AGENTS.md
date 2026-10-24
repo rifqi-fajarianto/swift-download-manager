@@ -46,7 +46,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-24**, versi kerja **0.19.2**. Status ini cepat
+> Snapshot terakhir: **2026-10-24**, versi kerja **0.19.3**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -54,13 +54,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   queue overview and toolbar (0.19.1).
 - **Branch kerja saat snapshot**: `queue`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.18.22.
-- **Versi kerja**: 0.19.2. `Add to queue` pada Download Confirmation tidak lagi
-  memakai queue pertama secara diam-diam: bila ada lebih dari satu queue,
-  tombol membuka dialog `Choose Queue` berisi nama + jumlah item, tanpa
+- **Versi kerja**: 0.19.3. Item queue tidak lagi memicu aksi completion
+  global: dialog `Download Complete` dan opsi buka folder hanya berlaku untuk
+  daftar utama, sedangkan item queue memakai `Notify when an item completes`
+  milik queue. Sebelumnya (0.19.2) `Add to queue` pada Download Confirmation
+  tidak lagi memakai queue pertama secara diam-diam: bila ada lebih dari satu
+  queue, tombol membuka dialog `Choose Queue` berisi nama + jumlah item, tanpa
   preseleksi. Satu queue langsung dipakai, dan download yang dimulai dari view
   queue tetap menarget queue itu tanpa picker. Row `Queue:` di dialog
   konfirmasi dihapus dan tinggi window kembali ke 650×330 (minimum 560×320).
-  Perubahan UX ini memakai patch 0.19.2 atas keputusan maintainer, meskipun
+  Perubahan UX 0.19.2 memakai patch atas keputusan maintainer, meskipun
   kebijakan normal untuk UX adalah MINOR +1.
   Named queues: cabang `Queues` di sidebar, tabel
   `queues` + kolom `downloads.queueid`, dialog `Queue Properties` (max
@@ -152,7 +155,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.2
+### Sudah tersedia sampai 0.19.3
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -180,8 +183,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   ikon hicolor (dirender saat build dari SVG ikon aplikasi), dan instalasi
   ekstensi.
 
-### 0.18.1–0.19.2 — riwayat fitur
+### 0.18.1–0.19.3 — riwayat fitur
 
+- 0.19.3 memisahkan aksi completion global dari queue: item queue tidak lagi
+  membuka dialog `Download Complete` maupun folder tujuan, dan hanya memakai
+  `Notify when an item completes` milik queue. Opsi global tersebut berlaku
+  untuk daftar utama.
 - 0.19.2 meminta user memilih queue lewat dialog `Choose Queue` saat `Add to
   queue` dipakai dan ada lebih dari satu queue; picker menampilkan nama +
   jumlah item dan tidak mempreseleksi apa pun. Satu queue langsung dipakai,

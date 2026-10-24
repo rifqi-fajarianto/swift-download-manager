@@ -48,6 +48,12 @@ int queue_speed_share_kbps(int total_kbps, int active_count);
 bool queue_all_complete(const std::vector<QueueItemView>& items, qint64 queue_id,
                         int* item_count = nullptr);
 
+// Global completion actions (the Download Complete window and "open the
+// download folder when a download completes") belong to the main Downloads
+// list. A queue owns its completion notice through notify_item, so queue items
+// skip both actions.
+bool uses_global_completion_actions(qint64 queue_id);
+
 // Countdown state machine for the per-queue shutdown option. It uses an
 // explicit millisecond clock so the countdown and cancellation rules can be
 // tested without timers or powering off a machine.

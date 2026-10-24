@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.3 — 2026-10-24
+
+Queue items no longer trigger the global completion actions.
+
+- A completed queue item no longer opens the `Download Complete` window or the
+  download folder, even while both options are enabled in Settings. A queue
+  owns its completion notice through `Notify when an item completes` (tray
+  message, status-bar fallback).
+- The global `Show Download Completion Dialog` and `Open the Download Folder
+  When a Download Completes` options now apply only to downloads in the main
+  Downloads list.
+- The all-complete notification and the shutdown countdown of a queue are
+  unchanged.
+
 ## 0.19.2 — 2026-10-24
 
 Ask which queue a download belongs to instead of silently using the first one.

@@ -114,6 +114,12 @@ int main() {
               count == 2,
           "all completed rows make the queue complete and report the count");
 
+    using swiftdm::ui::uses_global_completion_actions;
+    check(uses_global_completion_actions(0),
+          "a main-list download uses the global completion actions");
+    check(!uses_global_completion_actions(9),
+          "a queue item skips the global completion dialog and open-folder action");
+
     ShutdownScheduler shutdown;
     check(!shutdown.pending(7), "a fresh scheduler has no pending shutdown");
     shutdown.arm(7, 10, 1000);

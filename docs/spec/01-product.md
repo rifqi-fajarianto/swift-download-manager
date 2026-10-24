@@ -179,7 +179,9 @@ Layout (from `main-window.png`):
      Start Application on System Startup; Show System Tray Icon; Minimize to
      Tray When Closing the Window; Open the Download Folder When a Download
      Completes (0.18.10 split the tabs: the download options moved to the
-     `Download` tab).
+     `Download` tab). The completion dialog and the open-folder option apply
+     only to downloads in the main Downloads list; queue items follow their
+     queue notification setting (0.19.3).
    - *Interface*: appearance options — Toolbar Size (`Normal` / `Small`);
      Show Toolbar Text; App Theme (`Light` / `Dark` / `Follow System`); Tray
      Icon Style (`Simple` / `Colorful`). The changes apply immediately after
@@ -261,6 +263,11 @@ Layout (from `main-window.png`):
       workspaces, and leaves completed files on disk. Active items are
       cancelled as part of the deletion, and the view returns to the queue
       overview (0.19.1).
+    - Completion actions are queue-owned (0.19.3): a finished queue item never
+      opens the global `Download Complete` window and never triggers the
+      global open-folder option. `Notify when an item completes` is the only
+      per-item notice; the global completion options apply to the main
+      Downloads list only.
     - When every item in a queue is complete, the queue can notify once (tray
       message, status-bar fallback) and, if enabled, show a cancellable
       shutdown countdown. Only one countdown is active at a time; if another
