@@ -6,11 +6,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "core/log.h"
 #include "core/util.h"
@@ -19,6 +22,13 @@
 #include "engine/segment_plan.h"
 
 namespace swiftdm {
+
+// Defined below, after the naming helpers; the transfer paths inside the
+// anonymous namespace finish their part file through it.
+bool move_file_unique(const std::string& from, const std::string& dir,
+                      const std::string& filename, std::string* final_path,
+                      std::string* error);
+
 namespace {
 
 int64_t now_ms() {
@@ -34,20 +44,83 @@ std::string pick_filename(const ProbeResult& probe, const std::string& url) {
     return name;
 }
 
-bool move_file(const std::string& from, const std::string& to, std::string* error) {
-    std::error_code ec;
-    std::filesystem::rename(from, to, ec);
-    if (!ec) return true;
-    // Cross-device move fallback.
-    std::error_code copy_ec;
-    std::filesystem::copy_file(from, to, std::filesystem::copy_options::overwrite_existing,
-                               copy_ec);
-    if (copy_ec) {
-        if (error) *error = "cannot move to '" + to + "': " + copy_ec.message();
-        return false;
+enum class ClaimResult { Claimed, Exists, Failed };
+
+// Claims `to` for `from` without ever replacing an existing file. Hard link is
+// used because it fails with EEXIST atomically; a cross-device move falls back
+// to creating the destination with O_EXCL and copying into it.
+ClaimResult claim_path(const std::string& from, const std::string& to, std::string* error) {
+    if (::link(from.c_str(), to.c_str()) == 0) {
+        if (::unlink(from.c_str()) == 0) return ClaimResult::Claimed;
+        // The destination is now in place; leaving the source behind is only
+        // wasted space in the (about to be deleted) workspace.
+        return ClaimResult::Claimed;
     }
-    std::filesystem::remove(from, ec);
-    return true;
+    if (errno == EEXIST) return ClaimResult::Exists;
+    const int link_errno = errno;
+    if (link_errno != EXDEV && link_errno != EPERM && link_errno != EOPNOTSUPP &&
+        link_errno != ENOSYS) {
+        if (error) {
+            *error = "cannot move to '" + to + "': " + std::strerror(link_errno);
+        }
+        return ClaimResult::Failed;
+    }
+
+    // Different filesystem (or a filesystem without hard links): create the
+    // destination exclusively, then copy. O_EXCL keeps the no-overwrite rule.
+    const int out_fd = ::open(to.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+    if (out_fd < 0) {
+        if (errno == EEXIST) return ClaimResult::Exists;
+        if (error) *error = "cannot create '" + to + "': " + std::strerror(errno);
+        return ClaimResult::Failed;
+    }
+    const int in_fd = ::open(from.c_str(), O_RDONLY | O_CLOEXEC);
+    if (in_fd < 0) {
+        if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+        ::close(out_fd);
+        ::unlink(to.c_str());
+        return ClaimResult::Failed;
+    }
+    bool ok = true;
+    std::vector<char> buffer(64 * 1024);
+    while (true) {
+        const ssize_t got = ::read(in_fd, buffer.data(), buffer.size());
+        if (got < 0 && errno == EINTR) continue;
+        if (got < 0) {
+            if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+            ok = false;
+            break;
+        }
+        if (got == 0) break;
+        ssize_t offset = 0;
+        while (offset < got) {
+            const ssize_t written =
+                ::write(out_fd, buffer.data() + offset, static_cast<size_t>(got - offset));
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) {
+                if (error) *error = "cannot write '" + to + "': " + std::strerror(errno);
+                ok = false;
+                break;
+            }
+            offset += written;
+        }
+        if (!ok) break;
+    }
+    ::close(in_fd);
+    if (ok && ::fsync(out_fd) != 0) {
+        if (error) *error = "cannot sync '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (::close(out_fd) != 0 && ok) {
+        if (error) *error = "cannot close '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (!ok) {
+        ::unlink(to.c_str());
+        return ClaimResult::Failed;
+    }
+    ::unlink(from.c_str());
+    return ClaimResult::Claimed;
 }
 
 std::string lower_copy(const std::string& text) {
@@ -119,10 +192,9 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
             result.size = written;
             return result;
         }
-        const std::string final_path =
-            unique_path((std::filesystem::path(out_dir) / filename).string());
+        std::string final_path;
         std::string move_error;
-        if (!move_file(ws.part_path, final_path, &move_error)) {
+        if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
             result.status = DownloadResult::Status::Failed;
             result.error = move_error;
             return result;
@@ -325,10 +397,9 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         return result;
     }
 
-    const std::string final_path =
-        unique_path((std::filesystem::path(out_dir) / filename).string());
+    std::string final_path;
     std::string move_error;
-    if (!move_file(ws.part_path, final_path, &move_error)) {
+    if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = move_error;
         result.path = ws.part_path;
@@ -359,6 +430,26 @@ DownloadWorkspace make_workspace(const Settings& settings, const std::string& ur
     return ws;
 }
 
+// Candidate `index` for a final name: index 0 is the plain name, then
+// " (1)", " (2)", … The " (N)" variant has to stay within the path-component
+// limit as well, so the stem is shortened instead of the tag.
+std::filesystem::path candidate_path(const std::filesystem::path& dir,
+                                     const std::string& filename, int index) {
+    const std::filesystem::path base =
+        dir / limit_filename_length(filename, kMaxFileNameBytes);
+    if (index == 0) return base;
+    const std::string stem = base.stem().string();
+    const std::string ext = base.extension().string();
+    const std::string tag = " (" + std::to_string(index) + ")";
+    size_t budget = 0;
+    if (kMaxFileNameBytes > tag.size() + ext.size()) {
+        budget = kMaxFileNameBytes - tag.size() - ext.size();
+    }
+    std::string trimmed = stem;
+    if (trimmed.size() > budget) trimmed = std::string(utf8_truncate(trimmed, budget));
+    return dir / (trimmed + tag + ext);
+}
+
 std::string unique_path(const std::string& path) {
     std::error_code ec;
     const std::filesystem::path original(path);
@@ -367,24 +458,32 @@ std::string unique_path(const std::string& path) {
         original.parent_path() /
         limit_filename_length(original.filename().string(), kMaxFileNameBytes);
     if (!std::filesystem::exists(p, ec)) return p.string();
-    const std::string stem = p.stem().string();
-    const std::string ext = p.extension().string();
     for (int i = 1; i < 10000; ++i) {
-        const std::string tag = " (" + std::to_string(i) + ")";
-        // The " (N)" variant has to stay within the limit as well, so the
-        // stem is shortened instead of the tag.
-        size_t budget = 0;
-        if (kMaxFileNameBytes > tag.size() + ext.size()) {
-            budget = kMaxFileNameBytes - tag.size() - ext.size();
-        }
-        std::string trimmed = stem;
-        if (trimmed.size() > budget) {
-            trimmed = std::string(utf8_truncate(trimmed, budget));
-        }
-        const std::filesystem::path candidate = p.parent_path() / (trimmed + tag + ext);
+        const std::filesystem::path candidate =
+            candidate_path(p.parent_path(), p.filename().string(), i);
         if (!std::filesystem::exists(candidate, ec)) return candidate.string();
     }
     return p.string();
+}
+
+// Picks a free name and moves the part file there in one atomic claim, so a
+// concurrent writer can never be overwritten (audit finding 7).
+bool move_file_unique(const std::string& from, const std::string& dir,
+                      const std::string& filename, std::string* final_path,
+                      std::string* error) {
+    const std::filesystem::path out_dir(dir);
+    for (int i = 0; i < 10000; ++i) {
+        const std::string candidate = candidate_path(out_dir, filename, i).string();
+        const ClaimResult claim = claim_path(from, candidate, error);
+        if (claim == ClaimResult::Claimed) {
+            if (final_path) *final_path = candidate;
+            return true;
+        }
+        if (claim == ClaimResult::Failed) return false;
+        // Exists: another file claimed the name, try the next one.
+    }
+    if (error) *error = "no free file name for '" + filename + "' in '" + dir + "'";
+    return false;
 }
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
@@ -511,9 +610,8 @@ DownloadResult DownloadEngine::run(
 
         if (outcome == TransferOutcome::Completed) {
             std::string move_error;
-            const std::string final_path =
-                unique_path((std::filesystem::path(out_dir) / filename).string());
-            if (!move_file(ws.part_path, final_path, &move_error)) {
+            std::string final_path;
+            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;
                 return result;
@@ -627,10 +725,9 @@ DownloadResult DownloadEngine::run(
                 result.error = "incomplete download";
                 return result;
             }
-            const std::string final_path =
-                unique_path((std::filesystem::path(out_dir) / filename).string());
+            std::string final_path;
             std::string move_error;
-            if (!move_file(ws.part_path, final_path, &move_error)) {
+            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
                 save_transfer_state(ws.state_path, state, nullptr);
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;

@@ -174,6 +174,65 @@ void test_unique_path_stays_in_limit(const std::string& dir) {
     CHECK(unique_name.find(" (1).mp4") != std::string::npos);
 }
 
+// The final name is claimed atomically: an existing file is never replaced,
+// even when a file appears after the name was chosen (audit finding 7).
+void test_final_name_never_overwrites(const std::string& dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+
+    const std::string first_source = dir + "/first.part";
+    {
+        std::ofstream out(first_source, std::ios::binary | std::ios::trunc);
+        out << "first";
+    }
+    std::string final_path;
+    std::string error;
+    CHECK(move_file_unique(first_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, dir + "/file.bin");
+    CHECK(!std::filesystem::exists(first_source));
+    {
+        std::ifstream in(final_path);
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("first"));
+    }
+
+    // The plain name is taken: the next free name is claimed and the existing
+    // file keeps its content.
+    const std::string second_source = dir + "/second.part";
+    {
+        std::ofstream out(second_source, std::ios::binary | std::ios::trunc);
+        out << "second";
+    }
+    CHECK(move_file_unique(second_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, dir + "/file (1).bin");
+    {
+        std::ifstream in(dir + "/file.bin");
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("first"));
+    }
+
+    // A gap in the numbering is not reused: " (1)" is taken, so " (2)" is next.
+    {
+        std::ofstream out(dir + "/file (2).bin", std::ios::binary | std::ios::trunc);
+        out << "existing";
+    }
+    const std::string third_source = dir + "/third.part";
+    {
+        std::ofstream out(third_source, std::ios::binary | std::ios::trunc);
+        out << "third";
+    }
+    CHECK(move_file_unique(third_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, dir + "/file (3).bin");
+    {
+        std::ifstream in(dir + "/file (2).bin");
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("existing"));
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -185,6 +244,7 @@ int main() {
     test_file_name_from_url();
     test_workspace_with_long_name(dir);
     test_unique_path_stays_in_limit(dir + "/unique");
+    test_final_name_never_overwrites(dir + "/final-name");
 
     testutil::cleanup_dir(dir);
     return testutil::finish("filenames");

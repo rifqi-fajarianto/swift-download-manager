@@ -70,6 +70,14 @@ DownloadWorkspace make_workspace(const Settings& settings, const std::string& ur
 // Returns `path` if free, else "name (1).ext", "name (2).ext", ...
 std::string unique_path(const std::string& path);
 
+// Moves `from` to the first free name under `dir`, claiming that name
+// atomically: an existing file is never replaced, even when another process
+// creates the same name between the choice and the move. `final_path` receives
+// the claimed path.
+bool move_file_unique(const std::string& from, const std::string& dir,
+                      const std::string& filename, std::string* final_path,
+                      std::string* error);
+
 // Runs one download to completion (blocking). The optional progress callback
 // returns false to pause; state is persisted so a later run() resumes.
 class DownloadEngine {

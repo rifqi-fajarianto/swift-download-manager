@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.19.10 — 2026-10-25
+
+Claim the final file name atomically instead of checking then renaming.
+
+- `move_file_unique()` picks the first free `name (N).ext` candidate and claims
+  it in the same step (`link()`, or `O_EXCL` create for a cross-filesystem
+  destination). A file another process creates between the name choice and the
+  move is therefore never overwritten; the next candidate is used instead
+  (audit finding 7).
+- The cross-device fallback copies into a freshly created exclusive file and
+  never uses an overwriting copy.
+- `unique_path()` keeps its existing contract for callers that only need a name
+  suggestion; every completion path now goes through the atomic claim.
+- Regression test covers repeated completions of the same file name, a taken
+  plain name and a gap in the `(N)` sequence, and verifies the existing files
+  keep their content.
+
 ## 0.19.9 — 2026-10-25
 
 Validate resumed transfers against the server's own range metadata.

@@ -182,6 +182,12 @@ units never exceeds the number of UTF-8 bytes, so SwiftDM uses **240 UTF-8
 bytes** as the limit for every name it writes (the final file, the `.part`
 file in the workspace and the `name (N).ext` variant).
 
+Final placement never replaces an existing file. The finished `.part` file is
+moved with `link()` (or an `O_EXCL` create when the destination is on another
+filesystem), which fails with `EEXIST` instead of overwriting. A taken name is
+skipped and the next `name (N).ext` candidate is claimed, so a file created by
+another process between the name choice and the move is preserved (0.19.10).
+
 - `sanitize_filename()` is the single place where a name is cleaned up:
   characters a file name may not contain (`/ \ : * ? " < > |` and the control
   characters) become `_`, leading and trailing dots and spaces are removed,
