@@ -9,6 +9,7 @@
 #include <QJsonParseError>
 #include <QRegularExpression>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 
 #include <utility>
@@ -20,19 +21,24 @@ namespace {
 
 constexpr qsizetype kMaxFrameBytes = 1024 * 1024;
 constexpr int kMaxClients = 32;
+constexpr int kHandshakeTimeoutMs = 5000;
+constexpr char kExtensionId[] = "hagednkleljjijmjonpeiokknhngknbb";
 const QByteArray kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const QString kSubprotocol = QStringLiteral("swiftdm.v1");
 
-// Chromium extension IDs are 32 characters from the alphabet a-p. The exact ID
-// can change when an unpacked extension is reloaded from another path or when
-// the manifest key is regenerated, so validate the origin shape rather than one
-// development ID. Edge reports its extension pages as extensions:// in DevTools
-// and may use that scheme in the WebSocket Origin header, so accept both Edge
-// and Chromium spellings. This still rejects ordinary web pages.
+static_assert(sizeof(kExtensionId) - 1 == 32,
+              "extension ID must match Chromium's 32-character ID format");
+
+// The checked-in manifest has a fixed public key, so its extension ID is stable
+// across load locations. Only the app's own ID is allowed; a shape-only check
+// would accept any extension installed in the browser. Edge may report the
+// same ID with either of its extension schemes.
 bool is_chromium_extension_origin(const QByteArray& origin) {
     static const QRegularExpression pattern(
-        QStringLiteral("^(chrome-extension|extensions|extension)://[a-p]{32}$"));
-    return pattern.match(QString::fromLatin1(origin)).hasMatch();
+        QStringLiteral("^(chrome-extension|extensions|extension)://([a-p]{32})$"));
+    const QRegularExpressionMatch match = pattern.match(QString::fromLatin1(origin));
+    if (!match.hasMatch()) return false;
+    return match.captured(2) == QLatin1String(kExtensionId);
 }
 
 QByteArray websocket_frame(const QByteArray& payload, quint8 opcode = 0x1) {
@@ -96,6 +102,7 @@ BrowserIntegration::~BrowserIntegration() {
     const auto sockets = buffers_.keys();
     buffers_.clear();
     handshaken_.clear();
+    handshake_timers_.clear();
     subscribed_.clear();
     for (QTcpSocket* socket : sockets) {
         if (!socket) continue;
@@ -117,11 +124,22 @@ void BrowserIntegration::accept_connections() {
         }
         buffers_.insert(socket, {});
         handshaken_.insert(socket, false);
+        auto* handshake_timer = new QTimer(socket);
+        handshake_timer->setSingleShot(true);
+        handshake_timers_.insert(socket, handshake_timer);
+        connect(handshake_timer, &QTimer::timeout, this, [this, socket] {
+            if (!buffers_.contains(socket) || handshaken_.value(socket)) return;
+            qWarning() << "browser integration: WebSocket handshake timed out";
+            buffers_.remove(socket);
+            socket->disconnectFromHost();
+        });
+        handshake_timer->start(kHandshakeTimeoutMs);
         connect(socket, &QTcpSocket::readyRead, this,
                 [this, socket] { read_socket(socket); });
         connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
             buffers_.remove(socket);
             handshaken_.remove(socket);
+            handshake_timers_.remove(socket);
             subscribed_.remove(socket);
             socket->deleteLater();
         });
@@ -160,6 +178,7 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         buffer.remove(0, end + 4);
         const QList<QByteArray> lines = request.split('\n');
         auto reject = [this, socket](const QString& reason) {
+            if (QTimer* timer = handshake_timers_.value(socket, nullptr)) timer->stop();
             handshake_error_ = reason;
             qWarning() << "browser integration:" << reason;
             emit handshakeRejected(reason);
@@ -215,6 +234,7 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
                               "\r\n\r\n";
         socket->write(response);
         handshaken_[socket] = true;
+        if (QTimer* timer = handshake_timers_.value(socket, nullptr)) timer->stop();
         handshake_error_.clear();
         qInfo() << "browser integration: extension connected; origin=" << origin.constData();
     }

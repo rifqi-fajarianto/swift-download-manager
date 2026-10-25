@@ -93,12 +93,14 @@ per-handle `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` restriction. A
 `file://` URL is refused with the invalid-URL error instead of being read.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
-accepts a well-formed extension origin (`chrome-extension://`, `extensions://`,
-or `extension://` plus a 32-character a-p ID) together with the `swiftdm.v1`
-subprotocol during the handshake; the exact development extension ID is not
-pinned because reloading an unpacked extension from another path can change it.
-Ordinary web origins are rejected, the rejection is logged, and the reason is
-shown in the Extensions dialog. The Chromium Manifest V3 extension sends
+accepts only the extension ID derived from the checked-in manifest's fixed
+public key (`hagednkleljjijmjonpeiokknhngknbb`), using Chromium's
+`chrome-extension://` or Edge's `extensions://`/`extension://` origin scheme,
+together with the `swiftdm.v1` subprotocol during the handshake (0.19.7).
+Ordinary web origins and other installed extensions are rejected, the rejection
+is logged, and the reason is shown in the Extensions dialog. An incomplete
+WebSocket handshake is closed after five seconds so it cannot occupy one of the
+bounded client slots indefinitely. The Chromium Manifest V3 extension sends
 downloads either from an explicit context-menu/popup action or by intercepting
 HTTP(S) downloads. `webRequest` observation (host permissions for http/https)
 remembers POST bodies, `x-*` request headers, and response content types for a

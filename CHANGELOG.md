@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.19.7 — 2026-10-25
+
+Restrict the loopback browser endpoint to SwiftDM's extension and expire stalled
+WebSocket handshakes.
+
+- The WebSocket Origin must use the extension ID derived from the checked-in
+  Chromium manifest key (`hagednkleljjijmjonpeiokknhngknbb`). Chromium and the
+  accepted Edge extension schemes remain supported; unrelated extensions can
+  no longer connect just by presenting a syntactically valid ID (audit finding
+  4).
+- Incomplete handshakes are closed after five seconds, freeing one of the
+  server's bounded client slots.
+- `test_browser_protocol` now checks wrong extension IDs and schemes are
+  rejected, the repository ID is accepted, and a client that sends no handshake
+  is disconnected at the timeout.
+
 ## 0.19.6 — 2026-10-24
 
 Protect locally stored configuration, history and partial downloads.

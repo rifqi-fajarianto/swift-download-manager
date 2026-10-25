@@ -46,7 +46,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-24**, versi kerja **0.19.6**. Status ini cepat
+> Snapshot terakhir: **2026-10-25**, versi kerja **0.19.7**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -54,7 +54,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Manager as the inspiration (queue work through 0.19.3 merged).
 - **Branch kerja saat snapshot**: `main`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.19.3.
-- **Versi kerja**: 0.19.6. Audit hardening: URL transfer dibatasi ke
+- **Versi kerja**: 0.19.7. Audit hardening: Origin WebSocket hanya menerima ID
+  ekstensi dari manifest proyek, dan handshake yang menggantung ditutup setelah
+  lima detik. URL transfer dibatasi ke
   `http/https/ftp/ftps`; form konfirmasi interstitial hanya diikuti pada origin
   penyaji atau handoff antardomain Google Drive; config atomik mode `0600`, DB
   `0600`, direktori config/data/temp/workspace privat `0700`, dan file parsial
@@ -160,7 +162,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.6
+### Sudah tersedia sampai 0.19.7
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
