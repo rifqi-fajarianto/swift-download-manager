@@ -91,6 +91,11 @@ that reaches libcurl — CLI argument, probe, redirect target, HLS variant, init
 segment or media segment — must pass `is_supported_download_url()` and the
 per-handle `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` restriction. A
 `file://` URL is refused with the invalid-URL error instead of being read.
+Requests carrying caller-supplied `x-*` headers or a `Referer` are allowed to
+redirect within the same origin, but a redirect to a different origin is
+blocked before the redirected request is sent. This prevents request tokens or
+page URLs from leaking to another host; use the final download URL if a host's
+legitimate flow requires a cross-origin redirect.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
 accepts only the extension ID derived from the checked-in manifest's fixed

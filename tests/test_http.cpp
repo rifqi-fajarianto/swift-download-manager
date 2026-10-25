@@ -242,6 +242,85 @@ void test_redirect(const std::string& dir, testutil::TestHttpServer& server) {
     CHECK(file_matches(result.path, 1048576));
 }
 
+void test_sensitive_headers_do_not_cross_redirect_origin(
+    const std::string& dir, testutil::TestHttpServer& server) {
+    const std::string redirect_url =
+        server.base_url() + "/redirect-cross-origin/65536";
+    const int probe_target_before = testutil::g_cross_origin_redirect_targets.load();
+    const int forwarded_headers_before = testutil::g_forwarded_sensitive_headers.load();
+    const int forwarded_referers_before = testutil::g_forwarded_referers.load();
+
+    for (const bool use_referer : {false, true}) {
+        const int redirect_before = testutil::g_cross_origin_redirects.load();
+        HttpOptions options;
+        options.url = redirect_url;
+        if (use_referer) {
+            options.referer = "https://private.example/account";
+        } else {
+            options.headers.push_back({"x-audit-token", "secret-token"});
+        }
+        const ProbeResult probe = probe_url(options);
+        CHECK(!probe.ok);
+        CHECK_EQ(probe.error, std::string(kRedirectWithSensitiveHeadersError));
+        CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
+        CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+        CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
+        CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
+    }
+
+    // Exercise the transfer path independently of probe_url(): callers may
+    // reuse a previously obtained ProbeResult, but the transport must still
+    // stop before forwarding sensitive request metadata to another origin.
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    for (const bool use_referer : {false, true}) {
+        for (const bool segmented : {false, true}) {
+            const int redirect_before = testutil::g_cross_origin_redirects.load();
+            DownloadRequest request;
+            request.url = redirect_url;
+            request.output_dir = dir + (use_referer ? "/referer" : "/header") +
+                                 (segmented ? "/segmented" : "/stream");
+            request.apply_category_folder = false;
+            if (use_referer) {
+                request.referer = "https://private.example/account";
+            } else {
+                request.headers.push_back({"x-audit-token", "secret-token"});
+            }
+            ProbeResult cached_probe;
+            cached_probe.ok = true;
+            cached_probe.effective_url = redirect_url;
+            cached_probe.mime_type = "application/octet-stream";
+            cached_probe.content_length = segmented ? 65536 : 0;
+            cached_probe.accept_ranges = segmented;
+            request.probe = cached_probe;
+
+            const auto result = engine.run(request);
+            CHECK(result.status == DownloadResult::Status::Failed);
+            CHECK_EQ(result.error, std::string(kRedirectWithSensitiveHeadersError));
+            CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
+            CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+            CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
+            CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
+        }
+    }
+
+    // Ordinary same-origin redirects keep working with caller-supplied headers.
+    HttpOptions same_origin;
+    same_origin.url = server.base_url() + "/redirect/1024";
+    same_origin.headers.push_back({"x-audit-token", "same-origin-token"});
+    const ProbeResult allowed = probe_url(same_origin);
+    CHECK(allowed.ok);
+
+    DownloadRequest same_origin_request;
+    same_origin_request.url = same_origin.url;
+    same_origin_request.output_dir = dir + "/same-origin";
+    same_origin_request.apply_category_folder = false;
+    same_origin_request.headers = same_origin.headers;
+    const auto same_origin_result = engine.run(same_origin_request);
+    CHECK(same_origin_result.status == DownloadResult::Status::Completed);
+    CHECK(file_matches(same_origin_result.path, 1024));
+}
+
 void test_forbidden(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -260,7 +339,7 @@ void test_probe_error_detail(testutil::TestHttpServer& server) {
     opts.url = server.base_url() + "/json-error";
     opts.user_agent = "SwiftDM-Test/1.0";
     const ProbeResult probe = probe_url(opts);
-    CHECK(!probe.ok);
+        CHECK(!probe.ok);
     CHECK_EQ(probe.status_code, long(403));
     CHECK(probe.error.find("403 Forbidden") != std::string::npos);
     CHECK(probe.error.find("hotlink_detected") != std::string::npos);
@@ -749,6 +828,7 @@ int main() {
     test_exact_folder_override(dir + "/exact-folder", server);
     test_resume_after_pause(dir + "/resume", server);
     test_redirect(dir + "/redirect", server);
+    test_sensitive_headers_do_not_cross_redirect_origin(dir + "/redirect-guard", server);
     test_forbidden(dir + "/forbidden", server);
     test_probe_error_detail(server);
     test_transfer_error_detail(dir + "/transfer-error", server);

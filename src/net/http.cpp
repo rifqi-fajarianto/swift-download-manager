@@ -131,7 +131,71 @@ curl_slist* build_headers(const std::vector<HttpHeader>& headers) {
     return list;
 }
 
-void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* headers) {
+struct RequestOriginGuard {
+    std::string original_origin;
+    bool guarded = false;
+    bool crossed_origin = false;
+    CURL* handle = nullptr;
+};
+
+bool request_has_sensitive_headers(const HttpOptions& options) {
+    return !options.headers.empty() || !options.referer.empty();
+}
+
+std::string request_origin(const char* url) {
+    if (!url) return {};
+    const std::string text(url);
+    const size_t scheme_end = text.find("://");
+    if (scheme_end == std::string::npos) return {};
+    const std::string scheme = to_lower(text.substr(0, scheme_end));
+    const size_t authority_start = scheme_end + 3;
+    const size_t authority_end = text.find_first_of("/?#", authority_start);
+    std::string authority = text.substr(
+        authority_start, authority_end == std::string::npos ? std::string::npos
+                                                            : authority_end - authority_start);
+    const size_t userinfo = authority.rfind('@');
+    if (userinfo != std::string::npos) authority.erase(0, userinfo + 1);
+    if (authority.empty()) return {};
+
+    std::string host = authority;
+    std::string port;
+    if (host.front() == '[') {
+        const size_t bracket = host.find(']');
+        if (bracket == std::string::npos) return {};
+        if (bracket + 1 < host.size() && host[bracket + 1] == ':') {
+            port = host.substr(bracket + 2);
+        }
+        host.resize(bracket + 1);
+    } else if (const size_t colon = host.find(':'); colon != std::string::npos) {
+        port = host.substr(colon + 1);
+        host.resize(colon);
+    }
+    if (host.empty()) return {};
+    if (port.empty()) {
+        if (scheme == "https" || scheme == "ftps") port = "443";
+        else if (scheme == "ftp") port = "21";
+        else port = "80";
+    }
+    return scheme + "://" + to_lower(host) + ":" + port;
+}
+
+int redirect_origin_guard(void* userdata, char*, char*, int, int) {
+    auto* guard = static_cast<RequestOriginGuard*>(userdata);
+    char* effective_url = nullptr;
+    if (!guard->handle ||
+        curl_easy_getinfo(guard->handle, CURLINFO_EFFECTIVE_URL, &effective_url) != CURLE_OK ||
+        !effective_url) {
+        return CURL_PREREQFUNC_ABORT;
+    }
+    if (request_origin(effective_url) != guard->original_origin) {
+        guard->crossed_origin = true;
+        return CURL_PREREQFUNC_ABORT;
+    }
+    return CURL_PREREQFUNC_OK;
+}
+
+void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* headers,
+                          RequestOriginGuard* origin_guard = nullptr) {
     const std::string request_url = encode_url_for_request(o.url);
     curl_easy_setopt(handle, CURLOPT_URL, request_url.c_str());
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
@@ -150,6 +214,19 @@ void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* header
                                        CURLPROTO_FTPS));
 #endif
     curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
+    if (origin_guard && request_has_sensitive_headers(o)) {
+        origin_guard->guarded = true;
+        origin_guard->original_origin = request_origin(request_url.c_str());
+        origin_guard->handle = handle;
+#if LIBCURL_VERSION_NUM >= 0x075000
+        curl_easy_setopt(handle, CURLOPT_PREREQFUNCTION, redirect_origin_guard);
+        curl_easy_setopt(handle, CURLOPT_PREREQDATA, origin_guard);
+#else
+        // Without a pre-request hook, fail closed on any redirect when custom
+        // headers/referer are present rather than risk forwarding them.
+        curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
+#endif
+    }
     curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 15L);
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT,
                      static_cast<long>(o.connect_timeout_seconds));
@@ -342,7 +419,8 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
         return false;
     }
     char errbuf[CURL_ERROR_SIZE] = {0};
-    apply_common_options(handle, o, headers);
+    RequestOriginGuard origin_guard;
+    apply_common_options(handle, o, headers, &origin_guard);
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_HEADERFUNCTION, probe_header_cb);
     curl_easy_setopt(handle, CURLOPT_HEADERDATA, &cap);
@@ -361,6 +439,12 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
 
     const CURLcode rc = curl_easy_perform(handle);
 
+#if LIBCURL_VERSION_NUM < 0x075000
+    if (origin_guard.guarded && cap.status >= 300 && cap.status < 400) {
+        origin_guard.crossed_origin = true;
+    }
+#endif
+
     char* effective_ptr = nullptr;
     if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective_ptr) == CURLE_OK &&
         effective_ptr) {
@@ -368,6 +452,11 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
     }
     curl_easy_cleanup(handle);
 
+    if (origin_guard.crossed_origin) {
+        cap = ProbeCapture{};
+        error = kRedirectWithSensitiveHeadersError;
+        return false;
+    }
     if (!cap.got_status) {
         if (rc == CURLE_OK) error = "no HTTP response";
         else error = curl_url_error(rc);
@@ -585,11 +674,18 @@ ProbeResult probe_ftp(const HttpOptions& options) {
     }
     char errbuf[CURL_ERROR_SIZE] = {0};
     curl_slist* headers = build_headers(options.headers);
-    apply_common_options(handle, options, headers);
+    RequestOriginGuard origin_guard;
+    apply_common_options(handle, options, headers, &origin_guard);
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_NOBODY, 1L);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, discard_all_cb);
     const CURLcode rc = curl_easy_perform(handle);
+
+#if LIBCURL_VERSION_NUM < 0x075000
+    if (origin_guard.guarded && out.status_code >= 300 && out.status_code < 400) {
+        origin_guard.crossed_origin = true;
+    }
+#endif
 
     char* effective = nullptr;
     if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK && effective) {
@@ -601,6 +697,10 @@ ProbeResult probe_ftp(const HttpOptions& options) {
     if (headers) curl_slist_free_all(headers);
 
     if (out.effective_url.empty()) out.effective_url = options.url;
+    if (origin_guard.crossed_origin) {
+        out.error = kRedirectWithSensitiveHeadersError;
+        return out;
+    }
     if (rc != CURLE_OK) {
         out.error = rc == CURLE_URL_MALFORMAT
                         ? kInvalidUrlError
@@ -654,7 +754,8 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
     curl_slist* headers = build_headers(options.headers);
     char errbuf[CURL_ERROR_SIZE] = {0};
     TextCtx ctx{text, max_bytes};
-    apply_common_options(handle, options, headers);
+    RequestOriginGuard origin_guard;
+    apply_common_options(handle, options, headers, &origin_guard);
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, text_write_cb);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
@@ -669,6 +770,15 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
     curl_easy_cleanup(handle);
     if (headers) curl_slist_free_all(headers);
 
+#if LIBCURL_VERSION_NUM < 0x075000
+    if (origin_guard.guarded && code >= 300 && code < 400) {
+        origin_guard.crossed_origin = true;
+    }
+#endif
+    if (origin_guard.crossed_origin) {
+        if (error) *error = kRedirectWithSensitiveHeadersError;
+        return false;
+    }
     if (effective_url && effective_url->empty()) *effective_url = options.url;
     if (rc != CURLE_OK) {
         if (error) {
@@ -680,6 +790,10 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
     }
     if (code >= 400) {
         if (error) *error = http_error_text(code);
+        return false;
+    }
+    if (origin_guard.guarded && code >= 300 && code < 400) {
+        if (error) *error = kRedirectWithSensitiveHeadersError;
         return false;
     }
     if (error) error->clear();
@@ -928,6 +1042,7 @@ struct SegmentDownloader::Impl {
         bool interrupted = false;
         std::string content_type;
         std::string error_body;  // start of a 4xx/5xx body, for the error message
+        RequestOriginGuard origin_guard;
     };
 
     HttpOptions options;
@@ -1027,9 +1142,17 @@ struct SegmentDownloader::Impl {
         ctx.interrupted = false;
         ctx.content_type.clear();
         ctx.error_body.clear();
+        ctx.origin_guard = RequestOriginGuard{};
 
         runtime[i].error_buffer.assign(CURL_ERROR_SIZE, '\0');
-        apply_common_options(handle, options, headers);
+        apply_common_options(handle, options, headers, &ctx.origin_guard);
+#if LIBCURL_VERSION_NUM < 0x075000
+        if (ctx.origin_guard.guarded) {
+            // With older libcurl, follow no redirects on requests that carry
+            // caller-provided headers/referer (fail closed).
+            curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
+        }
+#endif
         curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, runtime[i].error_buffer.data());
         curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, write_cb);
         curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
@@ -1058,6 +1181,12 @@ struct SegmentDownloader::Impl {
         long code = 0;
         curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
         curl_multi_remove_handle(multi, handle);
+        char* effective_url = nullptr;
+        if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective_url) == CURLE_OK &&
+            effective_url && contexts[i].origin_guard.guarded &&
+            request_origin(effective_url) != contexts[i].origin_guard.original_origin) {
+            contexts[i].origin_guard.crossed_origin = true;
+        }
         curl_easy_cleanup(handle);
 
         Segment& seg = state.segments[i];
@@ -1071,6 +1200,11 @@ struct SegmentDownloader::Impl {
         }
         if (contexts[i].range_bad) {
             error = "server does not support range requests";
+            return 1;
+        }
+        if (contexts[i].origin_guard.crossed_origin ||
+            (contexts[i].origin_guard.guarded && code >= 300 && code < 400)) {
+            error = kRedirectWithSensitiveHeadersError;
             return 1;
         }
         if (rc == CURLE_WRITE_ERROR && !contexts[i].range_bad) {
@@ -1385,7 +1519,8 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     ctx.bandwidth_limit = std::move(bandwidth_limit);
 
     char errbuf[CURL_ERROR_SIZE] = {0};
-    apply_common_options(handle, options, headers);
+    RequestOriginGuard origin_guard;
+    apply_common_options(handle, options, headers, &origin_guard);
     curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, stream_write_cb);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
@@ -1414,14 +1549,27 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     const CURLcode rc = curl_easy_perform(handle);
     long code = 0;
     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
+    char* effective_url = nullptr;
+    if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective_url) == CURLE_OK &&
+        effective_url && origin_guard.guarded &&
+        request_origin(effective_url) != origin_guard.original_origin) {
+        origin_guard.crossed_origin = true;
+    }
     curl_easy_cleanup(handle);
     if (headers) curl_slist_free_all(headers);
     if (bytes_written) *bytes_written = ctx.written + ctx.base;
 
+    if (origin_guard.crossed_origin ||
+        (origin_guard.guarded && code >= 300 && code < 400)) {
+        if (error) *error = kRedirectWithSensitiveHeadersError;
+        return TransferOutcome::Failed;
+    }
     if (rc == CURLE_ABORTED_BY_CALLBACK || ctx.interrupted) return TransferOutcome::Paused;
     if (rc != CURLE_OK) {
         if (error) {
-            *error = rc == CURLE_URL_MALFORMAT
+            *error = origin_guard.crossed_origin
+                         ? std::string(kRedirectWithSensitiveHeadersError)
+                         : rc == CURLE_URL_MALFORMAT
                          ? kInvalidUrlError
                          : (errbuf[0] ? errbuf : curl_easy_strerror(rc));
         }
@@ -1429,6 +1577,10 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     }
     if (code >= 400) {
         if (error) *error = http_error_with_detail(code, ctx.error_body, ctx.content_type);
+        return TransferOutcome::Failed;
+    }
+    if (origin_guard.guarded && code >= 300 && code < 400) {
+        if (error) *error = kRedirectWithSensitiveHeadersError;
         return TransferOutcome::Failed;
     }
     if (error) error->clear();

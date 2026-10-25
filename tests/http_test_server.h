@@ -6,6 +6,7 @@
 //   GET/HEAD /space-file/<name>     fixed file; exercises escaped path spaces
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
 //   GET/HEAD /redirect/<size>       302 to /file/<size>
+//   GET/HEAD /redirect-cross-origin/<size> 302 changes 127.0.0.1 to localhost
 //   GET/HEAD /forbidden             403 response
 //   GET/HEAD /json-error            403 with a JSON error body (pixeldrain shape)
 //   GET/HEAD /segments-forbidden/N  200 probe, ranged GETs answer 403 JSON
@@ -52,6 +53,10 @@ inline std::atomic<int> g_head_requests{0};
 inline std::atomic<int> g_limited_active{0};
 inline std::atomic<int> g_limited_refusals{0};
 inline std::atomic<int> g_confirm_form_requests{0};
+inline std::atomic<int> g_cross_origin_redirect_targets{0};
+inline std::atomic<int> g_forwarded_sensitive_headers{0};
+inline std::atomic<int> g_forwarded_referers{0};
+inline std::atomic<int> g_cross_origin_redirects{0};
 
 inline uint8_t content_byte(uint64_t i) {
     uint32_t x = static_cast<uint32_t>(i) * 2654435761u + 12345u;
@@ -233,7 +238,19 @@ class TestHttpServer {
             }
         }
 
+        const size_t sensitive_header = lower_request.find("\r\nx-audit-token:");
+        if (sensitive_header != std::string::npos && path.rfind("/file/", 0) == 0) {
+            g_forwarded_sensitive_headers.fetch_add(1);
+        }
+        const size_t referer_header = lower_request.find("\r\nreferer:");
+        if (referer_header != std::string::npos && path.rfind("/file/", 0) == 0) {
+            g_forwarded_referers.fetch_add(1);
+        }
+
         if (path.rfind("/file/", 0) == 0) {
+            if (lower_request.find("\r\nhost: localhost:") != std::string::npos) {
+                g_cross_origin_redirect_targets.fetch_add(1);
+            }
             serve_file(fd, method, path.substr(6), range, slow);
         } else if (path.rfind("/space-file/", 0) == 0) {
             serve_file(fd, method, "65536", range, false);
@@ -241,6 +258,12 @@ class TestHttpServer {
             serve_chunked(fd, method, path.substr(9));
         } else if (path.rfind("/redirect/", 0) == 0) {
             const std::string location = "/file/" + path.substr(10);
+            send_str(fd, "HTTP/1.1 302 Found\r\nLocation: " + location +
+                             "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        } else if (path.rfind("/redirect-cross-origin/", 0) == 0) {
+            g_cross_origin_redirects.fetch_add(1);
+            const std::string location = "http://localhost:" + std::to_string(port) +
+                                         "/file/" + path.substr(23);
             send_str(fd, "HTTP/1.1 302 Found\r\nLocation: " + location +
                              "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         } else if (path.rfind("/hls/", 0) == 0) {

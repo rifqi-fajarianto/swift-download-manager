@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.8 — 2026-10-25
+
+Block cross-origin redirects on requests that carry custom headers or a referer.
+
+- `probe_url`, `fetch_text`, segmented transfers and sequential transfers now
+  compare redirect origins before sending each redirected request whenever
+  caller-provided `x-*` headers or a `Referer` are present. Same-origin
+  redirects continue to work; a cross-origin redirect fails with a clear
+  message, preventing tokens or page URLs from leaking (audit finding 5).
+- Regression coverage checks both custom headers and referers on probe,
+  sequential and segmented paths, confirms no sensitive metadata reached the
+  redirect target, and preserves same-origin redirect behavior.
+
 ## 0.19.7 — 2026-10-25
 
 Restrict the loopback browser endpoint to SwiftDM's extension and expire stalled

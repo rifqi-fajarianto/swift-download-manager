@@ -15,6 +15,9 @@ namespace swiftdm {
 
 inline constexpr const char* kInvalidUrlError =
     "invalid download URL - include the http://, https://, ftp:// or ftps:// prefix";
+inline constexpr const char* kRedirectWithSensitiveHeadersError =
+    "redirect blocked because the request contains custom headers or a referer; "
+    "remove them or use the final download URL";
 
 struct HttpHeader {
     std::string name;
