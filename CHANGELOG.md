@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.12 — 2026-10-25
+
+Code layout only; no behavior change.
+
+- `src/net/http.cpp` (1763 lines) is split into per-concern translation units:
+  `http.cpp` (reason phrases, URL scheme checks, `fetch_text`), `http_request.cpp`
+  (shared libcurl plumbing, header list, origin guard, common options, content
+  range/Disposition parsing), `http_error.cpp` (error text and body summaries),
+  `http_probe.cpp` (probe, FTP probe, interstitial resolution), `http_segment.cpp`
+  (`SegmentDownloader`) and `http_stream.cpp` (sequential `stream_download`).
+  Cross-unit helpers and constants live in `src/net/http_internal.h`
+  (`swiftdm::detail`); `src/net/http.h` is unchanged.
+
 ## 0.19.11 — 2026-10-25
 
 Small correctness, metadata and CI/release hardening (audit finding 8).
