@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -53,6 +54,11 @@ bool file_matches(const std::string& path, uint64_t size) {
         offset += static_cast<uint64_t>(got);
     }
     return offset == size;
+}
+
+std::string read_file_text(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
 bool dir_empty(const std::string& dir) {
@@ -229,6 +235,125 @@ void test_resume_after_pause(const std::string& dir, testutil::TestHttpServer& s
     CHECK(first_report >= state.done_bytes());  // resumed from stored progress
     CHECK(monotonic);
     CHECK(dir_empty(settings.temp_dir));
+}
+
+void test_resume_validator_and_content_range(
+    const std::string& dir, testutil::TestHttpServer& server) {
+    const std::string url = server.base_url() + "/file/1048576";
+    const std::string filename = "sample-1048576.bin";
+
+    // Resume state with validators must send If-Range on each range request.
+    {
+        Settings settings = test_settings(dir + "/if-range");
+        DownloadEngine engine(settings);
+        const DownloadWorkspace ws = make_workspace(settings, url, filename);
+        CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+        CHECK(ensure_private_directory(ws.dir, nullptr));
+        {
+            std::ofstream part(ws.part_path, std::ios::binary | std::ios::trunc);
+            std::vector<uint8_t> prefix(65536);
+            for (size_t i = 0; i < prefix.size(); ++i) {
+                prefix[i] = testutil::content_byte(i);
+            }
+            part.write(reinterpret_cast<const char*>(prefix.data()),
+                       static_cast<std::streamsize>(prefix.size()));
+        }
+        TransferState state;
+        state.url = url;
+        state.file_size = 1048576;
+        state.etag = "\"etag-1048576\"";
+        state.last_modified = "Wed, 21 Oct 2015 07:28:00 GMT";
+        state.segments = plan_segments(state.file_size, 4);
+        state.segments[0].done = 65536;
+        CHECK(save_transfer_state(ws.state_path, state, nullptr));
+        const int before = testutil::g_if_range_requests.load();
+        DownloadRequest request;
+        request.url = url;
+        request.filename = filename;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        ProbeResult cached_probe;
+        cached_probe.ok = true;
+        cached_probe.effective_url = url;
+        cached_probe.filename_hint = filename;
+        cached_probe.content_length = state.file_size;
+        cached_probe.accept_ranges = true;
+        cached_probe.etag = state.etag;
+        cached_probe.last_modified = state.last_modified;
+        request.probe = cached_probe;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Completed);
+        if (result.status != DownloadResult::Status::Completed) {
+            std::fprintf(stderr, "If-Range fixture failed: %s (path=%s)\n",
+                         result.error.c_str(), result.path.c_str());
+        }
+        CHECK(file_matches(result.path, state.file_size));
+        CHECK(testutil::g_if_range_requests.load() > before);
+    }
+
+    // Mismatched If-Range must not append the new representation to old bytes.
+    {
+        Settings settings = test_settings(dir + "/changed");
+        DownloadEngine engine(settings);
+        const std::string changed_url = server.base_url() + "/if-range-changed/1048576";
+        const DownloadWorkspace ws = make_workspace(settings, changed_url, filename);
+        CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+        CHECK(ensure_private_directory(ws.dir, nullptr));
+        { std::ofstream part(ws.part_path, std::ios::binary); part << "OLD-PART"; }
+        TransferState state;
+        state.url = changed_url;
+        state.file_size = 1048576;
+        state.etag = "\"etag-1048576\"";
+        state.segments = plan_segments(state.file_size, 4);
+        state.segments[0].done = 8;
+        CHECK(save_transfer_state(ws.state_path, state, nullptr));
+
+        DownloadRequest request;
+        request.url = changed_url;
+        request.filename = filename;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        ProbeResult cached_probe;
+        cached_probe.ok = true;
+        cached_probe.effective_url = changed_url;
+        cached_probe.filename_hint = filename;
+        cached_probe.content_length = state.file_size;
+        cached_probe.accept_ranges = true;
+        cached_probe.etag = state.etag;
+        request.probe = cached_probe;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Failed);
+        if (result.status != DownloadResult::Status::Failed) {
+            std::fprintf(stderr, "changed-validator fixture unexpectedly completed: %s\n",
+                         result.path.c_str());
+        }
+        CHECK(result.error.find("file changed") != std::string::npos);
+        CHECK(result.path.find(".part") != std::string::npos);
+        const std::string partial = read_file_text(result.path);
+        // The new representation must not be appended after the stale prefix:
+        // nothing beyond the recorded progress may have been written.
+        CHECK(std::all_of(partial.begin() + 8, partial.end(),
+                          [](unsigned char c) { return c == 0; }));
+    }
+
+    // A malformed/shifted Content-Range is rejected before the corresponding
+    // bytes are written into the partial file.
+    for (int mode : {1, 2, 3}) {
+        Settings settings = test_settings(dir + "/bad-range-" + std::to_string(mode));
+        DownloadEngine engine(settings);
+        testutil::g_invalid_content_range_mode.store(mode);
+        DownloadRequest request;
+        request.url = url;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Failed);
+        CHECK(result.error.find("invalid Content-Range") != std::string::npos);
+        CHECK(result.path.find(".part") != std::string::npos);
+        const std::string part = read_file_text(result.path);
+        CHECK(std::all_of(part.begin(), part.end(), [](unsigned char c) { return c == 0; }));
+    }
+    testutil::g_invalid_content_range_mode.store(0);
 }
 
 void test_redirect(const std::string& dir, testutil::TestHttpServer& server) {
@@ -827,6 +952,7 @@ int main() {
     test_download_single_connection(dir + "/single", server);
     test_exact_folder_override(dir + "/exact-folder", server);
     test_resume_after_pause(dir + "/resume", server);
+    test_resume_validator_and_content_range(dir + "/resume-integrity", server);
     test_redirect(dir + "/redirect", server);
     test_sensitive_headers_do_not_cross_redirect_origin(dir + "/redirect-guard", server);
     test_forbidden(dir + "/forbidden", server);

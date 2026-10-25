@@ -3,6 +3,7 @@
 // Minimal HTTP/1.1 test server for CLI/backend integration tests.
 // Routes:
 //   GET/HEAD /file/<size>[?slow=1]  ranges supported, deterministic content
+//   GET/HEAD /if-range-changed/<size> returns a new ETag for If-Range tests
 //   GET/HEAD /space-file/<name>     fixed file; exercises escaped path spaces
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
 //   GET/HEAD /redirect/<size>       302 to /file/<size>
@@ -57,6 +58,8 @@ inline std::atomic<int> g_cross_origin_redirect_targets{0};
 inline std::atomic<int> g_forwarded_sensitive_headers{0};
 inline std::atomic<int> g_forwarded_referers{0};
 inline std::atomic<int> g_cross_origin_redirects{0};
+inline std::atomic<int> g_if_range_requests{0};
+inline std::atomic<int> g_invalid_content_range_mode{0};
 
 inline uint8_t content_byte(uint64_t i) {
     uint32_t x = static_cast<uint32_t>(i) * 2654435761u + 12345u;
@@ -167,12 +170,25 @@ class TestHttpServer {
         return send_all(fd, text.data(), text.size());
     }
 
-    static std::string common_headers(uint64_t total) {
+    static std::string common_headers(uint64_t total, const std::string& if_range = {},
+                                      bool force_changed = false) {
+        const std::string etag = "\"etag-" + std::to_string(total) + "\"";
+        const bool mismatch = force_changed ||
+                              (!if_range.empty() && if_range != etag &&
+                               if_range != "Wed, 21 Oct 2015 07:28:00 GMT");
+        const std::string current_etag =
+            mismatch ? "\"etag-" + std::to_string(total + 1) + "\"" : etag;
+        const std::string etag_line =
+            g_invalid_content_range_mode.load() == 4
+                ? std::string()
+                : "ETag: " + current_etag + "\r\n";
+        const std::string last_modified_line =
+            g_invalid_content_range_mode.load() == 4
+                ? std::string()
+                : "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT\r\n";
         return "Content-Type: application/octet-stream\r\n"
                "Content-Disposition: attachment; filename=\"sample-" +
-               std::to_string(total) + ".bin\"\r\n"
-               "ETag: \"etag-" + std::to_string(total) + "\"\r\n"
-               "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT\r\n"
+               std::to_string(total) + ".bin\"\r\n" + etag_line + last_modified_line +
                "Connection: close\r\n";
     }
 
@@ -202,6 +218,7 @@ class TestHttpServer {
 
         // Range header (case-insensitive lookup).
         std::string range;
+        std::string if_range;
         {
             const std::string lower = lower_copy(request);
             const size_t pos = lower.find("\r\nrange:");
@@ -211,6 +228,14 @@ class TestHttpServer {
                 range = request.substr(begin, end == std::string::npos ? std::string::npos
                                                                       : end - begin);
                 range = trim_copy(range);
+            }
+            const size_t validator_pos = lower.find("\r\nif-range:");
+            if (validator_pos != std::string::npos) {
+                const size_t begin = validator_pos + 11;
+                const size_t end = request.find("\r\n", begin);
+                if_range = trim_copy(request.substr(
+                    begin, end == std::string::npos ? std::string::npos : end - begin));
+                g_if_range_requests.fetch_add(1);
             }
         }
 
@@ -251,7 +276,10 @@ class TestHttpServer {
             if (lower_request.find("\r\nhost: localhost:") != std::string::npos) {
                 g_cross_origin_redirect_targets.fetch_add(1);
             }
-            serve_file(fd, method, path.substr(6), range, slow);
+            serve_file(fd, method, path.substr(6), range, slow, if_range);
+        } else if (path.rfind("/if-range-changed/", 0) == 0) {
+            serve_file(fd, method, path.substr(18), range, slow, if_range,
+                       method != "HEAD");
         } else if (path.rfind("/space-file/", 0) == 0) {
             serve_file(fd, method, "65536", range, false);
         } else if (path.rfind("/chunked/", 0) == 0) {
@@ -450,7 +478,8 @@ class TestHttpServer {
     }
 
     static void serve_file(int fd, const std::string& method, const std::string& size_text,
-                           const std::string& range_header, bool slow) {
+                           const std::string& range_header, bool slow,
+                           const std::string& if_range = {}, bool force_changed = false) {
         const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
         uint64_t start = 0;
         uint64_t end = total == 0 ? 0 : total - 1;
@@ -458,21 +487,84 @@ class TestHttpServer {
         if (method != "HEAD" && !range_header.empty() && total > 0) {
             partial = parse_ranges(range_header, total, start, end);
         }
-        send_file_response(fd, method, total, start, end, partial, slow);
+        const bool validators_mismatch = force_changed ||
+                                        (!if_range.empty() &&
+                                         if_range != "\"etag-" + std::to_string(total) + "\"" &&
+                                         if_range != "Wed, 21 Oct 2015 07:28:00 GMT");
+        if (partial && validators_mismatch) {
+            if (force_changed && method != "HEAD") {
+                send_str(fd, "HTTP/1.1 200 OK\r\nContent-Length: " +
+                                 std::to_string(total) + "\r\nAccept-Ranges: bytes\r\n" +
+                                 common_headers(total + 1) + "\r\n");
+                if (total > 0) {
+                    std::vector<char> body(65536);
+                    for (uint64_t offset = 0; offset < total;) {
+                        const uint64_t chunk = std::min<uint64_t>(body.size(), total - offset);
+                        for (uint64_t i = 0; i < chunk; ++i) {
+                            body[static_cast<size_t>(i)] =
+                                static_cast<char>(content_byte(offset + i));
+                        }
+                        if (!send_all(fd, body.data(), static_cast<size_t>(chunk))) break;
+                        offset += chunk;
+                    }
+                }
+            } else {
+                send_file_response(fd, method, total, 0, total == 0 ? 0 : total - 1, false,
+                                   slow, if_range, force_changed);
+            }
+            return;  // validator mismatch returns the complete current entity.
+        }
+        const int invalid_range_mode = g_invalid_content_range_mode.load();
+        if (partial && invalid_range_mode != 0) {
+            send_invalid_range_response(fd, method, total, start, end, invalid_range_mode,
+                                        if_range);
+            return;
+        }
+        send_file_response(fd, method, total, start, end, partial, slow, if_range,
+                           force_changed);
+    }
+
+    static void send_invalid_range_response(int fd, const std::string& method, uint64_t total,
+                                            uint64_t start, uint64_t end, int mode,
+                                            const std::string& if_range,
+                                            bool force_changed = false) {
+        uint64_t response_start = start;
+        uint64_t response_end = end;
+        uint64_t response_total = total;
+        if (mode == 1) ++response_start;
+        if (mode == 2) --response_end;
+        if (mode == 3) ++response_total;
+        const uint64_t body_size = end >= start ? end - start + 1 : 0;
+        const std::string headers =
+            "HTTP/1.1 206 Partial Content\r\nContent-Length: " +
+            std::to_string(body_size) + "\r\nContent-Range: bytes " +
+            std::to_string(response_start) + "-" + std::to_string(response_end) + "/" +
+            std::to_string(response_total) + "\r\nAccept-Ranges: bytes\r\n" +
+            common_headers(total, if_range, force_changed) + "\r\n";
+        if (!send_str(fd, headers) || method == "HEAD") return;
+        std::vector<char> body(static_cast<size_t>(body_size));
+        for (uint64_t i = 0; i < body_size; ++i) {
+            body[static_cast<size_t>(i)] = static_cast<char>(content_byte(start + i));
+        }
+        send_all(fd, body.data(), body.size());
     }
 
     static void send_file_response(int fd, const std::string& method, uint64_t total,
-                                   uint64_t start, uint64_t end, bool partial, bool slow) {
+                                   uint64_t start, uint64_t end, bool partial, bool slow,
+                                   const std::string& if_range = {},
+                                   bool force_changed = false) {
         std::string head;
         if (partial) {
             head = "HTTP/1.1 206 Partial Content\r\nContent-Length: " +
                    std::to_string(end - start + 1) +
                    "\r\nContent-Range: bytes " + std::to_string(start) + "-" +
                    std::to_string(end) + "/" + std::to_string(total) +
-                   "\r\nAccept-Ranges: bytes\r\n" + common_headers(total) + "\r\n";
+                    "\r\nAccept-Ranges: bytes\r\n" +
+                    common_headers(total, if_range, force_changed) + "\r\n";
         } else {
             head = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(total) +
-                   "\r\nAccept-Ranges: bytes\r\n" + common_headers(total) + "\r\n";
+                   "\r\nAccept-Ranges: bytes\r\n" +
+                    common_headers(total, if_range, force_changed) + "\r\n";
         }
         if (!send_str(fd, head)) return;
         if (method == "HEAD" || total == 0) return;

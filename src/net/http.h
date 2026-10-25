@@ -64,6 +64,8 @@ struct HttpOptions {
     int proxy_port = 0;
     std::string proxy_user;
     std::string proxy_password;
+    std::string etag;
+    std::string last_modified;
     std::string post_data;   // when set, probe uses POST and transfers are single-connection
     int connect_timeout_seconds = 30;
     int low_speed_seconds = 60;

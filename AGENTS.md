@@ -46,15 +46,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-25**, versi kerja **0.19.8**. Status ini cepat
+> Snapshot terakhir: **2026-10-25**, versi kerja **0.19.9**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit terakhir di `main`**: `05e18de` — docs: credit Neat Download
-  Manager as the inspiration (queue work through 0.19.3 merged).
+- **Commit terakhir di `main`**: `7fc3916` — fix(net): block sensitive headers
+  on cross-origin redirects (0.19.8).
 - **Branch kerja saat snapshot**: `main`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.19.3.
-- **Versi kerja**: 0.19.8. Audit hardening: redirect lintas-origin diblokir
+- **Versi kerja**: 0.19.9. Audit hardening: resume mengirim `If-Range` dan
+  menolak `Content-Range` yang tidak cocok; redirect lintas-origin diblokir
   bila request membawa header kustom atau Referer. Origin WebSocket hanya
   menerima ID
   ekstensi dari manifest proyek, dan handshake yang menggantung ditutup setelah
@@ -164,7 +165,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.8
+### Sudah tersedia sampai 0.19.9
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi

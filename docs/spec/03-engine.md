@@ -23,6 +23,16 @@ are our own choices where the original is UNKNOWN (E23).
 - **Resume**: restore segment table from `segments.json`; re-probe to validate
   file identity (size and ETag/Last-Modified); if changed → restart (original
   keeps `urla`/`hittitle` for this; strings reference re-download paths).
+- **Resume integrity (0.19.9)**: every range request sends `If-Range` with the
+  strong `ETag` (or `Last-Modified` when the server has no strong ETag). A
+  `200` answer for a segment that already had progress means the entity changed:
+  the transfer fails with "the remote file changed during the download; restart
+  is required" instead of appending the new representation to the old bytes.
+  Each `206` answer must also carry a well-formed
+  `Content-Range: bytes <start>-<end>/<total>` whose start equals the requested
+  offset, whose end equals the planned segment end, and whose total equals the
+  expected file size; otherwise the segment fails before its bytes reach the
+  part file.
 - **Initial confirmed transfer [design: 0.18.19]**: the fresh probe that filled
   the confirmation dialog is passed into `DownloadTask` and `DownloadEngine`;
   do not repeat it before transferring. The result includes the resolved URL,

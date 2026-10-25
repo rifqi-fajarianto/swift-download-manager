@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.9 — 2026-10-25
+
+Validate resumed transfers against the server's own range metadata.
+
+- Range requests now send `If-Range` with the strong `ETag`, falling back to
+  `Last-Modified` when no strong validator exists. A `200` answer for a segment
+  that already had progress means the remote file changed: the download fails
+  with "the remote file changed during the download; restart is required"
+  instead of writing the new representation over the old partial data (audit
+  finding 6).
+- Every `206` answer must carry a well-formed `Content-Range` whose start, end
+  and total match the requested segment and the expected file size. A missing,
+  shifted, truncated or mismatched range fails the segment before any byte is
+  written to the part file.
+- Regression tests cover `If-Range` on a resumed segmented download, a changed
+  validator on the server, and three malformed `Content-Range` shapes, and
+  assert that no new bytes were stored in the failed cases.
+
 ## 0.19.8 — 2026-10-25
 
 Block cross-origin redirects on requests that carry custom headers or a referer.

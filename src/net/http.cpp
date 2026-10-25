@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -394,6 +395,28 @@ size_t probe_header_cb(char* buffer, size_t size, size_t nitems, void* userdata)
         if (!fn.empty()) cap->filename_hint = fn;
     }
     return len;
+}
+
+bool parse_content_range(const std::string& value, uint64_t* start, uint64_t* end,
+                         uint64_t* total) {
+    const std::string text = trim(value);
+    constexpr std::string_view prefix = "bytes ";
+    if (text.rfind(prefix, 0) != 0) return false;
+    const size_t dash = text.find('-', prefix.size());
+    const size_t slash = text.find('/', dash == std::string::npos ? prefix.size() : dash + 1);
+    if (dash == std::string::npos || slash == std::string::npos || slash <= dash + 1 ||
+        slash + 1 >= text.size()) {
+        return false;
+    }
+    const auto parse_number = [](std::string_view token, uint64_t* output) {
+        if (token.empty()) return false;
+        const auto [end_ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), *output);
+        return ec == std::errc{} && end_ptr == token.data() + token.size();
+    };
+    return parse_number(std::string_view(text).substr(prefix.size(), dash - prefix.size()), start) &&
+           parse_number(std::string_view(text).substr(dash + 1, slash - dash - 1), end) &&
+           parse_number(std::string_view(text).substr(slash + 1), total) && *start <= *end &&
+           *end < *total;
 }
 
 // Successful probes abort as soon as the body starts (the headers are already
@@ -1039,6 +1062,14 @@ struct SegmentDownloader::Impl {
         size_t index = 0;
         long status = 0;
         bool range_bad = false;
+        bool content_range_bad = false;
+        bool content_range_seen = false;
+        bool content_range_valid = false;
+        bool if_range_sent = false;
+        uint64_t content_range_start = 0;
+        uint64_t content_range_end = 0;
+        uint64_t content_range_total = 0;
+        bool validator_changed = false;
         bool interrupted = false;
         std::string content_type;
         std::string error_body;  // start of a 4xx/5xx body, for the error message
@@ -1050,7 +1081,6 @@ struct SegmentDownloader::Impl {
     int fd;
 
     CURLM* multi = nullptr;
-    curl_slist* headers = nullptr;
 
     std::shared_ptr<BandwidthLimit> bandwidth_limit;
     bool one_by_one = false;
@@ -1062,6 +1092,7 @@ struct SegmentDownloader::Impl {
         bool active = false;
         bool done = false;
         CURL* easy = nullptr;
+        curl_slist* request_headers = nullptr;
         std::string error_buffer;
     };
     std::vector<SegRuntime> runtime;
@@ -1076,7 +1107,7 @@ struct SegmentDownloader::Impl {
         auto* ctx = static_cast<HandleCtx*>(userdata);
         Impl* impl = ctx->impl;
         const size_t total = size * nmemb;
-        if (total == 0 || ctx->range_bad) return 0;
+        if (total == 0 || ctx->range_bad || ctx->content_range_bad) return 0;
         // Redirect and error bodies must not land in the output file; keep the
         // first bytes of a 4xx/5xx body so the failure can explain itself.
         if (ctx->status >= 300) {
@@ -1113,15 +1144,43 @@ struct SegmentDownloader::Impl {
                 // A redirect starts a new response: drop the previous captions.
                 ctx->content_type.clear();
                 ctx->error_body.clear();
+                ctx->content_range_seen = false;
+                ctx->content_range_valid = false;
+                ctx->content_range_bad = false;
+                ctx->validator_changed = false;
                 const Segment& seg = ctx->impl->state.segments[ctx->index];
                 const uint64_t from = seg.start + seg.done;
-                if (ctx->status == 200 && from > 0) ctx->range_bad = true;
+                if (ctx->status == 200 && from > 0) {
+                    ctx->range_bad = true;
+                    ctx->validator_changed = ctx->if_range_sent;
+                }
             }
             return len;
         }
-        if (starts_with_ci(line, "content-type")) {
+        if (line == "\r\n" || line == "\n") {
+            if (ctx->status == 206 && !ctx->content_range_seen) {
+                ctx->content_range_bad = true;
+            }
+        } else if (starts_with_ci(line, "content-type")) {
             const size_t colon = line.find(':');
             if (colon != std::string::npos) ctx->content_type = trim(line.substr(colon + 1));
+        } else if (starts_with_ci(line, "content-range")) {
+            const size_t colon = line.find(':');
+            if (colon != std::string::npos) {
+                ctx->content_range_seen = true;
+                ctx->content_range_valid = parse_content_range(
+                    line.substr(colon + 1), &ctx->content_range_start,
+                    &ctx->content_range_end, &ctx->content_range_total);
+                const Segment& seg = ctx->impl->state.segments[ctx->index];
+                const uint64_t expected_start = seg.start + seg.done;
+                if (ctx->status == 206 &&
+                    (!ctx->content_range_valid ||
+                     ctx->content_range_start != expected_start ||
+                     ctx->content_range_end != seg.end ||
+                     ctx->content_range_total != ctx->impl->state.file_size)) {
+                    ctx->content_range_bad = true;
+                }
+            }
         }
         return len;
     }
@@ -1139,13 +1198,40 @@ struct SegmentDownloader::Impl {
         ctx.index = i;
         ctx.status = 0;
         ctx.range_bad = false;
+        ctx.content_range_bad = false;
+        ctx.content_range_seen = false;
+        ctx.content_range_valid = false;
+        ctx.if_range_sent = false;
+        ctx.content_range_start = 0;
+        ctx.content_range_end = 0;
+        ctx.content_range_total = 0;
+        ctx.validator_changed = false;
         ctx.interrupted = false;
         ctx.content_type.clear();
         ctx.error_body.clear();
         ctx.origin_guard = RequestOriginGuard{};
 
         runtime[i].error_buffer.assign(CURL_ERROR_SIZE, '\0');
-        apply_common_options(handle, options, headers, &ctx.origin_guard);
+        runtime[i].request_headers = build_headers(options.headers);
+        std::string if_range;
+        if (!state.etag.empty() && state.etag.rfind("W/", 0) != 0) {
+            if_range = "If-Range: " + state.etag;
+        } else if (!state.last_modified.empty()) {
+            if_range = "If-Range: " + state.last_modified;
+        }
+        if (!if_range.empty()) {
+            ctx.if_range_sent = true;
+            curl_slist* appended = curl_slist_append(runtime[i].request_headers,
+                                                     if_range.c_str());
+            if (!appended) {
+                curl_slist_free_all(runtime[i].request_headers);
+                runtime[i].request_headers = nullptr;
+                curl_easy_cleanup(handle);
+                return false;
+            }
+            runtime[i].request_headers = appended;
+        }
+        apply_common_options(handle, options, runtime[i].request_headers, &ctx.origin_guard);
 #if LIBCURL_VERSION_NUM < 0x075000
         if (ctx.origin_guard.guarded) {
             // With older libcurl, follow no redirects on requests that carry
@@ -1163,6 +1249,8 @@ struct SegmentDownloader::Impl {
         curl_easy_setopt(handle, CURLOPT_RANGE, range.c_str());
 
         if (curl_multi_add_handle(multi, handle) != CURLM_OK) {
+            curl_slist_free_all(runtime[i].request_headers);
+            runtime[i].request_headers = nullptr;
             curl_easy_cleanup(handle);
             return false;
         }
@@ -1188,19 +1276,34 @@ struct SegmentDownloader::Impl {
             contexts[i].origin_guard.crossed_origin = true;
         }
         curl_easy_cleanup(handle);
+        if (rt.request_headers) {
+            curl_slist_free_all(rt.request_headers);
+            rt.request_headers = nullptr;
+        }
 
         Segment& seg = state.segments[i];
         if (contexts[i].interrupted) {
             error = "transfer interrupted";
             return 2;
         }
+        if (contexts[i].content_range_bad) {
+            error = "server returned an invalid Content-Range for a segment";
+            return 1;
+        }
+        if (contexts[i].range_bad) {
+            error = contexts[i].validator_changed
+                        ? "the remote file changed during the download; restart is required"
+                        : "server does not support range requests";
+            return 1;
+        }
+        const Segment& expected_segment = state.segments[i];
+        if (code == 206 && !contexts[i].content_range_seen) {
+            error = "server returned an invalid Content-Range for a segment";
+            return 1;
+        }
         if (rc == CURLE_OK && code >= 200 && code < 300 && seg.finished()) {
             rt.done = true;
             return 0;
-        }
-        if (contexts[i].range_bad) {
-            error = "server does not support range requests";
-            return 1;
         }
         if (contexts[i].origin_guard.crossed_origin ||
             (contexts[i].origin_guard.guarded && code >= 300 && code < 400)) {
@@ -1264,6 +1367,10 @@ struct SegmentDownloader::Impl {
                 runtime[i].easy = nullptr;
                 runtime[i].active = false;
             }
+            if (runtime[i].request_headers) {
+                curl_slist_free_all(runtime[i].request_headers);
+                runtime[i].request_headers = nullptr;
+            }
         }
     }
 };
@@ -1296,7 +1403,6 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
         if (error) *error = "cannot initialize curl multi";
         return TransferOutcome::Failed;
     }
-    impl.headers = build_headers(impl.options.headers);
     const size_t count = impl.state.segments.size();
     impl.runtime.assign(count, Impl::SegRuntime{});
     impl.contexts.assign(count, Impl::HandleCtx{});
@@ -1408,10 +1514,6 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
 
 finish:
     impl.cleanup_handles();
-    if (impl.headers) {
-        curl_slist_free_all(impl.headers);
-        impl.headers = nullptr;
-    }
     if (impl.multi) {
         curl_multi_cleanup(impl.multi);
         impl.multi = nullptr;
@@ -1437,6 +1539,13 @@ struct StreamCtx {
     std::string error_body;  // start of a 4xx/5xx body, for the error message
     std::shared_ptr<BandwidthLimit> bandwidth_limit;
     bool interrupted = false;
+    bool range_bad = false;
+    bool content_range_seen = false;
+    bool content_range_valid = false;
+    bool if_range_sent = false;
+    uint64_t content_range_start = 0;
+    uint64_t content_range_end = 0;
+    uint64_t content_range_total = 0;
 };
 
 size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
@@ -1444,7 +1553,7 @@ size_t stream_write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
     const size_t total = size * nmemb;
     if (total == 0) return 0;
     // Redirect and error bodies must not land in the output file.
-    if (ctx->status >= 300) {
+    if (ctx->status >= 300 || ctx->range_bad) {
         if (ctx->status >= 400 && ctx->error_body.size() < kErrorBodyLimit) {
             const size_t room = kErrorBodyLimit - ctx->error_body.size();
             ctx->error_body.append(ptr, std::min(total, room));
@@ -1471,12 +1580,32 @@ size_t stream_header_cb(char* buffer, size_t size, size_t nitems, void* userdata
             ctx->status = std::strtol(line.c_str() + sp + 1, nullptr, 10);
             ctx->content_type.clear();
             ctx->error_body.clear();
+            ctx->content_range_seen = false;
+            ctx->content_range_valid = false;
+            if (ctx->status == 200 && ctx->base > 0) {
+                ctx->range_bad = true;
+            }
         }
         return len;
     }
-    if (starts_with_ci(line, "content-type")) {
+    if (line == "\r\n" || line == "\n") {
+        if (ctx->status == 206 && !ctx->content_range_seen) ctx->range_bad = true;
+    } else if (starts_with_ci(line, "content-type")) {
         const size_t colon = line.find(':');
         if (colon != std::string::npos) ctx->content_type = trim(line.substr(colon + 1));
+    } else if (starts_with_ci(line, "content-range")) {
+        const size_t colon = line.find(':');
+        if (colon != std::string::npos) {
+            ctx->content_range_seen = true;
+            ctx->content_range_valid = parse_content_range(
+                line.substr(colon + 1), &ctx->content_range_start,
+                &ctx->content_range_end, &ctx->content_range_total);
+        if (ctx->status == 206 &&
+            (!ctx->content_range_valid || ctx->content_range_start != ctx->base ||
+             ctx->content_range_total <= ctx->content_range_end)) {
+            ctx->range_bad = true;
+        }
+        }
     }
     return len;
 }
@@ -1538,6 +1667,24 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
         }
         curl_easy_setopt(handle, CURLOPT_RESUME_FROM_LARGE,
                          static_cast<curl_off_t>(resume_from));
+        std::string if_range;
+        if (!options.etag.empty() && options.etag.rfind("W/", 0) != 0) {
+            if_range = "If-Range: " + options.etag;
+        } else if (!options.last_modified.empty()) {
+            if_range = "If-Range: " + options.last_modified;
+        }
+        if (!if_range.empty()) {
+            curl_slist* appended = curl_slist_append(headers, if_range.c_str());
+            if (!appended) {
+                curl_easy_cleanup(handle);
+                curl_slist_free_all(headers);
+                if (error) *error = "cannot configure resume validator";
+                return TransferOutcome::Failed;
+            }
+            headers = appended;
+            ctx.if_range_sent = true;
+            curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+        }
     }
     if (!options.post_data.empty()) {
         curl_easy_setopt(handle, CURLOPT_POST, 1L);
@@ -1549,6 +1696,16 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     const CURLcode rc = curl_easy_perform(handle);
     long code = 0;
     curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
+    if (ctx.range_bad ||
+        (code == 206 && (!ctx.content_range_seen || !ctx.content_range_valid ||
+                         ctx.content_range_start != resume_from ||
+                         ctx.content_range_total <= ctx.content_range_end))) {
+        curl_easy_cleanup(handle);
+        if (headers) curl_slist_free_all(headers);
+        if (bytes_written) *bytes_written = ctx.written + ctx.base;
+        if (error) *error = "server returned an invalid range response while resuming";
+        return TransferOutcome::Failed;
+    }
     char* effective_url = nullptr;
     if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective_url) == CURLE_OK &&
         effective_url && origin_guard.guarded &&
