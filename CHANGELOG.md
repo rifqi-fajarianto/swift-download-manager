@@ -25,6 +25,10 @@ Small correctness, metadata and CI/release hardening (audit finding 8).
 - The release workflow keeps `contents: read` at workflow level (write only in
   the release job), publishes a `SHA256SUMS` file and a build provenance
   attestation for the `.deb`.
+- `src/ui/main_window.cpp` is split into per-concern translation units
+  (lifecycle, history restore, download lifecycle, row actions, dialogs,
+  queues, shutdown) with no behavior or layout change; the record/state helpers
+  moved to `src/ui/main_window_internal.h`.
 
 ## 0.19.10 — 2026-10-25
 

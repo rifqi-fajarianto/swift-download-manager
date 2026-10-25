@@ -172,6 +172,12 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/queue_dialog.cpp
         src/ui/browser_integration.cpp
         src/ui/main_window.cpp
+        src/ui/main_window_history.cpp
+        src/ui/main_window_downloads.cpp
+        src/ui/main_window_rows.cpp
+        src/ui/main_window_dialogs.cpp
+        src/ui/main_window_queue.cpp
+        src/ui/main_window_shutdown.cpp
     )
     target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)
