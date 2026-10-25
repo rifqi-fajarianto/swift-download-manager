@@ -7,7 +7,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fcntl.h>
 #include <filesystem>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <system_error>
 #include <utility>
 
@@ -206,6 +209,94 @@ bool ensure_directory(const std::string& path, std::string* error) {
         return false;
     }
     return true;
+}
+
+bool ensure_private_directory(const std::string& path, std::string* error) {
+    if (!ensure_directory(path, error)) return false;
+    const int fd = ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        if (error) *error = "cannot open private directory '" + path + "': " +
+                            std::strerror(errno);
+        return false;
+    }
+    if (::fchmod(fd, 0700) != 0) {
+        if (error) *error = "cannot set private permissions on '" + path +
+                            "': " + std::strerror(errno);
+        ::close(fd);
+        return false;
+    }
+    ::close(fd);
+    if (error) error->clear();
+    return true;
+}
+
+bool write_file_atomic(const std::string& path, std::string_view content,
+                       unsigned int mode, std::string* error) {
+    const std::filesystem::path target(path);
+    const std::filesystem::path parent = target.has_parent_path() ? target.parent_path() : ".";
+    std::string temporary = (parent / (target.filename().string() + ".tmp-XXXXXX")).string();
+    std::vector<char> temporary_buffer(temporary.begin(), temporary.end());
+    temporary_buffer.push_back('\0');
+    const int fd = ::mkstemp(temporary_buffer.data());
+    if (fd < 0) {
+        if (error) *error = "cannot create temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        return false;
+    }
+    temporary.assign(temporary_buffer.data());
+    if (::fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+        if (error) *error = "cannot secure temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ::close(fd);
+        ::unlink(temporary.c_str());
+        return false;
+    }
+
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < content.size()) {
+        const ssize_t written = ::write(fd, content.data() + offset, content.size() - offset);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) {
+            if (error) *error = "cannot write temporary file for '" + path + "': " +
+                                std::strerror(errno);
+            ok = false;
+            break;
+        }
+        offset += static_cast<size_t>(written);
+    }
+    if (ok && ::fchmod(fd, static_cast<mode_t>(mode)) != 0) {
+        if (error) *error = "cannot set file permissions for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (ok && ::fsync(fd) != 0) {
+        if (error) *error = "cannot sync temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (::close(fd) != 0 && ok) {
+        if (error) *error = "cannot close temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (ok && ::rename(temporary.c_str(), path.c_str()) != 0) {
+        if (error) *error = "cannot replace '" + path + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (ok) {
+        const int dir_fd = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (dir_fd >= 0) {
+            // The rename has already committed. Directory fsync is best-effort
+            // on filesystems that do not support syncing directory handles.
+            (void)::fsync(dir_fd);
+            ::close(dir_fd);
+        }
+        if (error) error->clear();
+    } else {
+        ::unlink(temporary.c_str());
+    }
+    return ok;
 }
 
 namespace {

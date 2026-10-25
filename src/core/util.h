@@ -43,6 +43,14 @@ std::string expand_tilde(std::string_view path);
 std::string xdg_config_home();                // $XDG_CONFIG_HOME or ~/.config
 std::string xdg_data_home();                  // $XDG_DATA_HOME or ~/.local/share
 bool ensure_directory(const std::string& path, std::string* error = nullptr);
+// Creates a private runtime/configuration directory (owner-only, mode 0700),
+// tightening an existing directory as well.
+bool ensure_private_directory(const std::string& path, std::string* error = nullptr);
+
+// Replaces a file atomically using a same-directory temporary file and the
+// requested mode (subject to no umask restriction after fchmod).
+bool write_file_atomic(const std::string& path, std::string_view content,
+                       unsigned int mode, std::string* error = nullptr);
 
 // Returns the path of an existing file for a completed download. The exact
 // `dir/filename` wins; when it is gone, "name (N).ext" siblings are tried and

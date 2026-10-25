@@ -168,6 +168,11 @@ By default, SwiftDM stores its configuration in
 `~/.local/share/swiftdm/swiftdm.db`, and temporary download workspaces in
 `~/.local/share/swiftdm/tmp`. These locations follow the XDG environment
 variables.
+The settings file and history database are owner-only (`0600`) inside private
+app directories (`0700`). Temporary download workspaces are also owner-only
+(`0700`); partial files inside them retain mode `0644`. Proxy passwords remain
+stored as plaintext in the settings file for now; Secret Service integration is
+deferred.
 
 ## License and attribution
 

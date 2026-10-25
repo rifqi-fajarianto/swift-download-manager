@@ -450,7 +450,7 @@ DownloadResult DownloadEngine::run(
 
     std::string dir_error;
     if (!ensure_directory(out_dir, &dir_error) ||
-        !ensure_directory(settings_.temp_dir, &dir_error)) {
+        !ensure_private_directory(settings_.temp_dir, &dir_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = dir_error;
         return result;
@@ -459,7 +459,7 @@ DownloadResult DownloadEngine::run(
     const std::string workspace_key =
         probe.effective_url.empty() ? request.url : probe.effective_url;
     const DownloadWorkspace ws = make_workspace(settings_, workspace_key, filename);
-    if (!ensure_directory(ws.dir, &dir_error)) {
+    if (!ensure_private_directory(ws.dir, &dir_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = dir_error;
         return result;

@@ -1,11 +1,18 @@
 #include "store/history.h"
 
+#include <fcntl.h>
 #include <sqlite3.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
+#include <cerrno>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 
 #include "core/log.h"
+#include "core/util.h"
+#include "store/settings.h"
 
 namespace swiftdm {
 namespace {
@@ -166,13 +173,40 @@ bool HistoryStore::ensure_column(const char* name, const char* type, std::string
 
 bool HistoryStore::open(const std::string& path, std::string* error) {
     close();
-    std::error_code ec;
     const std::filesystem::path file(path);
     if (file.has_parent_path()) {
-        std::filesystem::create_directories(file.parent_path(), ec);
+        std::string directory_error;
+        const std::filesystem::path parent = file.parent_path();
+        const std::filesystem::path app_data_dir =
+            std::filesystem::path(default_database_path()).parent_path();
+        const bool directory_ok =
+            parent == app_data_dir
+                ? ensure_private_directory(parent.string(), &directory_error)
+                : ensure_directory(parent.string(), &directory_error);
+        if (!directory_ok) {
+            set_error(error, directory_error);
+            return false;
+        }
     }
-    if (sqlite3_open_v2(path.c_str(), &db_,
-                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+    const int file_fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (file_fd < 0) {
+        set_error(error, "cannot create database '" + path + "': " + std::strerror(errno));
+        return false;
+    }
+    if (::fchmod(file_fd, 0600) != 0) {
+        const std::string message = "cannot set private permissions on database '" + path +
+                                    "': " + std::strerror(errno);
+        ::close(file_fd);
+        set_error(error, message);
+        return false;
+    }
+    if (::close(file_fd) != 0) {
+        set_error(error, "cannot close database file '" + path + "': " + std::strerror(errno));
+        return false;
+    }
+    if (sqlite3_open_v2(path.c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                                                SQLITE_OPEN_NOFOLLOW,
+                        nullptr) != SQLITE_OK) {
         const std::string message = db_ ? sqlite3_errmsg(db_) : "cannot open database";
         if (db_) {
             sqlite3_close(db_);
@@ -181,6 +215,8 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
         set_error(error, message);
         return false;
     }
+    // SQLite may create WAL/journal siblings lazily; the owner-only parent
+    // directory prevents other users from reaching those files.
     sqlite3_busy_timeout(db_, 2000);
     if (!ensure_schema(error)) {
         close();

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sys/stat.h>
 #include <memory>
 #include <string>
 #include <thread>
@@ -154,6 +155,15 @@ void test_hls_resume(const std::string& dir, testutil::TestHttpServer& server) {
     });
     CHECK(first.status == DownloadResult::Status::Paused);
     CHECK(first.path.find(".part") != std::string::npos);
+    struct stat temp_dir_stat {};
+    CHECK(::stat(settings.temp_dir.c_str(), &temp_dir_stat) == 0);
+    CHECK((temp_dir_stat.st_mode & 0777) == 0700);
+    struct stat workspace_stat {};
+    CHECK(::stat(first.workspace_dir.c_str(), &workspace_stat) == 0);
+    CHECK((workspace_stat.st_mode & 0777) == 0700);
+    struct stat part_stat {};
+    CHECK(::stat(first.path.c_str(), &part_stat) == 0);
+    CHECK((part_stat.st_mode & 0777) == 0644);
     const auto partial = read_file(first.path);
     CHECK_EQ(partial.size(), testutil::kHlsSegmentSize);
 

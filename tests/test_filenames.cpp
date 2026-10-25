@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <sys/stat.h>
 #include <string>
 #include <system_error>
 
@@ -132,7 +133,14 @@ void test_workspace_with_long_name(const std::string& dir) {
     CHECK(part_name.size() <= kMaxFileNameBytes);
 
     std::error_code ec;
-    std::filesystem::create_directories(ws.dir, ec);
+    CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+    CHECK(ensure_private_directory(ws.dir, nullptr));
+    struct stat parent_stat {};
+    CHECK(::stat(settings.temp_dir.c_str(), &parent_stat) == 0);
+    CHECK((parent_stat.st_mode & 0777) == 0700);
+    struct stat workspace_stat {};
+    CHECK(::stat(ws.dir.c_str(), &workspace_stat) == 0);
+    CHECK((workspace_stat.st_mode & 0777) == 0700);
     // The temporary file has to be creatable. It used to fail here with
     // "File name too long".
     const int fd = ::open(ws.part_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);

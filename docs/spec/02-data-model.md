@@ -5,6 +5,10 @@
 File name: `NeatDB.db` (E5). Windows location is the app data folder
 (`...\AppData\Roaming\NeatDM\`, E22); for SwiftDM the database lives in
 `$XDG_DATA_HOME/swiftdm/` (default `~/.local/share/swiftdm/swiftdm.db`).
+SwiftDM creates the database and its containing app directory with owner-only
+permissions (`0600` file, `0700` directory), and tightens permissions when it
+opens an existing database. SQLite journal/WAL siblings remain inside that
+private directory.
 
 Schema as recovered from the binary (E4), preserved verbatim as our schema
 because it is a functional data model:
@@ -143,8 +147,11 @@ preserving the old layout.
 - Temp workspace lifecycle (SwiftDM): `make_workspace()` creates
   `<temp_dir>/download-<hash(url + filename)>/` holding `<filename>.part` and
   `segments.json`; the default `temp_dir` is `~/.local/share/swiftdm/tmp`
-  (`TempDirectory` setting). The workspace lives only as long as the download
-  item:
+  (`TempDirectory` setting). The default temp root and per-download workspace
+  directories are owner-only (`0700`); partial files retain the existing
+  `0644` creation mode but are protected by the private workspace directory.
+  User-selected final download directories and completed files are unchanged.
+  The workspace lives only as long as the download item:
   - **Kept** on pause, failure or cancel while the row exists — that is the
     resume data. Quitting the app (or a crash) keeps it too; the row restores
     as `Paused` and the path comes from `temppath`

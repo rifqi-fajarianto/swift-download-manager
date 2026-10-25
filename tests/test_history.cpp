@@ -2,15 +2,24 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <sys/stat.h>
 
 #include <sqlite3.h>
 #include <string>
 
+#include "core/util.h"
 #include "store/history.h"
+#include "store/settings.h"
 
 namespace {
 
 int failures = 0;
+
+mode_t file_mode(const std::string& path) {
+    struct stat st {};
+    if (::stat(path.c_str(), &st) != 0) return static_cast<mode_t>(-1);
+    return st.st_mode & 0777;
+}
 
 void check(bool condition, const char* description) {
     if (!condition) {
@@ -23,10 +32,15 @@ void check(bool condition, const char* description) {
 
 int main() {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "swiftdm-history-test";
+    const fs::path test_root = fs::temp_directory_path() / "swiftdm-history-test";
     std::error_code ec;
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir, ec);
+    fs::remove_all(test_root, ec);
+    fs::create_directories(test_root, ec);
+    const std::string xdg_data = (test_root / "xdg-data").string();
+    setenv("XDG_DATA_HOME", xdg_data.c_str(), 1);
+    const fs::path dir = std::filesystem::path(swiftdm::default_database_path()).parent_path();
+    check(swiftdm::ensure_private_directory(dir.string(), nullptr),
+          "create owner-only test database directory");
     const std::string db_path = (dir / "test.db").string();
 
     swiftdm::HistoryStore store;
@@ -34,6 +48,21 @@ int main() {
     check(store.open(db_path, &error), "history database opens");
     check(store.is_open(), "store reports open");
     check(fs::exists(db_path), "database file is created");
+    check(file_mode(dir.string()) == 0700, "history app directory is owner-only");
+    check(file_mode(db_path) == 0600, "new database file is owner-only");
+    // Reopening tightens the mode of an existing database too.
+    check(::chmod(db_path.c_str(), 0644) == 0, "make existing database permissive for test");
+    store.close();
+    check(store.open(db_path, &error), "existing history database reopens");
+    check(file_mode(db_path) == 0600, "existing database is tightened to owner-only");
+    const std::string db_dir = dir.string();
+    check(::chmod(db_dir.c_str(), 0755) == 0, "make existing database directory permissive for test");
+    store.close();
+    check(store.open(db_path, &error), "history database opens with existing directory");
+    check(file_mode(db_dir) == 0700, "existing database directory is owner-only");
+
+    // Continue using a separate file in the same app data directory.
+    const std::string active_db_path = db_path;
 
     swiftdm::HistoryStore::Record record;
     record.url = "https://example.com/file.zip";
@@ -180,7 +209,7 @@ int main() {
     {
         sqlite3* raw = nullptr;
         int headers = -1;
-        if (sqlite3_open_v2(db_path.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
+        if (sqlite3_open_v2(active_db_path.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM headers WHERE id=?1", -1, &stmt,
                                    nullptr) == SQLITE_OK) {
@@ -234,6 +263,7 @@ int main() {
     }
     swiftdm::HistoryStore legacy_store;
     check(legacy_store.open(legacy_path, &error), "an older database opens and is migrated");
+    check(file_mode(legacy_path) == 0600, "legacy database is tightened to owner-only");
     check(legacy_store.fetch(1, &loaded, &error) && loaded.done == 5000,
           "completed legacy rows get their progress backfilled");
     check(loaded.folder_exact == false,
@@ -249,7 +279,7 @@ int main() {
               loaded.folder_exact,
           "the appended columns round-trip after migration");
 
-    fs::remove_all(dir, ec);
+    fs::remove_all(test_root, ec);
     if (failures) {
         std::printf("%d failure(s)\n", failures);
         return 1;

@@ -3,6 +3,10 @@
 Windows stores settings in `HKCU\Software\NeatDM` (E6). SwiftDM stores the same
 keys (same names, lowercase INI sections) in
 `~/.config/swiftdm/swiftdm.ini`, e.g.:
+The file is atomically replaced with owner-only permissions (`0600`); SwiftDM
+also tightens the mode of an existing config and creates the app config
+directory with mode `0700`. The proxy password remains stored as plaintext in
+the INI file for now; secure secret-service storage is deferred.
 
 ```ini
 [general]

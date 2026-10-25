@@ -1,5 +1,9 @@
 #include "store/settings.h"
 
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstdlib>
@@ -7,7 +11,9 @@
 #include <fstream>
 #include <initializer_list>
 #include <map>
+#include <sstream>
 #include <string>
+#include <utility>
 
 #include "core/util.h"
 
@@ -143,6 +149,14 @@ void apply_section(Settings& s, const std::string& section,
     }
 }
 
+std::string ini_value(const std::string& value) {
+    std::string safe = value;
+    for (char& c : safe) {
+        if (c == '\r' || c == '\n') c = ' ';
+    }
+    return safe;
+}
+
 }  // namespace
 
 std::string default_config_path() { return xdg_config_home() + "/swiftdm/swiftdm.ini"; }
@@ -179,11 +193,54 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
     out = default_settings();
     out.config_path = path;
 
-    std::ifstream in(path);
-    if (!in) {
-        // Missing configuration is normal: defaults apply.
-        return true;
+    const std::filesystem::path config_path(path);
+    const std::filesystem::path expected_dir =
+        std::filesystem::path(default_config_path()).parent_path();
+    if (config_path.parent_path() == expected_dir) {
+        std::string directory_error;
+        if (!ensure_private_directory(expected_dir.string(), &directory_error)) {
+            if (error) *error = directory_error;
+            return false;
+        }
     }
+    const int config_fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (config_fd < 0) {
+        if (errno == ENOENT) return true;  // Missing configuration is normal.
+        if (error) *error = "cannot open config '" + path + "': " + std::strerror(errno);
+        return false;
+    }
+    struct stat config_stat {};
+    if (::fstat(config_fd, &config_stat) != 0 || !S_ISREG(config_stat.st_mode)) {
+        if (error) *error = "config '" + path + "' is not a regular file";
+        ::close(config_fd);
+        return false;
+    }
+    if (::fchmod(config_fd, 0600) != 0) {
+        if (error) *error = "cannot set private permissions on config '" + path + "': " +
+                            std::strerror(errno);
+        ::close(config_fd);
+        return false;
+    }
+    std::string content;
+    char buffer[8192];
+    while (true) {
+        const ssize_t count = ::read(config_fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) {
+            if (error) *error = "cannot read config '" + path + "': " + std::strerror(errno);
+            ::close(config_fd);
+            return false;
+        }
+        if (count == 0) break;
+        content.append(buffer, static_cast<size_t>(count));
+        if (content.size() > (1u << 20)) {
+            if (error) *error = "config '" + path + "' exceeds the 1 MiB limit";
+            ::close(config_fd);
+            return false;
+        }
+    }
+    ::close(config_fd);
+    std::istringstream in(std::move(content));
 
     // The file is read into sections first, so the order of the sections in
     // the file cannot change the outcome. Keys are stored lower case.
@@ -226,22 +283,21 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
 
 bool save_settings(const Settings& settings, std::string* error) {
     const std::string path = settings.config_path;
-    std::error_code ec;
-    if (!path.empty()) {
-        std::filesystem::create_directories(
-            std::filesystem::path(path).parent_path(), ec);
-        if (ec) {
-            if (error) *error = "cannot create config directory: " + ec.message();
-            return false;
-        }
-    }
-
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-        if (error) *error = "cannot open '" + path + "' for writing";
+    if (path.empty()) {
+        if (error) *error = "configuration path is empty";
         return false;
     }
+    const std::filesystem::path parent = std::filesystem::path(path).parent_path();
+    if (!parent.empty()) {
+        const std::filesystem::path app_config_dir =
+            std::filesystem::path(default_config_path()).parent_path();
+        const bool directory_ok =
+            parent == app_config_dir ? ensure_private_directory(parent.string(), error)
+                                     : ensure_directory(parent.string(), error);
+        if (!directory_ok) return false;
+    }
 
+    std::ostringstream out;
     out << "# SwiftDM configuration (see docs/spec/05-settings.md)\n"
         << "[general]\n"
         << "CompletionDialog = " << (settings.completion_dialog ? 1 : 0) << "\n"
@@ -258,30 +314,24 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "BandWidthLimit = " << settings.bandwidth_limit_kbps << "\n"
         << "BandWidthLimitEnabled = " << (settings.bandwidth_limit_enabled ? 1 : 0) << "\n"
         << "UseUAgent = " << (settings.use_ua_for_browser ? 1 : 0) << "\n"
-        << "DefaultAgent = " << settings.default_agent << "\n"
-        << "DownloadDirectory = " << settings.download_dir << "\n"
+        << "DefaultAgent = " << ini_value(settings.default_agent) << "\n"
+        << "DownloadDirectory = " << ini_value(settings.download_dir) << "\n"
         << "CategoryFolders = " << (settings.category_folders ? 1 : 0) << "\n"
-        << "TempDirectory = " << settings.temp_dir << "\n"
+        << "TempDirectory = " << ini_value(settings.temp_dir) << "\n"
         << "ServerCreationDate = " << (settings.server_creation_date ? 1 : 0) << "\n"
         << "\n[interface]\n"
-        << "Theme = " << settings.theme << "\n"
-        << "ToolbarSize = " << settings.toolbar_size << "\n"
+        << "Theme = " << ini_value(settings.theme) << "\n"
+        << "ToolbarSize = " << ini_value(settings.toolbar_size) << "\n"
         << "ShowToolbarText = " << (settings.show_toolbar_text ? 1 : 0) << "\n"
-        << "TrayIconStyle = " << settings.tray_icon_style << "\n"
+        << "TrayIconStyle = " << ini_value(settings.tray_icon_style) << "\n"
         << "\n[proxy]\n"
         << "SocksVersion = " << proxy_type_to_token(settings.proxy.type) << "\n"
-        << "ProxyAddress = " << settings.proxy.address << "\n"
+        << "ProxyAddress = " << ini_value(settings.proxy.address) << "\n"
         << "ProxyPort = " << settings.proxy.port << "\n"
-        << "ProxyUser = " << settings.proxy.user << "\n"
-        << "ProxyPassword = " << settings.proxy.password << "\n";
+        << "ProxyUser = " << ini_value(settings.proxy.user) << "\n"
+        << "ProxyPassword = " << ini_value(settings.proxy.password) << "\n";
 
-    out.flush();
-    if (!out) {
-        if (error) *error = "write failed for '" + path + "'";
-        return false;
-    }
-    if (error) error->clear();
-    return true;
+    return write_file_atomic(path, out.str(), 0600, error);
 }
 
 bool apply_autostart(bool enabled, std::string* error) {

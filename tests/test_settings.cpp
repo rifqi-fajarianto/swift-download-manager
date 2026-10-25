@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <sys/stat.h>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -96,6 +97,60 @@ void test_roundtrip(const std::string& dir) {
     CHECK_EQ(loaded.proxy.user, std::string("user name"));
     CHECK_EQ(loaded.proxy.password, std::string("p=a;ss #1"));
     CHECK(loaded.proxy.enabled());
+}
+
+mode_t file_mode(const std::string& path) {
+    struct stat st {};
+    if (::stat(path.c_str(), &st) != 0) return static_cast<mode_t>(-1);
+    return st.st_mode & 0777;
+}
+
+void test_private_atomic_config(const std::string& dir) {
+    const std::string path = default_config_path();
+    const std::string private_dir = std::filesystem::path(path).parent_path().string();
+    Settings s = default_settings();
+    s.config_path = path;
+    s.default_agent = "Agent/1.0\nInjectedKey = yes";
+    s.proxy.password = "secret\nInjectedPassword = no";
+
+    std::string error;
+    CHECK(save_settings(s, &error));
+    CHECK(error.empty());
+    CHECK_EQ(file_mode(private_dir), static_cast<mode_t>(0700));
+    CHECK_EQ(file_mode(path), static_cast<mode_t>(0600));
+
+    std::ifstream in(path);
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    CHECK(content.find("DefaultAgent = Agent/1.0 InjectedKey = yes\n") != std::string::npos);
+    CHECK(content.find("ProxyPassword = secret InjectedPassword = no\n") !=
+          std::string::npos);
+    CHECK(content.find("\nInjectedKey =") == std::string::npos);
+    CHECK(content.find("\nInjectedPassword =") == std::string::npos);
+
+    // Existing files are replaced without exposing a partially truncated
+    // config, and each successful write restores strict mode on older files.
+    CHECK(::chmod(path.c_str(), 0644) == 0);
+    s.default_agent = "SecondAgent/2.0";
+    CHECK(save_settings(s, &error));
+    CHECK_EQ(file_mode(path), static_cast<mode_t>(0600));
+    CHECK(::chmod(path.c_str(), 0644) == 0);
+    Settings loaded;
+    CHECK(load_settings(path, loaded, &error));
+    CHECK_EQ(file_mode(path), static_cast<mode_t>(0600));
+    CHECK_EQ(loaded.default_agent, std::string("SecondAgent/2.0"));
+
+    // Rename over a directory must fail without replacing or damaging it.
+    const std::string obstructing_dir = private_dir + "/config-target-is-directory";
+    CHECK(std::filesystem::create_directory(obstructing_dir));
+    const std::string marker = obstructing_dir + "/marker";
+    { std::ofstream out(marker); out << "preserve"; }
+    s.config_path = obstructing_dir;
+    CHECK(!save_settings(s, &error));
+    std::ifstream marker_in(marker);
+    std::string marker_text;
+    marker_in >> marker_text;
+    CHECK_EQ(marker_text, std::string("preserve"));
 }
 
 void test_missing_file(const std::string& dir) {
@@ -369,6 +424,7 @@ int main() {
 
     test_defaults();
     test_roundtrip(dir);
+    test_private_atomic_config(dir);
     test_missing_file(dir);
     test_parsing_quirks(dir);
     test_autostart_entry(dir);

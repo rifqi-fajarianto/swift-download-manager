@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.6 — 2026-10-24
+
+Protect locally stored configuration, history and partial downloads.
+
+- Settings are serialized to a same-directory temporary file and atomically
+  renamed into place with mode `0600`; existing config files are tightened to
+  that mode when read. The app config directory is owner-only (`0700`), and
+  newline/carriage-return characters in serialized string values are replaced
+  with spaces so they cannot inject additional INI keys.
+- The SQLite history file is created and maintained at `0600`; its containing
+  directory is `0700`, which also protects SQLite journal/WAL siblings. Existing
+  history file and app directory permissions are tightened on open.
+- The configured temp root and per-download workspaces use mode `0700`. Part
+  files keep their prior `0644` mode inside the private workspace; final
+  download directory/file permissions are unchanged (audit finding 3).
+- Regression coverage checks permissions for new and existing config/database
+  files, atomic replacement preservation, newline sanitization, and the
+  workspace/part-file modes. Proxy password Secret Service integration and a
+  UI plaintext warning remain deferred by maintainer choice.
+
 ## 0.19.5 — 2026-10-24
 
 Follow a download-confirmation form only on the origin that served it.
