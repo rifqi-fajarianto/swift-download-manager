@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.19.10
+    VERSION 0.19.11
     DESCRIPTION "Clean-room Linux download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -228,7 +228,7 @@ set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6svg6, qt6-svg-plugins")
-set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/swiftdm/swiftdm")
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/rifqi-fajarianto/swift-download-manager")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA

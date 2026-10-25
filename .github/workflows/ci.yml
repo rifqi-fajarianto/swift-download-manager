@@ -128,3 +128,53 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-headless --output-on-failure
+
+  sanitizers:
+    name: Sanitizers (${{ matrix.sanitizer }}, headless)
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 25
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ASAN_OPTIONS: detect_leaks=0
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      TSAN_OPTIONS: halt_on_error=1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: address+undefined
+            flags: -fsanitize=address,undefined -fno-omit-frame-pointer -g
+          - sanitizer: thread
+            flags: -fsanitize=thread -fno-omit-frame-pointer -g
+    steps:
+      - name: Install git for the checkout action
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            libcurl4-openssl-dev \
+            libsqlite3-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DSWIFTSDM_BUILD_UI=OFF
+          -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}"
+
+      - name: Build
+        run: cmake --build build-sanitize --parallel
+
+      - name: Test
+        run: ctest --test-dir build-sanitize --output-on-failure

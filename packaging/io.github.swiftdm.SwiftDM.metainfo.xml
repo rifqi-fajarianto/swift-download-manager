@@ -24,8 +24,8 @@
 
   <launchable type="desktop-id">swiftdm.desktop</launchable>
 
-  <url type="homepage">https://github.com/swiftdm/swiftdm</url>
-  <url type="bugtracker">https://github.com/swiftdm/swiftdm/issues</url>
+  <url type="homepage">https://github.com/rifqi-fajarianto/swift-download-manager</url>
+  <url type="bugtracker">https://github.com/rifqi-fajarianto/swift-download-manager/issues</url>
 
   <developer id="io.github.swiftdm">
     <name>SwiftDM contributors</name>

@@ -34,7 +34,7 @@ bool parse_bool(const std::string& v, bool fallback) {
     return fallback;
 }
 
-bool parse_int(const std::string& v, int fallback, int& out) {
+bool parse_int(const std::string& v, int& out) {
     std::string s = trim(v);
     if (s.empty()) return false;
     char* end = nullptr;
@@ -99,9 +99,9 @@ void apply_section(Settings& s, const std::string& section,
             // Legacy location of the download options. Configs written before
             // the [download] section existed keep working; the dedicated
             // section is applied afterwards and wins.
-            else if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
-            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            else if (k == "maxconnections") parse_int(value, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
             else if (k == "bandwidthlimitenabled") {
                 if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
                 s.bandwidth_limit_enabled =
@@ -114,9 +114,9 @@ void apply_section(Settings& s, const std::string& section,
             else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
             else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
         } else if (section == "download") {
-            if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
-            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            if (k == "maxconnections") parse_int(value, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
             else if (k == "bandwidthlimitenabled") {
                 if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
                 s.bandwidth_limit_enabled =
@@ -142,7 +142,7 @@ void apply_section(Settings& s, const std::string& section,
         } else if (section == "proxy") {
             if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
             else if (k == "proxyaddress") s.proxy.address = trim(value);
-            else if (k == "proxyport") parse_int(value, s.proxy.port, s.proxy.port);
+            else if (k == "proxyport") parse_int(value, s.proxy.port);
             else if (k == "proxyuser") s.proxy.user = value;
             else if (k == "proxypassword") s.proxy.password = value;
         }
@@ -155,6 +155,19 @@ std::string ini_value(const std::string& value) {
         if (c == '\r' || c == '\n') c = ' ';
     }
     return safe;
+}
+
+// Quotes one Exec argument per the Desktop Entry spec: a double-quoted string
+// with the reserved characters backslash-escaped. Paths with spaces (or shell
+// metacharacters) then survive both the key-file parser and the shell.
+std::string desktop_exec_arg(const std::string& value) {
+    std::string out = "\"";
+    for (const char c : value) {
+        if (c == '"' || c == '`' || c == '$' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
 }
 
 }  // namespace
@@ -368,7 +381,7 @@ bool apply_autostart(bool enabled, std::string* error) {
         << "Type=Application\n"
         << "Name=SwiftDM\n"
         << "Comment=Download manager\n"
-        << "Exec=" << exe << " --autostart\n"
+        << "Exec=" << desktop_exec_arg(exe) << " --autostart\n"
         << "Icon=swiftdm\n"
         << "Terminal=false\n"
         << "X-GNOME-Autostart-enabled=true\n";

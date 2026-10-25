@@ -372,8 +372,17 @@ std::string sanitize_filename(std::string_view name) {
     size_t b = 0;
     while (b < out.size() && (out[b] == ' ')) ++b;
     out = out.substr(b);
+    // A leading dot would make the name hidden: a server-controlled name such
+    // as ".bashrc" must not drop a dotfile into the download directory (or
+    // over a dotfile in the home directory). ".." is covered as well, as the
+    // dot is not part of that trim.
+    if (!out.empty() && out.front() == '.') out.insert(0, "_");
     // Windows reserves the device names even with an extension ("CON.txt").
     if (!out.empty() && is_windows_reserved_name(out)) out.insert(0, "_");
+    // A .desktop file in the download directory can be launched by the desktop
+    // environment (the "untrusted" marking of the desktop entry spec is not
+    // enforced everywhere), so the extension is neutralised.
+    if (ends_with(to_lower(out), ".desktop")) out += "_";
     // A single path component is limited by the filesystem, so a long name
     // (a token in the URL path, for example) has to be shortened.
     out = limit_filename_length(out, kMaxFileNameBytes);

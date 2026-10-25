@@ -90,7 +90,12 @@ The same scheme list is enforced below the protocol layer (0.19.4): every URL
 that reaches libcurl — CLI argument, probe, redirect target, HLS variant, init
 segment or media segment — must pass `is_supported_download_url()` and the
 per-handle `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` restriction. A
-`file://` URL is refused with the invalid-URL error instead of being read.
+`file://` URL is refused with the invalid-URL error instead of being read. The
+same allowlist refuses a URL whose authority carries userinfo
+(`https://user:pw@host/…`), because the credentials would travel in clear text
+through the history, the log and the request line; the browser integration
+already rejects such URLs. Proxy authentication has its own setting
+(`05-settings.md`).
 Requests carrying caller-supplied `x-*` headers or a `Referer` are allowed to
 redirect within the same origin, but a redirect to a different origin is
 blocked before the redirected request is sent. This prevents request tokens or

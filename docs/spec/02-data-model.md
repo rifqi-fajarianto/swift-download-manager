@@ -194,6 +194,11 @@ another process between the name choice and the move is preserved (0.19.10).
   and the Windows device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`,
   `LPT1-9` and their superscript variants) get a `_` prefix because Windows
   rejects them even with an extension.
+- A name that starts with a dot gets a `_` prefix (0.19.11): a
+  server-controlled name such as `.bashrc` must not create a hidden file in the
+  download directory, and a `..` name must not climb out of it. For the same
+  reason a `.desktop` suffix is neutralised with a trailing `_`, because the
+  desktop environment can launch a desktop entry from the download directory.
 - `limit_filename_length()` shortens a name that is too long: the extension
   (at most 16 bytes) is kept, the stem is cut at a UTF-8 boundary and a
   16-digit hash (FNV-1a 64-bit) of the original name is appended. The result

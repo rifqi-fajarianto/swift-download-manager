@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.19.11 — 2026-10-25
+
+Small correctness, metadata and CI/release hardening (audit finding 8).
+
+- The segment writer retries `pwrite()` on `EINTR` and finishes a short write,
+  so a partial write is no longer reported as "disk write failed".
+- The autostart entry quotes the executable path as a single `Exec` argument
+  (reserved characters backslash-escaped, per the desktop entry spec); a path
+  with spaces used to break the entry.
+- `sanitize_filename()` prefixes a leading dot with `_` (no hidden
+  server-named dotfile, no `..` name) and appends `_` to a `.desktop` suffix
+  (a downloaded desktop entry could be launched from the download directory).
+- The URL allowlist rejects userinfo (`https://user:pw@host/…`) on the CLI path
+  too, matching the browser integration; proxy authentication keeps its own
+  setting.
+- Unused `fallback` parameter removed from the settings integer parser (the
+  compiler warning is gone).
+- The Debian homepage and the Metainfo homepage/bugtracker point at the actual
+  repository.
+- CI gained a sanitizer job (ASan+UBSan and TSan on the headless build). The
+  test servers no longer read their listening descriptor after `stop()` has
+  closed it, which was the only report.
+- The release workflow keeps `contents: read` at workflow level (write only in
+  the release job), publishes a `SHA256SUMS` file and a build provenance
+  attestation for the `.deb`.
+
 ## 0.19.10 — 2026-10-25
 
 Claim the final file name atomically instead of checking then renaming.

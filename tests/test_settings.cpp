@@ -212,6 +212,10 @@ void test_autostart_entry(const std::string& dir) {
     const std::string content((std::istreambuf_iterator<char>(in)),
                               std::istreambuf_iterator<char>());
     CHECK(content.find("Exec=") != std::string::npos);
+    // The executable path is a quoted Exec argument, so a path with spaces or
+    // shell metacharacters survives the key-file parser and the shell.
+    CHECK(content.find("Exec=\"") != std::string::npos);
+    CHECK(content.find("\" --autostart\n") != std::string::npos);
     // The login entry must ask for the silent tray start; older entries lacked
     // this flag and showed the main window at login.
     CHECK(content.find(" --autostart\n") != std::string::npos);

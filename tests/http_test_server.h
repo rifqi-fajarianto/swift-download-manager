@@ -112,7 +112,9 @@ class TestHttpServer {
             return false;
         }
         running_.store(true);
-        thread_ = std::thread([this] { accept_loop(); });
+        // The descriptor is passed by value: stop() closes it while the accept
+        // loop may still be inside accept(), so a shared member would race.
+        thread_ = std::thread([this, fd = listen_fd_, port = port_] { accept_loop(fd, port); });
         return true;
     }
 
@@ -145,13 +147,13 @@ class TestHttpServer {
     void reset_limited_refusals() { g_limited_refusals.store(0); }
 
   private:
-    void accept_loop() {
+    void accept_loop(int listen_fd, uint16_t port) {
         while (running_.load()) {
             sockaddr_in peer{};
             socklen_t len = sizeof(peer);
-            const int fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &len);
+            const int fd = ::accept(listen_fd, reinterpret_cast<sockaddr*>(&peer), &len);
             if (fd < 0) break;
-            std::thread([this, fd] { handle_conn(fd, port_); }).detach();
+            std::thread([this, fd, port] { handle_conn(fd, port); }).detach();
         }
     }
 

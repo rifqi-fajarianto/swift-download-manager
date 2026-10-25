@@ -105,6 +105,16 @@ void test_sanitize_filename() {
     CHECK_EQ(sanitize_filename("console"), std::string("console"));
     CHECK_EQ(sanitize_filename("CONSOLE.mp4"), std::string("CONSOLE.mp4"));
 
+    // A leading dot would create a hidden (dot) file, so it is prefixed.
+    CHECK_EQ(sanitize_filename(".bashrc"), std::string("_.bashrc"));
+    CHECK_EQ(sanitize_filename(".config"), std::string("_.config"));
+
+    // A .desktop file in the download directory could be launched by the
+    // desktop environment, so the extension is neutralised.
+    CHECK_EQ(sanitize_filename("invoice.desktop"), std::string("invoice.desktop_"));
+    CHECK_EQ(sanitize_filename("invoice.DESKTOP"), std::string("invoice.DESKTOP_"));
+    CHECK_EQ(sanitize_filename("invoice.desktop.pdf"), std::string("invoice.desktop.pdf"));
+
     // A long name is shortened, the extension is kept.
     const std::string shortened = sanitize_filename(long_token(700) + ".mp4");
     CHECK(shortened.size() <= kMaxFileNameBytes);

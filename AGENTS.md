@@ -46,16 +46,18 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-25**, versi kerja **0.19.10**. Status ini cepat
+> Snapshot terakhir: **2026-10-25**, versi kerja **0.19.11**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Commit terakhir di `main`**: `7734ccc` — fix(net): validate If-Range and
-  Content-Range on resume (0.19.9).
+- **Commit terakhir di `main`**: `06ca2e1` — fix(engine): claim the final file
+  name atomically (0.19.10).
 - **Branch kerja saat snapshot**: `main`.
 - **Rilis terakhir yang sudah di-commit di `main`**: 0.19.3.
-- **Versi kerja**: 0.19.10. Audit hardening: nama file final diklaim atomik
-  (tanpa menimpa file lain); resume mengirim `If-Range` dan
+- **Versi kerja**: 0.19.11. Audit hardening: nama file final diklaim atomik
+  (tanpa menimpa file lain); nama berawalan titik diberi awalan `_` dan akhiran
+  `.desktop` dinetralkan; URL dengan userinfo ditolak di jalur CLI juga; entri
+  autostart mengutip path `Exec`; resume mengirim `If-Range` dan
   menolak `Content-Range` yang tidak cocok; redirect lintas-origin diblokir
   bila request membawa header kustom atau Referer. Origin WebSocket hanya
   menerima ID
@@ -166,7 +168,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.10
+### Sudah tersedia sampai 0.19.11
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -417,6 +419,10 @@ ctest --test-dir build --output-on-failure
 CI (`.github/workflows/ci.yml`) menjalankan build dan test yang sama di
 container Debian 13 untuk push ke `main` dan semua PR. Job kedua membangun
 dengan `-DSWIFTSDM_BUILD_UI=OFF` tanpa Qt untuk menjaga batas arsitektur inti.
+Job ketiga mengulang build headless itu di bawah sanitizer (matriks
+`address+undefined` dan `thread`); `ASAN_OPTIONS=detect_leaks=0` karena Qt-free
+test menutup banyak handle socket. Rilis (`.github/workflows/release.yml`)
+menerbitkan `SHA256SUMS` dan build provenance attestation untuk `.deb`.
 
 Menjalankan aplikasi:
 

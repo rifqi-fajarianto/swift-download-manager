@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <charconv>
 #include <cctype>
 #include <chrono>
@@ -78,7 +79,11 @@ bool is_supported_download_url(const std::string& url) {
         authority_start, authority_end == std::string::npos ? std::string::npos
                                                             : authority_end - authority_start);
     const size_t userinfo_end = authority.rfind('@');
-    if (userinfo_end != std::string::npos) authority.erase(0, userinfo_end + 1);
+    // Credentials in the URL are refused (the browser integration already does
+    // so on its side): the userinfo would travel in clear text through the
+    // logs, the history and the request line. Proxy authentication has its own
+    // setting.
+    if (userinfo_end != std::string::npos) return false;
     if (authority.empty() || authority.find_first_of(" \t\r\n") != std::string::npos) return false;
 
     if (authority.front() == '[') {
@@ -1127,8 +1132,19 @@ struct SegmentDownloader::Impl {
         const uint64_t remaining = seg.length() - seg.done;
         if (to_write > remaining) to_write = remaining;
         const uint64_t offset = seg.start + seg.done;
-        const ssize_t written = ::pwrite(impl->fd, ptr, to_write, static_cast<off_t>(offset));
-        if (written < 0 || static_cast<uint64_t>(written) != to_write) return 0;
+        // pwrite may be interrupted or write fewer bytes than asked; a short
+        // write is not a disk failure, so keep writing until the chunk is
+        // complete.
+        uint64_t left = to_write;
+        uint64_t at = offset;
+        while (left > 0) {
+            const ssize_t written = ::pwrite(impl->fd, ptr + (to_write - left), left,
+                                             static_cast<off_t>(at));
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) return 0;
+            left -= static_cast<uint64_t>(written);
+            at += static_cast<uint64_t>(written);
+        }
         seg.done += to_write;
         return total;
     }

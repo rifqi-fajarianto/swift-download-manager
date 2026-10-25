@@ -148,7 +148,10 @@ global open-folder option; those belong to the main Downloads list (0.19.3).
   shown as a fallback so the application remains reachable.
 - `AppAutoStart`: writes `~/.config/autostart/swiftdm.desktop` when enabled.
   The entry runs `swiftdm --autostart`; the GUI refreshes an existing entry on
-  launch so entries written by older releases also start silently.
+  launch so entries written by older releases also start silently. The
+  executable path is written as a quoted `Exec` argument (reserved characters
+  backslash-escaped, per the desktop entry spec), so an installation path with
+  spaces still starts.
 - `Theme`: the palette is applied before the windows are created, so a
   "follow system" theme still reads the desktop preference. The app follows
   the desktop while it runs when the color scheme changes.

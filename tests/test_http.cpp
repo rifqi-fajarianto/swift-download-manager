@@ -886,6 +886,13 @@ void test_download_url_scheme_allowlist(const std::string& dir) {
     CHECK(!is_supported_download_url("example.com/file.bin"));
     CHECK(!is_supported_download_url("http://"));
     CHECK(!is_supported_download_url("http://bad host/file"));
+    // Credentials in the URL are refused on the CLI path, matching the browser
+    // integration; proxy authentication has its own setting.
+    CHECK(!is_supported_download_url("https://user:secret@example.com/file.bin"));
+    CHECK(!is_supported_download_url("http://user@example.com/file.bin"));
+    CHECK(!is_supported_download_url("ftp://user:pw@example.com/file.bin"));
+    // An '@' outside the authority is not userinfo.
+    CHECK(is_supported_download_url("https://example.com/user@example.com.bin"));
 
     // fetch_text and stream_download refuse the scheme even when a caller
     // skips the probe (the HLS path used to do exactly that).
