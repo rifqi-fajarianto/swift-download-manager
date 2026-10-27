@@ -56,6 +56,7 @@ jobs:
             mingw-w64-ucrt-x86_64-curl
             mingw-w64-ucrt-x86_64-sqlite3
             mingw-w64-ucrt-x86_64-ca-certificates
+            mingw-w64-ucrt-x86_64-nodejs
 
       - name: Configure
         shell: msys2 {0}
@@ -69,8 +70,8 @@ jobs:
         shell: msys2 {0}
         run: ./build/windows-deploy/swiftdm.exe --version
 
-      # Node ships with the runner; a missing runtime would silently drop the
-      # extension tests, so assert they are registered before trusting ctest.
+      # Node comes from MSYS2: the runner's own node.exe lives outside the
+      # minimal MSYS2 PATH, so it is not visible to CMake here.
       - name: Verify that the extension tests are registered
         shell: msys2 {0}
         run: |
