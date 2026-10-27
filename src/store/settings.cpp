@@ -5,12 +5,18 @@
 #include <fstream>
 #include <initializer_list>
 #include <map>
+#include <sstream>
 #include <string>
+#include <utility>
 
 #include "core/util.h"
 #include "core/win_headers.h"
 
 #ifndef _WIN32
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -31,7 +37,7 @@ bool parse_bool(const std::string& v, bool fallback) {
     return fallback;
 }
 
-bool parse_int(const std::string& v, int fallback, int& out) {
+bool parse_int(const std::string& v, int& out) {
     std::string s = trim(v);
     if (s.empty()) return false;
     char* end = nullptr;
@@ -96,9 +102,9 @@ void apply_section(Settings& s, const std::string& section,
             // Legacy location of the download options. Configs written before
             // the [download] section existed keep working; the dedicated
             // section is applied afterwards and wins.
-            else if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
-            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            else if (k == "maxconnections") parse_int(value, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
             else if (k == "bandwidthlimitenabled") {
                 if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
                 s.bandwidth_limit_enabled =
@@ -111,9 +117,9 @@ void apply_section(Settings& s, const std::string& section,
             else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
             else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
         } else if (section == "download") {
-            if (k == "maxconnections") parse_int(value, s.max_connections, s.max_connections);
-            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps, s.bandwidth_limit_kbps);
+            if (k == "maxconnections") parse_int(value, s.max_connections);
+            else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
+            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
             else if (k == "bandwidthlimitenabled") {
                 if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
                 s.bandwidth_limit_enabled =
@@ -139,11 +145,32 @@ void apply_section(Settings& s, const std::string& section,
         } else if (section == "proxy") {
             if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
             else if (k == "proxyaddress") s.proxy.address = trim(value);
-            else if (k == "proxyport") parse_int(value, s.proxy.port, s.proxy.port);
+            else if (k == "proxyport") parse_int(value, s.proxy.port);
             else if (k == "proxyuser") s.proxy.user = value;
             else if (k == "proxypassword") s.proxy.password = value;
         }
     }
+}
+
+std::string ini_value(const std::string& value) {
+    std::string safe = value;
+    for (char& c : safe) {
+        if (c == '\r' || c == '\n') c = ' ';
+    }
+    return safe;
+}
+
+// Quotes one Exec argument per the Desktop Entry spec: a double-quoted string
+// with the reserved characters backslash-escaped. Paths with spaces (or shell
+// metacharacters) then survive both the key-file parser and the shell.
+std::string desktop_exec_arg(const std::string& value) {
+    std::string out = "\"";
+    for (const char c : value) {
+        if (c == '"' || c == '`' || c == '$' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
 }
 
 }  // namespace
@@ -200,11 +227,68 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
     out = default_settings();
     out.config_path = path;
 
-    std::ifstream in(path_from_utf8(path));
-    if (!in) {
-        // Missing configuration is normal: defaults apply.
-        return true;
+    std::string content;
+#ifdef _WIN32
+    // The config lives under %APPDATA%; the wide-path stream keeps a user name
+    // outside the ANSI code page working. A missing file keeps the defaults.
+    std::ifstream file(path_from_utf8(path), std::ios::binary);
+    if (!file) return true;
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    content = buffer.str();
+    if (content.size() > (1u << 20)) {
+        if (error) *error = "config '" + path + "' exceeds the 1 MiB limit";
+        return false;
     }
+#else
+    const std::filesystem::path config_path(path);
+    const std::filesystem::path expected_dir =
+        path_from_utf8(default_config_path()).parent_path();
+    if (config_path.parent_path() == expected_dir) {
+        std::string directory_error;
+        if (!ensure_private_directory(path_to_utf8(expected_dir), &directory_error)) {
+            if (error) *error = directory_error;
+            return false;
+        }
+    }
+    const int config_fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (config_fd < 0) {
+        if (errno == ENOENT) return true;  // Missing configuration is normal.
+        if (error) *error = "cannot open config '" + path + "': " + std::strerror(errno);
+        return false;
+    }
+    struct stat config_stat {};
+    if (::fstat(config_fd, &config_stat) != 0 || !S_ISREG(config_stat.st_mode)) {
+        if (error) *error = "config '" + path + "' is not a regular file";
+        ::close(config_fd);
+        return false;
+    }
+    if (::fchmod(config_fd, 0600) != 0) {
+        if (error) *error = "cannot set private permissions on config '" + path + "': " +
+                            std::strerror(errno);
+        ::close(config_fd);
+        return false;
+    }
+    char buffer[8192];
+    while (true) {
+        const ssize_t count = ::read(config_fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) {
+            if (error) *error = "cannot read config '" + path + "': " + std::strerror(errno);
+            ::close(config_fd);
+            return false;
+        }
+        if (count == 0) break;
+        content.append(buffer, static_cast<size_t>(count));
+        if (content.size() > (1u << 20)) {
+            if (error) *error = "config '" + path + "' exceeds the 1 MiB limit";
+            ::close(config_fd);
+            return false;
+        }
+    }
+    ::close(config_fd);
+#endif
+    std::istringstream in(std::move(content));
 
     // The file is read into sections first, so the order of the sections in
     // the file cannot change the outcome. Keys are stored lower case.
@@ -247,22 +331,21 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
 
 bool save_settings(const Settings& settings, std::string* error) {
     const std::string path = settings.config_path;
-    std::error_code ec;
-    if (!path.empty()) {
-        std::filesystem::create_directories(
-            path_from_utf8(path).parent_path(), ec);
-        if (ec) {
-            if (error) *error = "cannot create config directory: " + ec.message();
-            return false;
-        }
-    }
-
-    std::ofstream out(path_from_utf8(path), std::ios::trunc);
-    if (!out) {
-        if (error) *error = "cannot open '" + path + "' for writing";
+    if (path.empty()) {
+        if (error) *error = "configuration path is empty";
         return false;
     }
+    const std::filesystem::path parent = path_from_utf8(path).parent_path();
+    if (!parent.empty()) {
+        const std::filesystem::path app_config_dir =
+            path_from_utf8(default_config_path()).parent_path();
+        const bool directory_ok =
+            parent == app_config_dir ? ensure_private_directory(path_to_utf8(parent), error)
+                                     : ensure_directory(path_to_utf8(parent), error);
+        if (!directory_ok) return false;
+    }
 
+    std::ostringstream out;
     out << "# SwiftDM configuration (see docs/spec/05-settings.md)\n"
         << "[general]\n"
         << "CompletionDialog = " << (settings.completion_dialog ? 1 : 0) << "\n"
@@ -279,30 +362,24 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "BandWidthLimit = " << settings.bandwidth_limit_kbps << "\n"
         << "BandWidthLimitEnabled = " << (settings.bandwidth_limit_enabled ? 1 : 0) << "\n"
         << "UseUAgent = " << (settings.use_ua_for_browser ? 1 : 0) << "\n"
-        << "DefaultAgent = " << settings.default_agent << "\n"
-        << "DownloadDirectory = " << settings.download_dir << "\n"
+        << "DefaultAgent = " << ini_value(settings.default_agent) << "\n"
+        << "DownloadDirectory = " << ini_value(settings.download_dir) << "\n"
         << "CategoryFolders = " << (settings.category_folders ? 1 : 0) << "\n"
-        << "TempDirectory = " << settings.temp_dir << "\n"
+        << "TempDirectory = " << ini_value(settings.temp_dir) << "\n"
         << "ServerCreationDate = " << (settings.server_creation_date ? 1 : 0) << "\n"
         << "\n[interface]\n"
-        << "Theme = " << settings.theme << "\n"
-        << "ToolbarSize = " << settings.toolbar_size << "\n"
+        << "Theme = " << ini_value(settings.theme) << "\n"
+        << "ToolbarSize = " << ini_value(settings.toolbar_size) << "\n"
         << "ShowToolbarText = " << (settings.show_toolbar_text ? 1 : 0) << "\n"
-        << "TrayIconStyle = " << settings.tray_icon_style << "\n"
+        << "TrayIconStyle = " << ini_value(settings.tray_icon_style) << "\n"
         << "\n[proxy]\n"
         << "SocksVersion = " << proxy_type_to_token(settings.proxy.type) << "\n"
-        << "ProxyAddress = " << settings.proxy.address << "\n"
+        << "ProxyAddress = " << ini_value(settings.proxy.address) << "\n"
         << "ProxyPort = " << settings.proxy.port << "\n"
-        << "ProxyUser = " << settings.proxy.user << "\n"
-        << "ProxyPassword = " << settings.proxy.password << "\n";
+        << "ProxyUser = " << ini_value(settings.proxy.user) << "\n"
+        << "ProxyPassword = " << ini_value(settings.proxy.password) << "\n";
 
-    out.flush();
-    if (!out) {
-        if (error) *error = "write failed for '" + path + "'";
-        return false;
-    }
-    if (error) error->clear();
-    return true;
+    return write_file_atomic(path, out.str(), 0600, error);
 }
 
 bool apply_autostart(bool enabled, std::string* error) {
@@ -381,7 +458,7 @@ bool apply_autostart(bool enabled, std::string* error) {
         << "Type=Application\n"
         << "Name=SwiftDM\n"
         << "Comment=Download manager\n"
-        << "Exec=" << exe << " --autostart\n"
+        << "Exec=" << desktop_exec_arg(exe) << " --autostart\n"
         << "Icon=swiftdm\n"
         << "Terminal=false\n"
         << "X-GNOME-Autostart-enabled=true\n";

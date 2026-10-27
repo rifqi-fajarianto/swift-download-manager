@@ -77,6 +77,8 @@ int main(int argc, char** argv) {
         QStringLiteral(":/icons/link-plus.svg"),    QStringLiteral(":/icons/link.svg"),
         QStringLiteral(":/icons/music.svg"),        QStringLiteral(":/icons/other.svg"),
         QStringLiteral(":/icons/plus.svg"),         QStringLiteral(":/icons/properties.svg"),
+        QStringLiteral(":/icons/queue.svg"),        QStringLiteral(":/icons/queue-add.svg"),
+        QStringLiteral(":/icons/queue-delete.svg"), QStringLiteral(":/icons/queue-settings.svg"),
         QStringLiteral(":/icons/resume-start.svg"), QStringLiteral(":/icons/settings.svg"),
         QStringLiteral(":/icons/stop.svg"),         QStringLiteral(":/icons/video.svg"),
         QStringLiteral(":/icons/browsers.svg"),     QStringLiteral(":/icons/about.svg"),

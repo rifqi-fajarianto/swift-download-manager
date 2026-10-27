@@ -66,7 +66,9 @@ class TestFtpServer {
             return false;
         }
         running_.store(true);
-        thread_ = std::thread([this] { accept_loop(); });
+        // The descriptor is passed by value: stop() closes it while the accept
+        // loop may still be inside accept(), so a shared member would race.
+        thread_ = std::thread([this, fd = listen_fd_] { accept_loop(fd); });
         return true;
     }
 
@@ -116,11 +118,11 @@ class TestFtpServer {
 #endif
     }
 
-    void accept_loop() {
+    void accept_loop(socket_t listen_fd) {
         while (running_.load()) {
             sockaddr_in peer{};
             socklen_t len = sizeof(peer);
-            const socket_t fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &len);
+            const socket_t fd = ::accept(listen_fd, reinterpret_cast<sockaddr*>(&peer), &len);
             if (!socket_valid(fd)) break;
             std::thread([fd] { handle_conn(fd); }).detach();
         }

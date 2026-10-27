@@ -101,6 +101,26 @@ bool connect_extension(QTcpSocket& socket, quint16 port) {
                                "chrome-extension://hagednkleljjijmjonpeiokknhngknbb");
 }
 
+bool reject_origin(QTcpSocket& socket, quint16 port, const QByteArray& origin) {
+    socket.connectToHost(QHostAddress::LocalHost, port);
+    if (!socket.waitForConnected(1000)) return false;
+    const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
+    socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                 "Connection: Upgrade\r\nSec-WebSocket-Key: " + key + "\r\n"
+                 "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: swiftdm.v1\r\n"
+                 "Origin: " + origin + "\r\n\r\n");
+    if (!pump_until([&] { return socket.bytesToWrite() == 0; })) return false;
+    QByteArray response;
+    if (!pump_until([&] {
+            response.append(socket.readAll());
+            return response.contains("\r\n\r\n") ||
+                   socket.state() != QAbstractSocket::ConnectedState;
+        })) {
+        return false;
+    }
+    return !response.startsWith("HTTP/1.1 101 Switching Protocols");
+}
+
 QJsonObject command(QTcpSocket& socket, const QString& cmd, const QJsonObject& data,
                     const QString& id) {
     const QJsonObject request{{QStringLiteral("v"), 1},
@@ -292,23 +312,18 @@ int main(int argc, char** argv) {
         server.set_status(true, 0);
     }
 
-    // Reloading an unpacked extension from another path can change its ID. A
-    // different well-formed Chromium extension origin must still connect.
+    // Only the ID derived from the repository manifest's public key is
+    // accepted; another extension cannot use the loopback command server.
     QTcpSocket other_extension;
-    check(connect_with_origin(other_extension, server.port(),
-                              "chrome-extension://abcdefghijklmnopabcdefghijklmnop"),
-          "a different valid extension ID is accepted");
-    if (other_extension.state() == QAbstractSocket::ConnectedState) {
-        const QJsonObject ping =
-            command(other_extension, QStringLiteral("ping"), {}, QStringLiteral("p2"));
-        check(ping.value(QStringLiteral("ok")).toBool(),
-              "ping works from a different extension ID");
-    }
+    check(reject_origin(other_extension, server.port(),
+                        "chrome-extension://abcdefghijklmnopabcdefghijklmnop"),
+          "a different extension ID is rejected");
 
     // Edge displays extension pages as extensions:// in DevTools and can use
     // that scheme in the WebSocket Origin header.
-    for (const QByteArray& origin : {QByteArray("extensions://abcdefghijklmnopabcdefghijklmnop"),
-                                     QByteArray("extension://abcdefghijklmnopabcdefghijklmnop")}) {
+    for (const QByteArray& origin : {
+             QByteArray("extensions://hagednkleljjijmjonpeiokknhngknbb"),
+             QByteArray("extension://hagednkleljjijmjonpeiokknhngknbb")}) {
         QTcpSocket edge;
         check(connect_with_origin(edge, server.port(), origin),
               "Edge extension origin is accepted");
@@ -386,6 +401,23 @@ int main(int argc, char** argv) {
     } else {
         check(false, "untrusted client can connect to loopback for handshake test");
     }
+
+    QTcpSocket other_scheme;
+    check(reject_origin(other_scheme, server.port(),
+                        "extensions://abcdefghijklmnopabcdefghijklmnop"),
+          "alternate extension scheme with an untrusted ID is rejected");
+
+    // A client that opens a loopback connection but never sends the upgrade
+    // request must not retain one of the bounded client slots indefinitely.
+    QTcpSocket stalled;
+    stalled.connectToHost(QHostAddress::LocalHost, server.port());
+    check(stalled.waitForConnected(1000), "stalled-handshake test connects");
+    QElapsedTimer handshake_timer;
+    handshake_timer.start();
+    const bool closed_on_timeout = pump_until(
+        [&] { return stalled.state() != QAbstractSocket::ConnectedState; }, 7000);
+    check(closed_on_timeout, "incomplete handshake times out and releases its slot");
+    check(handshake_timer.elapsed() < 6500, "handshake timeout is bounded near five seconds");
 
     if (failures) std::printf("%d failure(s)\n", failures);
     else std::printf("Browser protocol tests passed\n");

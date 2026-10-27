@@ -6,8 +6,10 @@
 #include <QSet>
 #include <QString>
 #include <QTcpServer>
+#include <QPointer>
 
 class QTcpSocket;
+class QTimer;
 
 namespace swiftdm::ui {
 
@@ -45,6 +47,7 @@ class BrowserIntegration : public QObject {
     QString handshake_error_;
     QHash<QTcpSocket*, QByteArray> buffers_;
     QHash<QTcpSocket*, bool> handshaken_;
+    QHash<QTcpSocket*, QPointer<QTimer>> handshake_timers_;
     QSet<QTcpSocket*> subscribed_;
     bool waiting_ = true;
     int active_downloads_ = 0;

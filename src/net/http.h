@@ -15,6 +15,9 @@ namespace swiftdm {
 
 inline constexpr const char* kInvalidUrlError =
     "invalid download URL - include the http://, https://, ftp:// or ftps:// prefix";
+inline constexpr const char* kRedirectWithSensitiveHeadersError =
+    "redirect blocked because the request contains custom headers or a referer; "
+    "remove them or use the final download URL";
 
 struct HttpHeader {
     std::string name;
@@ -61,6 +64,8 @@ struct HttpOptions {
     int proxy_port = 0;
     std::string proxy_user;
     std::string proxy_password;
+    std::string etag;
+    std::string last_modified;
     std::string post_data;   // when set, probe uses POST and transfers are single-connection
     int connect_timeout_seconds = 30;
     int low_speed_seconds = 60;
@@ -75,6 +80,11 @@ int http_error_status(const std::string& error);
 
 // True for ftp:// and ftps:// URLs (case-insensitive).
 bool is_ftp_url(const std::string& url);
+
+// True when `url` uses one of the schemes this app transfers (http, https,
+// ftp, ftps) and carries a usable authority. Remote input (HLS playlist URIs,
+// redirect targets, CLI arguments) must pass this before reaching libcurl.
+bool is_supported_download_url(const std::string& url);
 
 // Probes a URL: HEAD first, falling back to GET Range: 0-0 (or POST when
 // post_data is set). FTP URLs use a NOBODY (SIZE) probe instead. Fills

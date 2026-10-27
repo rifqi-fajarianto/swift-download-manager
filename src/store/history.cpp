@@ -2,12 +2,21 @@
 
 #include <sqlite3.h>
 
+#include <cerrno>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <string>
 
 #include "core/log.h"
 #include "core/util.h"
+#include "store/settings.h"
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace swiftdm {
 namespace {
@@ -41,9 +50,24 @@ CREATE TABLE IF NOT EXISTS "downloads" (
     "temppath"        TEXT,
     "groupid"         TEXT,
     "done"            NUMERIC,
+    "queueid"         NUMERIC, -- 0/NULL = main Downloads list
     PRIMARY KEY("id")
 );
 CREATE TABLE IF NOT EXISTS headers (id NUMERIC, header TEXT);
+CREATE TABLE IF NOT EXISTS "queues" (
+    "id"                     INTEGER,
+    "name"                   TEXT,
+    "max_simultaneous"       NUMERIC,
+    "connections"            NUMERIC,
+    "bandwidthlimit_enabled" NUMERIC,
+    "bandwidthlimit"         NUMERIC,
+    "autostart"              NUMERIC,
+    "notify_item"            NUMERIC,
+    "notify_complete"        NUMERIC,
+    "shutdown_when_complete" NUMERIC,
+    "shutdown_delay"         NUMERIC,
+    PRIMARY KEY("id")
+);
 )sql";
 
 void bind_text(sqlite3_stmt* stmt, int index, const std::string& value) {
@@ -65,7 +89,8 @@ std::string column_text(sqlite3_stmt* stmt, int index) {
 const char* kRecordColumns =
     "url, method, filename, filesize, category, status, bandwidthlimit, connections,"
     " lasttry, firsttry, useragent, resumable, pageurl, pagetitle, mimetype, errortext,"
-    " postdata, folderpath, temppath, groupid, done, folderexact, bandwidthlimit_enabled";
+    " postdata, folderpath, temppath, groupid, done, folderexact, bandwidthlimit_enabled,"
+    " queueid";
 
 HistoryStore::Record read_record(sqlite3_stmt* stmt, int base = 0) {
     HistoryStore::Record record;
@@ -97,6 +122,9 @@ HistoryStore::Record read_record(sqlite3_stmt* stmt, int base = 0) {
         record.bandwidth_limit_enabled = record.bandwidth_limit_kbps > 0;
     } else {
         record.bandwidth_limit_enabled = sqlite3_column_int64(stmt, base + 22) != 0;
+    }
+    if (sqlite3_column_type(stmt, base + 23) != SQLITE_NULL) {
+        record.queue_id = sqlite3_column_int64(stmt, base + 23);
     }
     return record;
 }
@@ -149,19 +177,48 @@ bool HistoryStore::ensure_column(const char* name, const char* type, std::string
 
 bool HistoryStore::open(const std::string& path, std::string* error) {
     close();
-    std::error_code ec;
     const std::filesystem::path file = path_from_utf8(path);
     if (file.has_parent_path()) {
-        std::filesystem::create_directories(file.parent_path(), ec);
+        std::string directory_error;
+        const std::filesystem::path parent = file.parent_path();
+        const std::filesystem::path app_data_dir =
+            path_from_utf8(default_database_path()).parent_path();
+        const bool directory_ok =
+            parent == app_data_dir
+                ? ensure_private_directory(path_to_utf8(parent), &directory_error)
+                : ensure_directory(path_to_utf8(parent), &directory_error);
+        if (!directory_ok) {
+            set_error(error, directory_error);
+            return false;
+        }
     }
 #ifdef _WIN32
+    // The file lives in the per-user local application data directory, whose
+    // ACL already excludes other users; the UTF-16 open keeps a non-ASCII user
+    // name working.
     const std::wstring wide_path = file.native();
-    const int open_rc = sqlite3_open16(wide_path.c_str(), &db_);
+    if (sqlite3_open16(wide_path.c_str(), &db_) != SQLITE_OK) {
 #else
-    const int open_rc = sqlite3_open_v2(path.c_str(), &db_,
-                                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    const int file_fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (file_fd < 0) {
+        set_error(error, "cannot create database '" + path + "': " + std::strerror(errno));
+        return false;
+    }
+    if (::fchmod(file_fd, 0600) != 0) {
+        const std::string message = "cannot set private permissions on database '" + path +
+                                    "': " + std::strerror(errno);
+        ::close(file_fd);
+        set_error(error, message);
+        return false;
+    }
+    if (::close(file_fd) != 0) {
+        set_error(error, "cannot close database file '" + path + "': " + std::strerror(errno));
+        return false;
+    }
+    if (sqlite3_open_v2(path.c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+                                                SQLITE_OPEN_NOFOLLOW,
+                        nullptr) != SQLITE_OK) {
 #endif
-    if (open_rc != SQLITE_OK) {
         const std::string message = db_ ? sqlite3_errmsg(db_) : "cannot open database";
         if (db_) {
             sqlite3_close(db_);
@@ -170,6 +227,8 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
         set_error(error, message);
         return false;
     }
+    // SQLite may create WAL/journal siblings lazily; the owner-only parent
+    // directory prevents other users from reaching those files.
     sqlite3_busy_timeout(db_, 2000);
     if (!ensure_schema(error)) {
         close();
@@ -182,7 +241,8 @@ bool HistoryStore::open(const std::string& path, std::string* error) {
                                std::pair<const char*, const char*>("done", "NUMERIC"),
                                std::pair<const char*, const char*>("folderexact", "NUMERIC"),
                                std::pair<const char*, const char*>("bandwidthlimit_enabled",
-                                                                   "NUMERIC")}) {
+                                                                   "NUMERIC"),
+                               std::pair<const char*, const char*>("queueid", "NUMERIC")}) {
         if (!ensure_column(column.first, column.second, error)) {
             close();
             return false;
@@ -225,9 +285,9 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
         "INSERT INTO downloads (url, method, filename, ltype, filesize, category, status,"
         " bandwidthlimit, connections, lasttry, firsttry, useragent, resumable, pageurl,"
         " pagetitle, mimetype, errortext, postdata, folderpath, temppath, groupid, done,"
-        " folderexact, bandwidthlimit_enabled)"
+        " folderexact, bandwidthlimit_enabled, queueid)"
         " VALUES (?1,?2,?3,'',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,"
-        "?20,?21,?22,?23)";
+        "?20,?21,?22,?23,?24)";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -257,6 +317,7 @@ int64_t HistoryStore::insert(const Record& record, std::string* error) {
     bind_int64(stmt, 21, static_cast<int64_t>(record.done));
     bind_int64(stmt, 22, record.folder_exact ? 1 : 0);
     bind_int64(stmt, 23, record.bandwidth_limit_enabled ? 1 : 0);
+    bind_int64(stmt, 24, record.queue_id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -278,7 +339,7 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
         " status=?6, bandwidthlimit=?7, connections=?8, lasttry=?9, useragent=?10,"
         " resumable=?11, pageurl=?12, pagetitle=?13, mimetype=?14, errortext=?15,"
         " postdata=?16, folderpath=?17, temppath=?18, groupid=?19, done=?20,"
-        " folderexact=?21, bandwidthlimit_enabled=?22 WHERE id=?23";
+        " folderexact=?21, bandwidthlimit_enabled=?22, queueid=?23 WHERE id=?24";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         set_error(error, sqlite3_errmsg(db_));
@@ -307,7 +368,8 @@ bool HistoryStore::update(int64_t id, const Record& record, std::string* error) 
     bind_int64(stmt, 20, static_cast<int64_t>(record.done));
     bind_int64(stmt, 21, record.folder_exact ? 1 : 0);
     bind_int64(stmt, 22, record.bandwidth_limit_enabled ? 1 : 0);
-    bind_int64(stmt, 23, id);
+    bind_int64(stmt, 23, record.queue_id);
+    bind_int64(stmt, 24, id);
     const int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
@@ -474,6 +536,162 @@ int64_t HistoryStore::count(std::string* error) const {
     else set_error(error, sqlite3_errmsg(db_));
     sqlite3_finalize(stmt);
     return total;
+}
+
+bool HistoryStore::load_queues(std::vector<QueueRecord>* out, std::string* error) const {
+    if (!db_ || !out) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    out->clear();
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql =
+        "SELECT id, name, max_simultaneous, connections, bandwidthlimit_enabled,"
+        " bandwidthlimit, autostart, notify_item, notify_complete,"
+        " shutdown_when_complete, shutdown_delay FROM queues ORDER BY id";
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    int rc = SQLITE_ROW;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        QueueRecord queue;
+        queue.id = sqlite3_column_int64(stmt, 0);
+        queue.name = column_text(stmt, 1);
+        queue.max_simultaneous = static_cast<int>(sqlite3_column_int64(stmt, 2));
+        queue.connections = static_cast<int>(sqlite3_column_int64(stmt, 3));
+        queue.bandwidth_limit_enabled = sqlite3_column_int64(stmt, 4) != 0;
+        queue.bandwidth_limit_kbps = static_cast<int>(sqlite3_column_int64(stmt, 5));
+        queue.autostart = sqlite3_column_int64(stmt, 6) != 0;
+        queue.notify_item = sqlite3_column_int64(stmt, 7) != 0;
+        queue.notify_complete = sqlite3_column_int64(stmt, 8) != 0;
+        queue.shutdown_when_complete = sqlite3_column_int64(stmt, 9) != 0;
+        queue.shutdown_delay = static_cast<int>(sqlite3_column_int64(stmt, 10));
+        if (queue.max_simultaneous < 0) queue.max_simultaneous = 1;
+        if (queue.connections < 0) queue.connections = 0;
+        if (queue.bandwidth_limit_kbps < 0) queue.bandwidth_limit_kbps = 0;
+        if (queue.shutdown_delay <= 0) queue.shutdown_delay = 60;
+        out->push_back(std::move(queue));
+    }
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        out->clear();
+        return false;
+    }
+    return true;
+}
+
+int64_t HistoryStore::insert_queue(const QueueRecord& queue, std::string* error) {
+    if (!db_) {
+        set_error(error, "history store is not open");
+        return 0;
+    }
+    static const char* sql =
+        "INSERT INTO queues (name, max_simultaneous, connections, bandwidthlimit_enabled,"
+        " bandwidthlimit, autostart, notify_item, notify_complete, shutdown_when_complete,"
+        " shutdown_delay) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return 0;
+    }
+    bind_text(stmt, 1, queue.name);
+    bind_int64(stmt, 2, queue.max_simultaneous);
+    bind_int64(stmt, 3, queue.connections);
+    bind_int64(stmt, 4, queue.bandwidth_limit_enabled ? 1 : 0);
+    bind_int64(stmt, 5, queue.bandwidth_limit_kbps);
+    bind_int64(stmt, 6, queue.autostart ? 1 : 0);
+    bind_int64(stmt, 7, queue.notify_item ? 1 : 0);
+    bind_int64(stmt, 8, queue.notify_complete ? 1 : 0);
+    bind_int64(stmt, 9, queue.shutdown_when_complete ? 1 : 0);
+    bind_int64(stmt, 10, queue.shutdown_delay);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        return 0;
+    }
+    return sqlite3_last_insert_rowid(db_);
+}
+
+bool HistoryStore::update_queue(const QueueRecord& queue, std::string* error) {
+    if (!db_ || queue.id <= 0) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    static const char* sql =
+        "UPDATE queues SET name=?1, max_simultaneous=?2, connections=?3,"
+        " bandwidthlimit_enabled=?4, bandwidthlimit=?5, autostart=?6, notify_item=?7,"
+        " notify_complete=?8, shutdown_when_complete=?9, shutdown_delay=?10 WHERE id=?11";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bind_text(stmt, 1, queue.name);
+    bind_int64(stmt, 2, queue.max_simultaneous);
+    bind_int64(stmt, 3, queue.connections);
+    bind_int64(stmt, 4, queue.bandwidth_limit_enabled ? 1 : 0);
+    bind_int64(stmt, 5, queue.bandwidth_limit_kbps);
+    bind_int64(stmt, 6, queue.autostart ? 1 : 0);
+    bind_int64(stmt, 7, queue.notify_item ? 1 : 0);
+    bind_int64(stmt, 8, queue.notify_complete ? 1 : 0);
+    bind_int64(stmt, 9, queue.shutdown_when_complete ? 1 : 0);
+    bind_int64(stmt, 10, queue.shutdown_delay);
+    bind_int64(stmt, 11, queue.id);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    return true;
+}
+
+bool HistoryStore::remove_queue(int64_t id, std::string* error) {
+    if (!db_) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "DELETE FROM queues WHERE id=?1", -1, &stmt, nullptr) !=
+        SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bind_int64(stmt, 1, id);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    return true;
+}
+
+bool HistoryStore::update_queue_id(int64_t id, int64_t queue_id, const std::string& status,
+                                   std::string* error) {
+    if (!db_) {
+        set_error(error, "history store is not open");
+        return false;
+    }
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE downloads SET queueid=?1, status=?2 WHERE id=?3", -1,
+                           &stmt, nullptr) != SQLITE_OK) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    bind_int64(stmt, 1, queue_id);
+    bind_text(stmt, 2, status);
+    bind_int64(stmt, 3, id);
+    const int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        set_error(error, sqlite3_errmsg(db_));
+        return false;
+    }
+    return true;
 }
 
 bool HistoryStore::read_headers(int64_t id, Record* out, std::string* error) const {

@@ -59,6 +59,7 @@ int open_file(const std::string& path, unsigned flags, unsigned mode) {
     else if (flags & FileWrite) native_flags |= _O_WRONLY;
     else native_flags |= _O_RDONLY;
     if (flags & FileCreate) native_flags |= _O_CREAT;
+    if (flags & FileExclusive) native_flags |= _O_EXCL;
     if (flags & FileTruncate) native_flags |= _O_TRUNC;
     if (flags & FileAppend) native_flags |= _O_APPEND;
     const std::wstring wide = path_from_utf8(path).native();
@@ -73,6 +74,7 @@ int open_file(const std::string& path, unsigned flags, unsigned mode) {
     else if (flags & FileWrite) native_flags |= O_WRONLY;
     else native_flags |= O_RDONLY;
     if (flags & FileCreate) native_flags |= O_CREAT;
+    if (flags & FileExclusive) native_flags |= O_EXCL;
     if (flags & FileTruncate) native_flags |= O_TRUNC;
     if (flags & FileAppend) native_flags |= O_APPEND;
 #ifdef O_CLOEXEC
@@ -114,6 +116,26 @@ int seek_file(int fd, uint64_t offset) {
 #else
     return ::lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0 ? -1 : 0;
 #endif
+}
+
+std::ptrdiff_t read_file(int fd, void* data, size_t size) {
+    auto* bytes = static_cast<unsigned char*>(data);
+    size_t total = 0;
+    while (total < size) {
+        const size_t chunk = std::min(size - total, static_cast<size_t>(INT_MAX));
+#ifdef _WIN32
+        const int rc = ::_read(fd, bytes + total, static_cast<unsigned>(chunk));
+#else
+        const ssize_t rc = ::read(fd, bytes + total, chunk);
+#endif
+        if (rc < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (rc == 0) break;  // End of file.
+        total += static_cast<size_t>(rc);
+    }
+    return static_cast<std::ptrdiff_t>(total);
 }
 
 std::ptrdiff_t write_file(int fd, const void* data, size_t size) {

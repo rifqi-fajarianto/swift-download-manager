@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.19.0
+    VERSION 0.19.13
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -103,6 +103,10 @@ if(SWIFTSDM_BUILD_UI)
         "${CMAKE_SOURCE_DIR}/ui-assets/plus.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/properties.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/question-filled.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/queue-add.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/queue-delete.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/queue-settings.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/queue.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/quit.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/resume-start.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/settings.svg"
@@ -131,6 +135,11 @@ add_library(swiftdm_core STATIC
     src/engine/hls.cpp
     src/engine/segment_plan.cpp
     src/net/http.cpp
+    src/net/http_request.cpp
+    src/net/http_error.cpp
+    src/net/http_probe.cpp
+    src/net/http_segment.cpp
+    src/net/http_stream.cpp
     src/net/interstitial.cpp
     src/store/history.cpp
     src/store/settings.cpp
@@ -176,12 +185,21 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/download_task.cpp
         src/ui/add_download_dialog.cpp
         src/ui/confirm_download_dialog.cpp
+        src/ui/queue_picker_dialog.cpp
         src/ui/properties_dialog.cpp
         src/ui/settings_dialog.cpp
         src/ui/speed_limit_editor.cpp
         src/ui/download_window.cpp
+        src/ui/queue_logic.cpp
+        src/ui/queue_dialog.cpp
         src/ui/browser_integration.cpp
         src/ui/main_window.cpp
+        src/ui/main_window_history.cpp
+        src/ui/main_window_downloads.cpp
+        src/ui/main_window_rows.cpp
+        src/ui/main_window_dialogs.cpp
+        src/ui/main_window_queue.cpp
+        src/ui/main_window_shutdown.cpp
     )
     target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)
@@ -284,7 +302,7 @@ if(UNIX)
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6svg6, qt6-svg-plugins")
-    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/swiftdm/swiftdm")
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/rifqi-fajarianto/swift-download-manager")
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_DEBUGINFO_PACKAGE OFF)
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA

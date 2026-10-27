@@ -56,6 +56,12 @@ void DownloadTask::set_options(const Options& options) {
     set_live_limit(options_.limit_enabled, options_.limit_kbps);
 }
 
+void DownloadTask::set_transfer_limit(int kbps) {
+    if (!live_limit_) return;
+    const int safe_kbps = std::max(0, kbps);
+    live_limit_->set_bytes_per_second(static_cast<int64_t>(safe_kbps) * 1024);
+}
+
 void DownloadTask::set_live_limit(bool enabled, int kbps) {
     const int safe_kbps = std::max(0, kbps);
     // Do not touch the options snapshot from the UI while the worker is using

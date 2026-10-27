@@ -45,10 +45,19 @@ class DownloadWindow : public QDialog {
     DownloadWindow(DownloadModel* model, int item_id, swiftdm::Settings settings,
                    QWidget* parent = nullptr);
 
+    // Tells the window that the item belongs to a queue whose aggregate limit
+    // controls the transfer. The per-item editors are then disabled.
+    void set_queue_context(const QString& name, bool limit_enabled, int limit_kbps);
+    // The item moved back to the main Downloads list.
+    void clear_queue_context();
+
   signals:
     // Resume was requested in this window; the main window restarts the task
     // so the history row is updated too.
     void resumeRequested(int item_id);
+    // Pause was requested in this window. The main window clears the
+    // queue-limit marker first so a manual pause stays Paused.
+    void pauseRequested(int item_id);
     // The Options tab changed the destination/name; the main window updates the
     // item and its history row.
     void optionsApplied(int item_id);
@@ -94,8 +103,14 @@ class DownloadWindow : public QDialog {
     QLineEdit* referer_edit_ = nullptr;
     QSpinBox* connections_spin_ = nullptr;
     SpeedLimitEditor* limit_editor_ = nullptr;
+    QLabel* queue_limit_note_ = nullptr;
     QPushButton* apply_button_ = nullptr;
     QTimer* limit_debounce_ = nullptr;
+
+    bool queue_controlled_ = false;
+    QString queue_name_;
+    bool queue_limit_enabled_ = false;
+    int queue_limit_kbps_ = 0;
 
     QTableWidget* connections_table_ = nullptr;
 

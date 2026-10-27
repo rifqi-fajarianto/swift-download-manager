@@ -12,6 +12,7 @@
 #include "engine/categories.h"
 #include "engine/download_engine.h"
 #include "engine/segment_plan.h"
+#include "core/file_io.h"
 #include "core/util.h"
 #include "http_test_server.h"
 #include "net/http.h"
@@ -58,6 +59,11 @@ bool file_matches(const std::string& path, uint64_t size) {
         offset += static_cast<uint64_t>(got);
     }
     return offset == size;
+}
+
+std::string read_file_text(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
 bool dir_empty(const std::string& dir) {
@@ -236,6 +242,125 @@ void test_resume_after_pause(const std::string& dir, testutil::TestHttpServer& s
     CHECK(dir_empty(settings.temp_dir));
 }
 
+void test_resume_validator_and_content_range(
+    const std::string& dir, testutil::TestHttpServer& server) {
+    const std::string url = server.base_url() + "/file/1048576";
+    const std::string filename = "sample-1048576.bin";
+
+    // Resume state with validators must send If-Range on each range request.
+    {
+        Settings settings = test_settings(dir + "/if-range");
+        DownloadEngine engine(settings);
+        const DownloadWorkspace ws = make_workspace(settings, url, filename);
+        CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+        CHECK(ensure_private_directory(ws.dir, nullptr));
+        {
+            std::ofstream part(ws.part_path, std::ios::binary | std::ios::trunc);
+            std::vector<uint8_t> prefix(65536);
+            for (size_t i = 0; i < prefix.size(); ++i) {
+                prefix[i] = testutil::content_byte(i);
+            }
+            part.write(reinterpret_cast<const char*>(prefix.data()),
+                       static_cast<std::streamsize>(prefix.size()));
+        }
+        TransferState state;
+        state.url = url;
+        state.file_size = 1048576;
+        state.etag = "\"etag-1048576\"";
+        state.last_modified = "Wed, 21 Oct 2015 07:28:00 GMT";
+        state.segments = plan_segments(state.file_size, 4);
+        state.segments[0].done = 65536;
+        CHECK(save_transfer_state(ws.state_path, state, nullptr));
+        const int before = testutil::g_if_range_requests.load();
+        DownloadRequest request;
+        request.url = url;
+        request.filename = filename;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        ProbeResult cached_probe;
+        cached_probe.ok = true;
+        cached_probe.effective_url = url;
+        cached_probe.filename_hint = filename;
+        cached_probe.content_length = state.file_size;
+        cached_probe.accept_ranges = true;
+        cached_probe.etag = state.etag;
+        cached_probe.last_modified = state.last_modified;
+        request.probe = cached_probe;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Completed);
+        if (result.status != DownloadResult::Status::Completed) {
+            std::fprintf(stderr, "If-Range fixture failed: %s (path=%s)\n",
+                         result.error.c_str(), result.path.c_str());
+        }
+        CHECK(file_matches(result.path, state.file_size));
+        CHECK(testutil::g_if_range_requests.load() > before);
+    }
+
+    // Mismatched If-Range must not append the new representation to old bytes.
+    {
+        Settings settings = test_settings(dir + "/changed");
+        DownloadEngine engine(settings);
+        const std::string changed_url = server.base_url() + "/if-range-changed/1048576";
+        const DownloadWorkspace ws = make_workspace(settings, changed_url, filename);
+        CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+        CHECK(ensure_private_directory(ws.dir, nullptr));
+        { std::ofstream part(ws.part_path, std::ios::binary); part << "OLD-PART"; }
+        TransferState state;
+        state.url = changed_url;
+        state.file_size = 1048576;
+        state.etag = "\"etag-1048576\"";
+        state.segments = plan_segments(state.file_size, 4);
+        state.segments[0].done = 8;
+        CHECK(save_transfer_state(ws.state_path, state, nullptr));
+
+        DownloadRequest request;
+        request.url = changed_url;
+        request.filename = filename;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        ProbeResult cached_probe;
+        cached_probe.ok = true;
+        cached_probe.effective_url = changed_url;
+        cached_probe.filename_hint = filename;
+        cached_probe.content_length = state.file_size;
+        cached_probe.accept_ranges = true;
+        cached_probe.etag = state.etag;
+        request.probe = cached_probe;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Failed);
+        if (result.status != DownloadResult::Status::Failed) {
+            std::fprintf(stderr, "changed-validator fixture unexpectedly completed: %s\n",
+                         result.path.c_str());
+        }
+        CHECK(result.error.find("file changed") != std::string::npos);
+        CHECK(result.path.find(".part") != std::string::npos);
+        const std::string partial = read_file_text(result.path);
+        // The new representation must not be appended after the stale prefix:
+        // nothing beyond the recorded progress may have been written.
+        CHECK(std::all_of(partial.begin() + 8, partial.end(),
+                          [](unsigned char c) { return c == 0; }));
+    }
+
+    // A malformed/shifted Content-Range is rejected before the corresponding
+    // bytes are written into the partial file.
+    for (int mode : {1, 2, 3}) {
+        Settings settings = test_settings(dir + "/bad-range-" + std::to_string(mode));
+        DownloadEngine engine(settings);
+        testutil::g_invalid_content_range_mode.store(mode);
+        DownloadRequest request;
+        request.url = url;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        const auto result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Failed);
+        CHECK(result.error.find("invalid Content-Range") != std::string::npos);
+        CHECK(result.path.find(".part") != std::string::npos);
+        const std::string part = read_file_text(result.path);
+        CHECK(std::all_of(part.begin(), part.end(), [](unsigned char c) { return c == 0; }));
+    }
+    testutil::g_invalid_content_range_mode.store(0);
+}
+
 void test_redirect(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -245,6 +370,85 @@ void test_redirect(const std::string& dir, testutil::TestHttpServer& server) {
     CHECK(result.status == DownloadResult::Status::Completed);
     CHECK_EQ(result.size, uint64_t(1048576));
     CHECK(file_matches(result.path, 1048576));
+}
+
+void test_sensitive_headers_do_not_cross_redirect_origin(
+    const std::string& dir, testutil::TestHttpServer& server) {
+    const std::string redirect_url =
+        server.base_url() + "/redirect-cross-origin/65536";
+    const int probe_target_before = testutil::g_cross_origin_redirect_targets.load();
+    const int forwarded_headers_before = testutil::g_forwarded_sensitive_headers.load();
+    const int forwarded_referers_before = testutil::g_forwarded_referers.load();
+
+    for (const bool use_referer : {false, true}) {
+        const int redirect_before = testutil::g_cross_origin_redirects.load();
+        HttpOptions options;
+        options.url = redirect_url;
+        if (use_referer) {
+            options.referer = "https://private.example/account";
+        } else {
+            options.headers.push_back({"x-audit-token", "secret-token"});
+        }
+        const ProbeResult probe = probe_url(options);
+        CHECK(!probe.ok);
+        CHECK_EQ(probe.error, std::string(kRedirectWithSensitiveHeadersError));
+        CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
+        CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+        CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
+        CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
+    }
+
+    // Exercise the transfer path independently of probe_url(): callers may
+    // reuse a previously obtained ProbeResult, but the transport must still
+    // stop before forwarding sensitive request metadata to another origin.
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    for (const bool use_referer : {false, true}) {
+        for (const bool segmented : {false, true}) {
+            const int redirect_before = testutil::g_cross_origin_redirects.load();
+            DownloadRequest request;
+            request.url = redirect_url;
+            request.output_dir = dir + (use_referer ? "/referer" : "/header") +
+                                 (segmented ? "/segmented" : "/stream");
+            request.apply_category_folder = false;
+            if (use_referer) {
+                request.referer = "https://private.example/account";
+            } else {
+                request.headers.push_back({"x-audit-token", "secret-token"});
+            }
+            ProbeResult cached_probe;
+            cached_probe.ok = true;
+            cached_probe.effective_url = redirect_url;
+            cached_probe.mime_type = "application/octet-stream";
+            cached_probe.content_length = segmented ? 65536 : 0;
+            cached_probe.accept_ranges = segmented;
+            request.probe = cached_probe;
+
+            const auto result = engine.run(request);
+            CHECK(result.status == DownloadResult::Status::Failed);
+            CHECK_EQ(result.error, std::string(kRedirectWithSensitiveHeadersError));
+            CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
+            CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+            CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
+            CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
+        }
+    }
+
+    // Ordinary same-origin redirects keep working with caller-supplied headers.
+    HttpOptions same_origin;
+    same_origin.url = server.base_url() + "/redirect/1024";
+    same_origin.headers.push_back({"x-audit-token", "same-origin-token"});
+    const ProbeResult allowed = probe_url(same_origin);
+    CHECK(allowed.ok);
+
+    DownloadRequest same_origin_request;
+    same_origin_request.url = same_origin.url;
+    same_origin_request.output_dir = dir + "/same-origin";
+    same_origin_request.apply_category_folder = false;
+    same_origin_request.headers = same_origin.headers;
+    const auto same_origin_result = engine.run(same_origin_request);
+    CHECK(same_origin_result.status == DownloadResult::Status::Completed);
+    CHECK(file_matches(same_origin_result.path, 1024));
 }
 
 void test_forbidden(const std::string& dir, testutil::TestHttpServer& server) {
@@ -265,7 +469,7 @@ void test_probe_error_detail(testutil::TestHttpServer& server) {
     opts.url = server.base_url() + "/json-error";
     opts.user_agent = "SwiftDM-Test/1.0";
     const ProbeResult probe = probe_url(opts);
-    CHECK(!probe.ok);
+        CHECK(!probe.ok);
     CHECK_EQ(probe.status_code, long(403));
     CHECK(probe.error.find("403 Forbidden") != std::string::npos);
     CHECK(probe.error.find("hotlink_detected") != std::string::npos);
@@ -512,6 +716,29 @@ void test_plain_page_download(const std::string& dir, testutil::TestHttpServer& 
     CHECK(text.find("<title>Plain page</title>") != std::string::npos);
 }
 
+// A page may only steer the transparent confirmation step to its own origin
+// (audit finding 2). The fixture's form points at `localhost` while the page is
+// served from `127.0.0.1`, so following it would prove the vulnerability.
+void test_confirmation_form_cross_origin(const std::string& dir,
+                                         testutil::TestHttpServer& server) {
+    const int before = testutil::g_confirm_form_requests.load();
+    HttpOptions opts;
+    opts.url = server.base_url() + "/confirm-form-page";
+    const ProbeResult probe = probe_url(opts);
+    CHECK(!probe.ok);
+    CHECK_EQ(probe.error, std::string(kConfirmationPendingError));
+    CHECK_EQ(testutil::g_confirm_form_requests.load(), before);
+
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest req;
+    req.url = server.base_url() + "/confirm-form-page";
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK(result.error.find("confirmation page") != std::string::npos);
+    CHECK_EQ(testutil::g_confirm_form_requests.load(), before);
+}
+
 void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer& server) {
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -649,6 +876,60 @@ void test_categories() {
     CHECK_EQ(category_folder_for("data.unknownext"), std::string("Misc"));
 }
 
+// The scheme allowlist gates every URL before it reaches libcurl: probes, HLS
+// playlist entries, range segments and sequential transfers (audit finding 1).
+void test_download_url_scheme_allowlist(const std::string& dir) {
+    CHECK(is_supported_download_url("http://example.com/file.bin"));
+    CHECK(is_supported_download_url("https://example.com/file.bin?x=1"));
+    CHECK(is_supported_download_url("ftp://example.com/file.bin"));
+    CHECK(is_supported_download_url("FTPS://example.com/file.bin"));
+    CHECK(!is_supported_download_url("file:///etc/passwd"));
+    CHECK(!is_supported_download_url("file://localhost/etc/passwd"));
+    CHECK(!is_supported_download_url("dict://example.com:2628/x"));
+    CHECK(!is_supported_download_url("gopher://example.com/1"));
+    CHECK(!is_supported_download_url("data:text/plain,x"));
+    CHECK(!is_supported_download_url("example.com/file.bin"));
+    CHECK(!is_supported_download_url("http://"));
+    CHECK(!is_supported_download_url("http://bad host/file"));
+    // Credentials in the URL are refused on the CLI path, matching the browser
+    // integration; proxy authentication has its own setting.
+    CHECK(!is_supported_download_url("https://user:secret@example.com/file.bin"));
+    CHECK(!is_supported_download_url("http://user@example.com/file.bin"));
+    CHECK(!is_supported_download_url("ftp://user:pw@example.com/file.bin"));
+    // An '@' outside the authority is not userinfo.
+    CHECK(is_supported_download_url("https://example.com/user@example.com.bin"));
+
+    // fetch_text and stream_download refuse the scheme even when a caller
+    // skips the probe (the HLS path used to do exactly that).
+    HttpOptions options;
+    options.url = "file:///etc/passwd";
+    std::string text;
+    std::string error;
+    CHECK(!fetch_text(options, &text, nullptr, &error, 4096));
+    CHECK_EQ(error, std::string(kInvalidUrlError));
+    CHECK(text.empty());
+
+    const std::string sink = dir + "/scheme-sink.bin";
+    std::error_code ec_dir;
+    std::filesystem::create_directories(dir, ec_dir);
+    const int fd = open_file(sink, FileWrite | FileCreate | FileTruncate, 0600);
+    CHECK(fd >= 0);
+    uint64_t written = 0;
+    error.clear();
+    CHECK(stream_download(options, fd, nullptr, &written, &error) ==
+          TransferOutcome::Failed);
+    CHECK_EQ(error, std::string(kInvalidUrlError));
+    CHECK_EQ(written, uint64_t(0));
+    close_file(fd);
+
+    DownloadEngine engine(test_settings(dir));
+    DownloadRequest request;
+    request.url = "file:///etc/passwd";
+    const auto result = engine.run(request);
+    CHECK(result.status == DownloadResult::Status::Failed);
+    CHECK_EQ(result.error, std::string(kInvalidUrlError));
+}
+
 void test_unique_path(const std::string& dir) {
     const std::string base = dir + "/unique.bin";
     {
@@ -683,7 +964,9 @@ int main() {
     test_download_single_connection(dir + "/single", server);
     test_exact_folder_override(dir + "/exact-folder", server);
     test_resume_after_pause(dir + "/resume", server);
+    test_resume_validator_and_content_range(dir + "/resume-integrity", server);
     test_redirect(dir + "/redirect", server);
+    test_sensitive_headers_do_not_cross_redirect_origin(dir + "/redirect-guard", server);
     test_forbidden(dir + "/forbidden", server);
     test_probe_error_detail(server);
     test_transfer_error_detail(dir + "/transfer-error", server);
@@ -701,7 +984,9 @@ int main() {
     test_drive_page_unresolved(server);
     test_signin_page(server);
     test_plain_page_download(dir + "/page", server);
+    test_confirmation_form_cross_origin(dir + "/confirm-cross-origin", server);
     test_categories();
+    test_download_url_scheme_allowlist(dir + "/scheme");
     test_unique_path(dir);
 
     server.stop();

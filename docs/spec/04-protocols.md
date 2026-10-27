@@ -82,18 +82,35 @@ attached to the video and audio halves of one adaptive handoff. The app stores
 it on the item (Properties → *Pair*) and in `downloads.groupid`; nothing else
 depends on it yet — muxing both halves is future work (`03-engine.md` §9).
 
-Download URLs may use `http`, `https`, or `ftp`; referers stay HTTP(S) only, so
-an FTP handoff never carries a referer or cookies. HLS playlists need no extra
-protocol field: a `video/mp2t`/`mpegurl` URL (or a `.m3u8` path) is detected by
-the engine and downloaded segment by segment (`03-engine.md` §9).
+Download URLs may use `http`, `https`, `ftp` or `ftps`; referers stay HTTP(S)
+only, so an FTP handoff never carries a referer or cookies. HLS playlists need
+no extra protocol field: a `video/mp2t`/`mpegurl` URL (or a `.m3u8` path) is
+detected by the engine and downloaded segment by segment (`03-engine.md` §9).
+The same scheme list is enforced below the protocol layer (0.19.4): every URL
+that reaches libcurl — CLI argument, probe, redirect target, HLS variant, init
+segment or media segment — must pass `is_supported_download_url()` and the
+per-handle `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` restriction. A
+`file://` URL is refused with the invalid-URL error instead of being read. The
+same allowlist refuses a URL whose authority carries userinfo
+(`https://user:pw@host/…`), because the credentials would travel in clear text
+through the history, the log and the request line; the browser integration
+already rejects such URLs. Proxy authentication has its own setting
+(`05-settings.md`).
+Requests carrying caller-supplied `x-*` headers or a `Referer` are allowed to
+redirect within the same origin, but a redirect to a different origin is
+blocked before the redirected request is sent. This prevents request tokens or
+page URLs from leaking to another host; use the final download URL if a host's
+legitimate flow requires a cross-origin redirect.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
-accepts a well-formed extension origin (`chrome-extension://`, `extensions://`,
-or `extension://` plus a 32-character a-p ID) together with the `swiftdm.v1`
-subprotocol during the handshake; the exact development extension ID is not
-pinned because reloading an unpacked extension from another path can change it.
-Ordinary web origins are rejected, the rejection is logged, and the reason is
-shown in the Extensions dialog. The Chromium Manifest V3 extension sends
+accepts only the extension ID derived from the checked-in manifest's fixed
+public key (`hagednkleljjijmjonpeiokknhngknbb`), using Chromium's
+`chrome-extension://` or Edge's `extensions://`/`extension://` origin scheme,
+together with the `swiftdm.v1` subprotocol during the handshake (0.19.7).
+Ordinary web origins and other installed extensions are rejected, the rejection
+is logged, and the reason is shown in the Extensions dialog. An incomplete
+WebSocket handshake is closed after five seconds so it cannot occupy one of the
+bounded client slots indefinitely. The Chromium Manifest V3 extension sends
 downloads either from an explicit context-menu/popup action or by intercepting
 HTTP(S) downloads. `webRequest` observation (host permissions for http/https)
 remembers POST bodies, `x-*` request headers, and response content types for a
@@ -172,6 +189,13 @@ Drive is the case this section covers (verified against the live service):
   every file with `Content-Disposition` — an HTML response without it is never
   the file itself. A plain HTML document from an ordinary host is still
   downloadable as a file.
+- **Same-origin rule (0.19.4/0.19.5)** — a confirmation form is only followed
+  when its `action` stays on the origin (scheme, host and effective port) that
+  served the page, or when both the page and the action are Google Drive hosts.
+  Any other action fails the probe with
+  `kConfirmationPendingError` and no second request is made, so a page cannot
+  point the follow-up request (and the source of the saved file) at another
+  host, including one on the local network.
 - The resolved URL is used for the transfer (`ProbeResult::download_url`,
   03-engine.md §5); the probe result otherwise flows through the pipeline
   unchanged.

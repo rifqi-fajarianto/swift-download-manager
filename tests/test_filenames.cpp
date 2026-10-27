@@ -1,11 +1,16 @@
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <system_error>
 
-#include "core/util.h"
 #include "core/file_io.h"
+#include "core/util.h"
 #include "engine/download_engine.h"
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include "store/settings.h"
 #include "test_util.h"
 
@@ -101,6 +106,16 @@ void test_sanitize_filename() {
     CHECK_EQ(sanitize_filename("console"), std::string("console"));
     CHECK_EQ(sanitize_filename("CONSOLE.mp4"), std::string("CONSOLE.mp4"));
 
+    // A leading dot would create a hidden (dot) file, so it is prefixed.
+    CHECK_EQ(sanitize_filename(".bashrc"), std::string("_.bashrc"));
+    CHECK_EQ(sanitize_filename(".config"), std::string("_.config"));
+
+    // A .desktop file in the download directory could be launched by the
+    // desktop environment, so the extension is neutralised.
+    CHECK_EQ(sanitize_filename("invoice.desktop"), std::string("invoice.desktop_"));
+    CHECK_EQ(sanitize_filename("invoice.DESKTOP"), std::string("invoice.DESKTOP_"));
+    CHECK_EQ(sanitize_filename("invoice.desktop.pdf"), std::string("invoice.desktop.pdf"));
+
     // A long name is shortened, the extension is kept.
     const std::string shortened = sanitize_filename(long_token(700) + ".mp4");
     CHECK(shortened.size() <= kMaxFileNameBytes);
@@ -129,7 +144,20 @@ void test_workspace_with_long_name(const std::string& dir) {
     CHECK(part_name.size() <= kMaxFileNameBytes);
 
     std::error_code ec;
+#ifdef _WIN32
+    // Windows has no POSIX mode bits; the directory just has to exist.
     std::filesystem::create_directories(path_from_utf8(ws.dir), ec);
+    CHECK(!ec);
+#else
+    CHECK(ensure_private_directory(settings.temp_dir, nullptr));
+    CHECK(ensure_private_directory(ws.dir, nullptr));
+    struct stat parent_stat {};
+    CHECK(::stat(settings.temp_dir.c_str(), &parent_stat) == 0);
+    CHECK((parent_stat.st_mode & 0777) == 0700);
+    struct stat workspace_stat {};
+    CHECK(::stat(ws.dir.c_str(), &workspace_stat) == 0);
+    CHECK((workspace_stat.st_mode & 0777) == 0700);
+#endif
     // The temporary file has to be creatable. It used to fail here with
     // "File name too long".
     const int fd = open_file(ws.part_path, FileWrite | FileCreate | FileTruncate);
@@ -164,6 +192,70 @@ void test_unique_path_stays_in_limit(const std::string& dir) {
     CHECK(unique_name.find(" (1).mp4") != std::string::npos);
 }
 
+// The final name is claimed atomically: an existing file is never replaced,
+// even when a file appears after the name was chosen (audit finding 7).
+void test_final_name_never_overwrites(const std::string& dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(path_from_utf8(dir), ec);
+    // The move returns the native path of the claimed file, so expectations are
+    // built through the same path layer instead of by appending a separator.
+    const auto expected = [&dir](const std::string& name) {
+        return path_to_utf8(path_from_utf8(dir) / path_from_utf8(name));
+    };
+
+    const std::string first_source = dir + "/first.part";
+    {
+        std::ofstream out(first_source, std::ios::binary | std::ios::trunc);
+        out << "first";
+    }
+    std::string final_path;
+    std::string error;
+    CHECK(move_file_unique(first_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, expected("file.bin"));
+    CHECK(!std::filesystem::exists(path_from_utf8(first_source)));
+    {
+        std::ifstream in(final_path);
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("first"));
+    }
+
+    // The plain name is taken: the next free name is claimed and the existing
+    // file keeps its content.
+    const std::string second_source = dir + "/second.part";
+    {
+        std::ofstream out(second_source, std::ios::binary | std::ios::trunc);
+        out << "second";
+    }
+    CHECK(move_file_unique(second_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, expected("file (1).bin"));
+    {
+        std::ifstream in(dir + "/file.bin");
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("first"));
+    }
+
+    // A gap in the numbering is not reused: " (1)" is taken, so " (2)" is next.
+    {
+        std::ofstream out(dir + "/file (2).bin", std::ios::binary | std::ios::trunc);
+        out << "existing";
+    }
+    const std::string third_source = dir + "/third.part";
+    {
+        std::ofstream out(third_source, std::ios::binary | std::ios::trunc);
+        out << "third";
+    }
+    CHECK(move_file_unique(third_source, dir, "file.bin", &final_path, &error));
+    CHECK_EQ(final_path, expected("file (3).bin"));
+    {
+        std::ifstream in(dir + "/file (2).bin");
+        std::string content;
+        in >> content;
+        CHECK_EQ(content, std::string("existing"));
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -175,6 +267,7 @@ int main() {
     test_file_name_from_url();
     test_workspace_with_long_name(dir);
     test_unique_path_stays_in_limit(dir + "/unique");
+    test_final_name_never_overwrites(dir + "/final-name");
 
     testutil::cleanup_dir(dir);
     return testutil::finish("filenames");

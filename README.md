@@ -11,6 +11,12 @@ This project is a clean-room implementation based on behavioral specifications
 documented in [`docs/spec/`](docs/spec/). No code, assets, icons, or branding are
 taken from the application used as a behavioral reference.
 
+SwiftDM is inspired by [Neat Download Manager](https://www.neatdownloadmanager.com/index.php/en/),
+a download manager for Windows. Credit for the original concept and user
+experience goes to its authors. SwiftDM is an independent project: it is not
+affiliated with, endorsed by, or sharing code, assets, icons, or branding with
+Neat Download Manager.
+
 ## Screenshots
 
 ![SwiftDM main window](screenshots/main-window.png)
@@ -36,8 +42,14 @@ taken from the application used as a behavioral reference.
 - Pause, resume, and restore downloads after restarting the application.
 - Organize downloads by category and destination folder; view progress, speed,
   estimated time remaining, and active connections/segments.
-- Configure global and per-download speed limits, including changing the limit
-  while a transfer is running.
+- Group downloads into named queues. Selecting the `Queues` branch shows a
+  queue overview and switches the toolbar to queue mode. Each queue has its own
+  workspace, simultaneous-download limit, connection count, shared speed limit,
+  autostart, completion notifications, and an optional shutdown when it
+  finishes. Queues keep completed items visible and can be started or paused
+  independently.
+- Configure global, per-download, and per-queue speed limits, including
+  changing the limit while a transfer is running.
 - Use HTTP, SOCKS4, or SOCKS5 proxies; configure HTTP headers, cookies, referer,
   User-Agent, and POST data.
 - Store download history in SQLite and application settings in an INI file.
@@ -53,10 +65,10 @@ taken from the application used as a behavioral reference.
   initial transfer reuses that probe instead of repeating network checks.
 - Resolve supported Google Drive download link formats.
 
-> Note: queue scheduling, a Firefox extension, and muxing paired audio/video
-> tracks are not available yet. The Chromium extension is a development preview.
-> See the [parity checklist](docs/spec/06-parity-checklist.md) for feature
-> status and limitations.
+> Note: a Firefox extension and muxing paired audio/video tracks are not
+> available yet. The Chromium extension is a development preview. See the
+> [parity checklist](docs/spec/06-parity-checklist.md) for feature status and
+> limitations.
 
 ## Running SwiftDM
 
@@ -122,7 +134,9 @@ The build produces a self-contained `build-win/windows-deploy/` directory and
 `build-win/swiftdm-<version>-win64.zip` (`cd build-win && cpack`). The package
 contains the executable, the Qt plugins, the MinGW/libcurl/SQLite runtime DLLs,
 the `ca-bundle.crt` CA bundle used by libcurl for HTTPS, and the Chromium
-extension. GUI checks on Windows 10 are still manual.
+extension. GUI checks on Windows 10 are still manual. Version 0.19.13 is the
+port tracking `main` 0.19.12 (named queues, audit hardening and the module
+split); Windows support is still experimental.
 
 `qt6-svg-plugins` is required to load SVG icons at runtime.
 
@@ -157,7 +171,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.18.22_amd64.deb
+sudo apt install ./swiftdm_0.19.13_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:
@@ -178,6 +192,11 @@ By default, SwiftDM stores its configuration in
 `~/.local/share/swiftdm/swiftdm.db`, and temporary download workspaces in
 `~/.local/share/swiftdm/tmp`. These locations follow the XDG environment
 variables.
+The settings file and history database are owner-only (`0600`) inside private
+app directories (`0700`). Temporary download workspaces are also owner-only
+(`0700`); partial files inside them retain mode `0644`. Proxy passwords remain
+stored as plaintext in the settings file for now; Secret Service integration is
+deferred.
 
 ## License and attribution
 

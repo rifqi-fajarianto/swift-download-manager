@@ -60,6 +60,9 @@ class DownloadTask : public QObject {
     const Options& options() const { return options_; }
     void set_options(const Options& options);
     void set_live_limit(bool enabled, int kbps);
+    // Queue items share the queue budget. This only changes the receive-rate
+    // gate, never the persisted per-item options.
+    void set_transfer_limit(int kbps);
     // Used only for the initial run after the confirmation probe. The cached
     // result is consumed once; a later resume always probes again.
     void set_cached_probe(const swiftdm::ProbeResult& probe);

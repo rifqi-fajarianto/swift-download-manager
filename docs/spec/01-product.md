@@ -20,12 +20,25 @@ Layout (from `main-window.png`):
   while at least one selected row is paused, failed or queued; `Stop` is
   enabled while at least one selected row is downloading. A mixed selection
   enables each button that has a matching row (0.18.21). The vertical bars are
-  toolbar dividers.
+  toolbar dividers. When the `Queues` branch or a queue is selected, the
+  toolbar switches to queue mode: `New Queue`, `Delete Queue`, `Queue
+  Properties` | `Start Queue`, `Stop Queue` | `New URL`, `Delete`, `Delete
+  File` (0.19.1). The queue actions that need a specific queue are disabled
+  while only the `Queues` branch (overview) is selected. `Move to Downloads`
+  is available only from the item context menu.
 - **Left panel**: category tree.
   - `All Downloads` with children: `Video`, `Audio`, `Compressed`, `Document`,
     `Application`, `Misc`.
   - `Complete`, `Incomplete` (views, shown under All Downloads).
-- **Right panel**: downloads table with columns:
+  - `Queues`, with one child per named queue and a `No queues` placeholder
+    when none exist. The branch is selectable: it shows the queue overview in
+    the right panel, while selecting a queue child filters the table to that
+    workspace (0.19.1). `All Downloads`, the categories, `Complete` and
+    `Incomplete` show only items outside queues (`queueid = 0`) (0.19.0).
+- **Right panel**: the downloads table, or the queue overview when the
+  `Queues` branch is selected. The overview lists the queues (name + item
+  count); with no queues it shows a `New Queue` prompt. Clicking a queue opens
+  its downloads (0.19.1). The downloads table has columns:
   `File Name`, `Size`, `Status`, `Bandwidth`, `Remaining Time`, `Last Try`.
   Status column shows e.g. `Complete`, `Paused ( 54% )`, `Error ( 0% )`.
 - **Item context menu** (right-click on a row): `Open File`, `Open File
@@ -34,9 +47,10 @@ Layout (from `main-window.png`):
   `Show Window` and `Delete` (E25) — here those stay on the toolbar and in the
   per-download window.
 - **History restore**: at startup the table is rebuilt from SQLite with every
-  row (Complete, Paused, Error). Rows left `Downloading`/`Queued` by a previous
-  quit are shown as `Paused` and never resume by themselves; the user presses
-  Resume. Deleting a row removes it from the database permanently and deletes
+  row (Complete, Paused, Error). Rows left `Downloading`/`Queued` in the main
+  list are shown as `Paused` and never resume by themselves; the user presses
+  Resume. Rows in a queue return as `Queued`, and a queue with autostart starts
+  them. Deleting a row removes it from the database permanently and deletes
   its temp workspace (the partial `.part` file and `segments.json`); see
   `02-data-model.md` §2.
 - Window title: application name + version.
@@ -48,9 +62,10 @@ Layout (from `main-window.png`):
    the URL and immediately shows the *Download Confirmation* window (no list
    row or database entry yet): full URL, server-resolved file name and size, a
    `Category` dropdown (file-type default, user overridable) and `Location`
-   (category folder by default, user overridable). `Download Now` adds the item and starts the
-   transfer; `Cancel` leaves no trace; `Add to queue` is a placeholder until
-   queue scheduling exists (0.18.0). While probing, the fallback filename and
+   (category folder by default, user overridable). `Download Now` adds the
+   item to the main Downloads list and starts the transfer; `Cancel` leaves no
+   trace; `Add to queue` adds it to the chosen queue and starts it only when
+   that queue is running (0.19.0). While probing, the fallback filename and
    `Checking…` size are shown and Download Now is disabled; server metadata
    replaces them when ready. The successful probe is reused by the initial
    transfer, while Resume probes again (0.18.19).
@@ -62,6 +77,16 @@ Layout (from `main-window.png`):
      none); `Save` holds `URL` (read-only field), `Category` and `Location`.
      The size is no longer inline with the file name (0.18.9). Every
      description is vertically centered with the widget next to it (0.18.9).
+   - `Add to queue` asks for the target queue (0.19.2): with more than one
+     queue it opens a `Choose Queue` picker that lists every queue with its
+     item count, starts without a selection and enables its accept button only
+     after a choice; `Cancel` returns to the confirmation window. A single
+     queue is used directly, and a download started from a queue view targets
+     that queue without a picker (`Add to queue` is the default button then).
+     `Download Now` stays the default otherwise and targets Downloads. The
+     confirmation window has no inline queue row. With the confirmation
+     window off, `New URL` from a queue view targets that queue, while the
+     main view and browser handoff target Downloads (0.19.0).
    - The buttons sit in one row: `Cancel` on the left, `Add to queue` and
      `Download Now` on the right; `Download Now` is the default button.
    - All inputs and buttons (URL field, location field, `Browse...`, category
@@ -146,14 +171,17 @@ Layout (from `main-window.png`):
    (Downloads, Startup, System tray), `Interface` (Toolbar, Appearance, System
    tray), `Download` (Connections, Bandwidth, User-Agent, Files and folders),
    `Proxy/Socks` (Proxy type, Server, Authentication) and `Passwords` (Saved
-   passwords).
+   passwords). Queue settings are not in this window; each queue has its own
+   `Queue Properties` dialog (0.19.0).
    - *General*: app-wide behavior options — Show Download Confirmation Dialog
      (with a note that all files are downloaded automatically without
      confirmation while it is off, 0.18.17); Show Download Completion Dialog;
      Start Application on System Startup; Show System Tray Icon; Minimize to
      Tray When Closing the Window; Open the Download Folder When a Download
      Completes (0.18.10 split the tabs: the download options moved to the
-     `Download` tab).
+     `Download` tab). The completion dialog and the open-folder option apply
+     only to downloads in the main Downloads list; queue items follow their
+     queue notification setting (0.19.3).
    - *Interface*: appearance options — Toolbar Size (`Normal` / `Small`);
      Show Toolbar Text; App Theme (`Light` / `Dark` / `Follow System`); Tray
      Icon Style (`Simple` / `Colorful`). The changes apply immediately after
@@ -199,6 +227,55 @@ Layout (from `main-window.png`):
     information and question, red for warnings, green for the completion notice
     — and only the icon area of the dialog changes; the title bar keeps the
     application icon.
+14. **Queues (0.19.0)**: a queue is a named workspace for related downloads,
+    not a FIFO status on the main list.
+    - Create a queue with `New Queue` in the toolbar or the sidebar context
+      menu, then rename it in `Queue Properties`.
+    - Selecting the `Queues` branch shows the queue overview (0.19.1). The
+      overview lists the queues with their item counts; with no queues it
+      shows a `New Queue` prompt. Selecting a queue from the list opens its
+      downloads.
+    - `Queue Properties` sets the simultaneous-download limit (0 = `Unlimited`,
+      maximum 64), the connection count per item (0 = `Default`, meaning the
+      global setting), a total speed limit shared by the active items,
+      autostart, per-item and all-complete notifications, and an optional
+      shutdown with a cancellable delay (5–3600 s, default 60 s). The values
+      are stored in the `queues` table, not in the INI file.
+    - `Start Queue` resumes `Queued`, `Paused` and `Error` items in insertion
+      order (`history_id` ascending). The automatic scheduler starts only
+      `Queued` items and stops starting new ones once the simultaneous limit is
+      reached. A manual start from the context menu or the progress window also
+      honors the limit. Lowering the limit pauses the newest active items; those
+      rows return to `Queued` when the pause finishes, while a manual pause
+      stays `Paused`. The toolbar exposes the pause operation as `Stop Queue`
+      (0.19.1).
+    - A queue speed limit is divided across its active items
+      (`total / active`, at least 1 KB/s), and queue items ignore their
+      per-item speed limit while they belong to the queue. A queue connection
+      count overrides the per-item value; the stored per-item values are kept
+      for a later move back to Downloads.
+    - Inactive items move between Downloads and a queue from the item context
+      menu (`Move to Queue` / `Move to Downloads`). Completed items can move
+      too and stay visible in the queue view. Moving an item does not change
+      its file or workspace. `Move to Downloads` is not a toolbar action
+      (0.19.1).
+    - Deleting a queue asks for confirmation, deletes its rows and temporary
+      workspaces, and leaves completed files on disk. Active items are
+      cancelled as part of the deletion, and the view returns to the queue
+      overview (0.19.1).
+    - Completion actions are queue-owned (0.19.3): a finished queue item never
+      opens the global `Download Complete` window and never triggers the
+      global open-folder option. `Notify when an item completes` is the only
+      per-item notice; the global completion options apply to the main
+      Downloads list only.
+    - When every item in a queue is complete, the queue can notify once (tray
+      message, status-bar fallback) and, if enabled, show a cancellable
+      shutdown countdown. Only one countdown is active at a time; if another
+      queue also completes, the pending countdown stays. At the deadline the
+      app pauses every active download and queue, persists their state, and
+      runs `systemctl poweroff` (falling back to `shutdown -h now`). Changing
+      queue settings on an already complete queue does not re-trigger the
+      notification or countdown.
 
 ## 4. Non-goals for v1 (see 06-parity-checklist.md)
 

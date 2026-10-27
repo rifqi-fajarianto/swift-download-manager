@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" viewBox="0 0 24 24">
+  <title>playlist-x.svg</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <g>
+      <path d="M19 8 L7.989 8" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7.989 12 L12 12" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 16 L7.989 16" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <path d="M16 14 L20 18" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M20 14 L16 18" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4.002 8 C4.002 7.449 4.449 7.002 5 7.002 C5.551 7.002 5.998 7.449 5.998 8 C5.998 8.551 5.551 8.998 5 8.998 C4.449 8.998 4.002 8.551 4.002 8 Z" fill="#000000"/>
+    <path d="M4.002 12 C4.002 11.449 4.449 11.002 5 11.002 C5.551 11.002 5.998 11.449 5.998 12 C5.998 12.551 5.551 12.998 5 12.998 C4.449 12.998 4.002 12.551 4.002 12 Z" fill="#000000"/>
+    <path d="M4.002 16 C4.002 15.449 4.449 15.002 5 15.002 C5.551 15.002 5.998 15.449 5.998 16 C5.998 16.551 5.551 16.998 5 16.998 C4.449 16.998 4.002 16.551 4.002 16 Z" fill="#000000"/>
+  </g>
+</svg>

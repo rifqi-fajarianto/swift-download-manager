@@ -46,6 +46,14 @@ std::string xdg_data_home();                  // platform data root
 std::filesystem::path path_from_utf8(std::string_view path);
 std::string path_to_utf8(const std::filesystem::path& path);
 bool ensure_directory(const std::string& path, std::string* error = nullptr);
+// Creates a private runtime/configuration directory (owner-only, mode 0700),
+// tightening an existing directory as well.
+bool ensure_private_directory(const std::string& path, std::string* error = nullptr);
+
+// Replaces a file atomically using a same-directory temporary file and the
+// requested mode (subject to no umask restriction after fchmod).
+bool write_file_atomic(const std::string& path, std::string_view content,
+                       unsigned int mode, std::string* error = nullptr);
 
 // Directory of the running executable, without a trailing separator. Empty
 // when it cannot be determined (for example /proc/self/exe is missing).

@@ -1,16 +1,31 @@
 // CLI/backend test for the SQLite history store (no GUI, see AGENTS.md).
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 
 #include <sqlite3.h>
 #include <string>
 
+#include "core/util.h"
 #include "store/history.h"
+#include "store/settings.h"
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 namespace {
 
 int failures = 0;
+
+#ifndef _WIN32
+mode_t file_mode(const std::string& path) {
+    struct stat st {};
+    if (::stat(path.c_str(), &st) != 0) return static_cast<mode_t>(-1);
+    return st.st_mode & 0777;
+}
+#endif
 
 void check(bool condition, const char* description) {
     if (!condition) {
@@ -23,17 +38,53 @@ void check(bool condition, const char* description) {
 
 int main() {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "swiftdm-history-test";
+    const fs::path test_root = fs::temp_directory_path() / "swiftdm-history-test";
     std::error_code ec;
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir, ec);
-    const std::string db_path = (dir / "test.db").string();
+    fs::remove_all(test_root, ec);
+    fs::create_directories(test_root, ec);
+    const std::string xdg_data = swiftdm::path_to_utf8(test_root / "xdg-data");
+#ifdef _WIN32
+    // The store keeps its database under %LOCALAPPDATA%; point that at the
+    // test root so the run never touches the real profile.
+    const std::wstring wide_local = swiftdm::path_from_utf8(xdg_data).wstring();
+    _wputenv_s(L"LOCALAPPDATA", wide_local.c_str());
+#else
+    setenv("XDG_DATA_HOME", xdg_data.c_str(), 1);
+#endif
+    const fs::path dir =
+        swiftdm::path_from_utf8(swiftdm::default_database_path()).parent_path();
+    check(swiftdm::ensure_private_directory(swiftdm::path_to_utf8(dir), nullptr),
+          "create owner-only test database directory");
+    const std::string db_path = swiftdm::path_to_utf8(dir / "test.db");
 
     swiftdm::HistoryStore store;
     std::string error;
     check(store.open(db_path, &error), "history database opens");
     check(store.is_open(), "store reports open");
-    check(fs::exists(db_path), "database file is created");
+    check(fs::exists(swiftdm::path_from_utf8(db_path)), "database file is created");
+#ifdef _WIN32
+    // Windows has no POSIX mode bits; the ACL of the per-user app data
+    // directory already excludes other users.
+    check(fs::is_directory(dir), "history app directory is created");
+#else
+    check(file_mode(swiftdm::path_to_utf8(dir)) == 0700,
+          "history app directory is owner-only");
+    check(file_mode(db_path) == 0600, "new database file is owner-only");
+    // Reopening tightens the mode of an existing database too.
+    check(::chmod(db_path.c_str(), 0644) == 0, "make existing database permissive for test");
+    store.close();
+    check(store.open(db_path, &error), "existing history database reopens");
+    check(file_mode(db_path) == 0600, "existing database is tightened to owner-only");
+    const std::string db_dir = swiftdm::path_to_utf8(dir);
+    check(::chmod(db_dir.c_str(), 0755) == 0,
+          "make existing database directory permissive for test");
+    store.close();
+    check(store.open(db_path, &error), "history database opens with existing directory");
+    check(file_mode(db_dir) == 0700, "existing database directory is owner-only");
+#endif
+
+    // Continue using a separate file in the same app data directory.
+    const std::string active_db_path = db_path;
 
     swiftdm::HistoryStore::Record record;
     record.url = "https://example.com/file.zip";
@@ -72,6 +123,79 @@ int main() {
           "exact destination folder round-trips");
     check(loaded.bandwidth_limit_kbps == 512 && loaded.bandwidth_limit_enabled,
           "speed limiter toggle and value round-trip");
+    check(loaded.queue_id == 0, "a new row belongs to the main Downloads list");
+
+    // Queue CRUD and the owning queue column. A row keeps its headers and
+    // options when it moves between the main list and a queue.
+    swiftdm::HistoryStore::QueueRecord queue;
+    queue.name = "Batch";
+    queue.max_simultaneous = 3;
+    queue.connections = 4;
+    queue.bandwidth_limit_enabled = true;
+    queue.bandwidth_limit_kbps = 2048;
+    queue.autostart = true;
+    queue.notify_item = true;
+    queue.notify_complete = true;
+    queue.shutdown_when_complete = true;
+    queue.shutdown_delay = 30;
+    const int64_t queue_id = store.insert_queue(queue, &error);
+    check(queue_id > 0, "insert_queue returns a queue id");
+
+    std::vector<swiftdm::HistoryStore::QueueRecord> queues;
+    check(store.load_queues(&queues, &error) && queues.size() == 1,
+          "load_queues returns the stored queue");
+    if (!queues.empty()) {
+        const swiftdm::HistoryStore::QueueRecord& stored = queues.front();
+        check(stored.id == queue_id && stored.name == "Batch",
+              "the queue name and id round-trip");
+        check(stored.max_simultaneous == 3 && stored.connections == 4,
+              "the queue concurrency settings round-trip");
+        check(stored.bandwidth_limit_enabled && stored.bandwidth_limit_kbps == 2048,
+              "the queue speed limit round-trips");
+        check(stored.autostart && stored.notify_item && stored.notify_complete,
+              "the queue behavior toggles round-trip");
+        check(stored.shutdown_when_complete && stored.shutdown_delay == 30,
+              "the shutdown option and delay round-trip");
+    }
+
+    queue.id = queue_id;
+    queue.name = "Renamed";
+    queue.max_simultaneous = 0;  // Unlimited
+    queue.connections = 0;
+    queue.bandwidth_limit_enabled = false;
+    queue.autostart = false;
+    queue.notify_item = false;
+    queue.notify_complete = false;
+    queue.shutdown_when_complete = false;
+    check(store.update_queue(queue, &error), "update_queue succeeds");
+    check(store.load_queues(&queues, &error) && queues.size() == 1 &&
+              queues.front().name == "Renamed" &&
+              queues.front().max_simultaneous == 0 &&
+              queues.front().connections == 0 && !queues.front().autostart &&
+              !queues.front().bandwidth_limit_enabled,
+          "updated queue settings are visible");
+
+    check(store.update_queue_id(id, queue_id, "Queued", &error),
+          "a row can move into a queue");
+    check(store.fetch(id, &loaded, &error) && loaded.queue_id == queue_id &&
+              loaded.status == "Queued",
+          "the owning queue and status round-trip");
+    check(loaded.headers.size() == 1 && loaded.headers[0] == "x-api-key: secret",
+          "moving a row keeps its stored headers");
+    check(loaded.post_data == "q=1" && loaded.bandwidth_limit_kbps == 512 &&
+              loaded.bandwidth_limit_enabled,
+          "moving a row keeps its options and speed limit");
+
+    check(store.update_queue_id(id, 0, "Paused", &error),
+          "a row can move back to the main list");
+    check(store.fetch(id, &loaded, &error) && loaded.queue_id == 0 &&
+              loaded.status == "Paused",
+          "the row leaves the queue cleanly");
+
+    check(store.remove_queue(queue_id, &error), "remove_queue succeeds");
+    check(store.load_queues(&queues, &error) && queues.empty(),
+          "removing a queue deletes only the queue record");
+    check(store.count(&error) == 1, "removing a queue keeps its downloads");
 
     check(store.update_progress(id, 524288, 0, &error), "progress update succeeds");
     check(store.fetch(id, &loaded, &error) && loaded.done == 524288 &&
@@ -107,7 +231,7 @@ int main() {
     {
         sqlite3* raw = nullptr;
         int headers = -1;
-        if (sqlite3_open_v2(db_path.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
+        if (sqlite3_open_v2(active_db_path.c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK) {
             sqlite3_stmt* stmt = nullptr;
             if (sqlite3_prepare_v2(raw, "SELECT COUNT(*) FROM headers WHERE id=?1", -1, &stmt,
                                    nullptr) == SQLITE_OK) {
@@ -139,7 +263,7 @@ int main() {
 
     // A database written by an earlier release (no groupid/done columns) is
     // migrated in place instead of failing on the first insert.
-    const std::string legacy_path = (dir / "legacy.db").string();
+    const std::string legacy_path = swiftdm::path_to_utf8(dir / "legacy.db");
     {
         sqlite3* legacy = nullptr;
         if (sqlite3_open_v2(legacy_path.c_str(), &legacy,
@@ -161,12 +285,17 @@ int main() {
     }
     swiftdm::HistoryStore legacy_store;
     check(legacy_store.open(legacy_path, &error), "an older database opens and is migrated");
+#ifndef _WIN32
+    check(file_mode(legacy_path) == 0600, "legacy database is tightened to owner-only");
+#endif
     check(legacy_store.fetch(1, &loaded, &error) && loaded.done == 5000,
           "completed legacy rows get their progress backfilled");
     check(loaded.folder_exact == false,
           "legacy rows keep the base-folder semantics after migration");
     check(loaded.bandwidth_limit_enabled,
           "legacy non-zero limits migrate to the toggle being on");
+    check(loaded.queue_id == 0,
+          "legacy rows are migrated into the main Downloads list");
     const int64_t legacy_id = legacy_store.insert(record, &error);
     check(legacy_id > 0, "the migrated database accepts new rows");
     check(legacy_store.fetch(legacy_id, &loaded, &error) &&
@@ -174,7 +303,7 @@ int main() {
               loaded.folder_exact,
           "the appended columns round-trip after migration");
 
-    fs::remove_all(dir, ec);
+    fs::remove_all(test_root, ec);
     if (failures) {
         std::printf("%d failure(s)\n", failures);
         return 1;

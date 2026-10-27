@@ -1,6 +1,262 @@
 # Changelog
 
-## Unreleased
+## 0.19.12 — 2026-10-25
+
+Code layout only; no behavior change.
+
+- `src/net/http.cpp` (1763 lines) is split into per-concern translation units:
+  `http.cpp` (reason phrases, URL scheme checks, `fetch_text`), `http_request.cpp`
+  (shared libcurl plumbing, header list, origin guard, common options, content
+  range/Disposition parsing), `http_error.cpp` (error text and body summaries),
+  `http_probe.cpp` (probe, FTP probe, interstitial resolution), `http_segment.cpp`
+  (`SegmentDownloader`) and `http_stream.cpp` (sequential `stream_download`).
+  Cross-unit helpers and constants live in `src/net/http_internal.h`
+  (`swiftdm::detail`); `src/net/http.h` is unchanged.
+
+## 0.19.11 — 2026-10-25
+
+Small correctness, metadata and CI/release hardening (audit finding 8).
+
+- The segment writer retries `pwrite()` on `EINTR` and finishes a short write,
+  so a partial write is no longer reported as "disk write failed".
+- The autostart entry quotes the executable path as a single `Exec` argument
+  (reserved characters backslash-escaped, per the desktop entry spec); a path
+  with spaces used to break the entry.
+- `sanitize_filename()` prefixes a leading dot with `_` (no hidden
+  server-named dotfile, no `..` name) and appends `_` to a `.desktop` suffix
+  (a downloaded desktop entry could be launched from the download directory).
+- The URL allowlist rejects userinfo (`https://user:pw@host/…`) on the CLI path
+  too, matching the browser integration; proxy authentication keeps its own
+  setting.
+- Unused `fallback` parameter removed from the settings integer parser (the
+  compiler warning is gone).
+- The Debian homepage and the Metainfo homepage/bugtracker point at the actual
+  repository.
+- CI gained a sanitizer job (ASan+UBSan and TSan on the headless build). The
+  test servers no longer read their listening descriptor after `stop()` has
+  closed it, which was the only report.
+- The release workflow keeps `contents: read` at workflow level (write only in
+  the release job), publishes a `SHA256SUMS` file and a build provenance
+  attestation for the `.deb`.
+- `src/ui/main_window.cpp` is split into per-concern translation units
+  (lifecycle, history restore, download lifecycle, row actions, dialogs,
+  queues, shutdown) with no behavior or layout change; the record/state helpers
+  moved to `src/ui/main_window_internal.h`.
+
+## 0.19.10 — 2026-10-25
+
+Claim the final file name atomically instead of checking then renaming.
+
+- `move_file_unique()` picks the first free `name (N).ext` candidate and claims
+  it in the same step (`link()`, or `O_EXCL` create for a cross-filesystem
+  destination). A file another process creates between the name choice and the
+  move is therefore never overwritten; the next candidate is used instead
+  (audit finding 7).
+- The cross-device fallback copies into a freshly created exclusive file and
+  never uses an overwriting copy.
+- `unique_path()` keeps its existing contract for callers that only need a name
+  suggestion; every completion path now goes through the atomic claim.
+- Regression test covers repeated completions of the same file name, a taken
+  plain name and a gap in the `(N)` sequence, and verifies the existing files
+  keep their content.
+
+## 0.19.9 — 2026-10-25
+
+Validate resumed transfers against the server's own range metadata.
+
+- Range requests now send `If-Range` with the strong `ETag`, falling back to
+  `Last-Modified` when no strong validator exists. A `200` answer for a segment
+  that already had progress means the remote file changed: the download fails
+  with "the remote file changed during the download; restart is required"
+  instead of writing the new representation over the old partial data (audit
+  finding 6).
+- Every `206` answer must carry a well-formed `Content-Range` whose start, end
+  and total match the requested segment and the expected file size. A missing,
+  shifted, truncated or mismatched range fails the segment before any byte is
+  written to the part file.
+- Regression tests cover `If-Range` on a resumed segmented download, a changed
+  validator on the server, and three malformed `Content-Range` shapes, and
+  assert that no new bytes were stored in the failed cases.
+
+## 0.19.8 — 2026-10-25
+
+Block cross-origin redirects on requests that carry custom headers or a referer.
+
+- `probe_url`, `fetch_text`, segmented transfers and sequential transfers now
+  compare redirect origins before sending each redirected request whenever
+  caller-provided `x-*` headers or a `Referer` are present. Same-origin
+  redirects continue to work; a cross-origin redirect fails with a clear
+  message, preventing tokens or page URLs from leaking (audit finding 5).
+- Regression coverage checks both custom headers and referers on probe,
+  sequential and segmented paths, confirms no sensitive metadata reached the
+  redirect target, and preserves same-origin redirect behavior.
+
+## 0.19.7 — 2026-10-25
+
+Restrict the loopback browser endpoint to SwiftDM's extension and expire stalled
+WebSocket handshakes.
+
+- The WebSocket Origin must use the extension ID derived from the checked-in
+  Chromium manifest key (`hagednkleljjijmjonpeiokknhngknbb`). Chromium and the
+  accepted Edge extension schemes remain supported; unrelated extensions can
+  no longer connect just by presenting a syntactically valid ID (audit finding
+  4).
+- Incomplete handshakes are closed after five seconds, freeing one of the
+  server's bounded client slots.
+- `test_browser_protocol` now checks wrong extension IDs and schemes are
+  rejected, the repository ID is accepted, and a client that sends no handshake
+  is disconnected at the timeout.
+
+## 0.19.6 — 2026-10-24
+
+Protect locally stored configuration, history and partial downloads.
+
+- Settings are serialized to a same-directory temporary file and atomically
+  renamed into place with mode `0600`; existing config files are tightened to
+  that mode when read. The app config directory is owner-only (`0700`), and
+  newline/carriage-return characters in serialized string values are replaced
+  with spaces so they cannot inject additional INI keys.
+- The SQLite history file is created and maintained at `0600`; its containing
+  directory is `0700`, which also protects SQLite journal/WAL siblings. Existing
+  history file and app directory permissions are tightened on open.
+- The configured temp root and per-download workspaces use mode `0700`. Part
+  files keep their prior `0644` mode inside the private workspace; final
+  download directory/file permissions are unchanged (audit finding 3).
+- Regression coverage checks permissions for new and existing config/database
+  files, atomic replacement preservation, newline sanitization, and the
+  workspace/part-file modes. Proxy password Secret Service integration and a
+  UI plaintext warning remain deferred by maintainer choice.
+
+## 0.19.5 — 2026-10-24
+
+Follow a download-confirmation form only on the origin that served it.
+
+- `resolve_interstitial()` now compares the origin (scheme, host, effective
+  port) of the confirmation form's `action` with the page that served the
+  notice. A mismatch fails the probe with
+  "download confirmation page could not be resolved" and no second request is
+  sent, so a page from any host can no longer aim the follow-up request at an
+  address of its choosing, including hosts on the local network (audit
+  finding 2).
+- Google Drive's handoff between its own download hosts
+  (`drive.google.com`, `drive.usercontent.google.com`,
+  `drive.googleusercontent.com`) stays allowed, and the existing Drive
+  virus-scan flow is unchanged.
+- Regression test: `test_http` serves a Drive-shaped form whose action points at
+  `localhost` while the page comes from `127.0.0.1`; the probe fails and the
+  request counter for the form target stays at zero.
+
+## 0.19.4 — 2026-10-24
+
+Refuse transfer URLs outside `http`, `https`, `ftp` and `ftps`.
+
+- Every URL that reaches libcurl is now checked by
+  `is_supported_download_url()` (`src/net/http.cpp`), and every handle also
+  pins `CURLOPT_PROTOCOLS`/`CURLOPT_REDIR_PROTOCOLS` (or the `_STR` variants)
+  to the same list. Redirect targets inherit the restriction.
+- HLS playlists are remote input: a `file://` segment, `EXT-X-MAP` init
+  segment, or master variant now fails the download with "the HLS playlist
+  references an unsupported URL scheme" before the part file is created,
+  instead of copying a local file into the output (audit finding 1).
+- `fetch_text()` and `stream_download()` reject an unsupported scheme even
+  when a caller skips the probe, so the guard also covers the CLI path.
+- Regression tests: `test_http` (scheme allowlist plus direct `fetch_text` /
+  `stream_download` calls) and `test_media` (three `file://` HLS fixtures).
+
+## 0.19.3 — 2026-10-24
+
+Queue items no longer trigger the global completion actions.
+
+- A completed queue item no longer opens the `Download Complete` window or the
+  download folder, even while both options are enabled in Settings. A queue
+  owns its completion notice through `Notify when an item completes` (tray
+  message, status-bar fallback).
+- The global `Show Download Completion Dialog` and `Open the Download Folder
+  When a Download Completes` options now apply only to downloads in the main
+  Downloads list.
+- The all-complete notification and the shutdown countdown of a queue are
+  unchanged.
+
+## 0.19.2 — 2026-10-24
+
+Ask which queue a download belongs to instead of silently using the first one.
+
+- `Add to queue` in the Download Confirmation window opens a `Choose Queue`
+  picker when more than one queue exists. The picker lists every queue with its
+  item count, starts without a selection, and enables `Add to queue` only after
+  the user picks one; `Cancel` returns to the confirmation window.
+- With a single queue, `Add to queue` uses it directly. A download started from
+  a queue view still targets that queue without a picker and keeps
+  `Add to queue` as the default button.
+- The inline `Queue` row and its dropdown are removed from the confirmation
+  window, so the target is chosen in one place. The window returns to its
+  650×330 size (minimum 560×320).
+- `Download Now` continues to target the main Downloads list.
+- This is a UX change shipped as a patch (0.19.2) at the maintainer's request;
+  the normal policy for UX changes is MINOR +1.
+
+## 0.19.1 — 2026-10-23
+
+Switch the toolbar to queue mode when the `Queues` branch is selected and show
+a queue overview there.
+
+- The `Queues` branch in the sidebar is now selectable. Selecting it switches
+  the toolbar to queue mode and shows a list of queues (name + item count) in
+  the right panel; with no queues, the panel shows a `New Queue` prompt.
+  Selecting a queue from the list opens its downloads.
+- Queue mode toolbar order: `New Queue`, `Delete Queue`, `Queue Properties` |
+  `Start Queue`, `Stop Queue` | `New URL`, `Delete`, `Delete File`. Queue
+  actions that need a specific queue stay disabled while only the branch is
+  selected, and `Move to Downloads` remains available from the item context
+  menu.
+- New queue icons from `ui-assets/`: `queue.svg` (branch/children),
+  `queue-add.svg` (`New Queue`), `queue-delete.svg` (`Delete Queue`) and
+  `queue-settings.svg` (`Queue Properties`).
+- The queue overview title uses the active theme text color with a slightly
+  larger bold font, and the title/empty-state colors refresh when the theme
+  changes while the app runs, so they stay readable in light and dark mode.
+
+## 0.19.0 — 2026-10-23
+
+Add named download queues with independent scheduling, limits and completion
+actions.
+
+- The left panel now has a `Queues` branch. A queue is a named workspace:
+  selecting it shows only its items, while `All Downloads`, the categories,
+  `Complete` and `Incomplete` show only items outside queues. `New Queue`
+  creates a queue from the toolbar or the sidebar context menu.
+- `Queue Properties` controls the simultaneous-download limit (0 = Unlimited),
+  the connection count per item (0 = the global setting), a total speed limit
+  shared by the active items, autostart, per-item and all-complete
+  notifications, and an optional shutdown with a cancellable delay (5-3600 s,
+  default 60 s). These settings live in the `queues` table, not in the INI
+  file.
+- `Start Queue` resumes queued, paused and failed items in insertion order;
+  the automatic scheduler starts only queued items and respects the
+  simultaneous limit. Manual starts from the context menu or the progress
+  window honor the same limit. Lowering the limit pauses the newest active
+  items and returns them to `Queued`; a manual pause stays `Paused`. A queue
+  speed limit is split across the active items (minimum 1 KB/s) and replaces
+  the per-item limit while the item belongs to the queue. A queue connection
+  count replaces the per-item value in the same way.
+- Inactive items can be moved between `Downloads` and a queue from the context
+  menu or the queue toolbar; completed items can move too and remain visible
+  in the queue. Deleting a queue asks for confirmation, deletes its rows and
+  temporary workspaces, and leaves completed files on disk.
+- The Download Confirmation window has a `Queue` row (`None (Downloads)` plus
+  the existing queues). `Add to queue` is enabled only when a queue is
+  selected; with the confirmation dialog disabled, `New URL` from a queue view
+  adds to that queue while the main view and browser handoff use the main
+  Downloads list.
+- At startup, unfinished rows in a queue return as `Queued`; a queue with
+  autostart starts immediately. Queue completion can show a tray notification
+  (status-bar fallback), and the shutdown option pauses every active download
+  and queue, persists their state, and runs `systemctl poweroff` (falling back
+  to `shutdown -h now`).
+- Queue state is persisted in SQLite: a `queues` table plus an additive
+  `downloads.queueid` column (0/NULL = main Downloads). Existing rows keep
+  working. Tests: `queue_logic`, `queue_dialog`, and extended `history`,
+  `confirm_dialog`, `download_window`.
 
 - The system tray now shows the colored SwiftDM mark (the same artwork as the
   browser integration) instead of the monochrome variant. The mark keeps its
@@ -14,6 +270,31 @@
   not shipped: the styles live in `popup.css` and the behavior in `popup.js`,
   as the extension page CSP allows only extension scripts. The popup follows
   the light and dark color schemes of the browser.
+
+## 0.19.13 - 2026-10-27
+
+Merge `main` (0.19.12) into the experimental Windows 10 port and re-apply the
+port on top of the new code layout.
+
+- Bring in the named queues, the 0.19.4–0.19.11 security hardening and the
+  0.19.12 module split (`src/net/http*`, `src/ui/main_window_*`).
+- `claim_path()` keeps the atomic no-overwrite rule on Windows: a hard link
+  claims the destination first, and a volume/filesystem boundary falls back to
+  creating the destination exclusively and copying into it. `core/file_io.*`
+  gained the `FileExclusive` flag and `read_file()` for that path.
+- `history.cpp` keeps the POSIX `0600` + `O_NOFOLLOW` open on Unix and uses
+  `sqlite3_open16` on Windows so a non-ASCII user name keeps working.
+- `settings.cpp` loads the INI through a wide-path stream on Windows and keeps
+  the hardened descriptor path on POSIX; directory privacy goes through
+  `path_from_utf8`/`path_to_utf8`.
+- The UI units keep the Windows guards: `xdg-open` fallbacks are Unix-only and
+  the shutdown action calls `shutdown /s /t 0` on Windows.
+- The Winsock test servers keep `socket_t` descriptors and provide the new
+  `If-Range`, invalid-range and cross-origin confirmation-form routes.
+- Windows support is still experimental: the GUI has only been smoke-tested
+  through the CLI, and manual Windows 10 checks (tray, dialogs, pause/resume,
+  autostart) remain open. The executable uses the console subsystem, so
+  launching the GUI from Explorer also opens a console window.
 
 ## 0.19.0 - 2026-10-23
 

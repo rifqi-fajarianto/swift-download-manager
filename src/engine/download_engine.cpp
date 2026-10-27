@@ -2,20 +2,36 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <thread>
+#include <vector>
 
+#include "core/file_io.h"
 #include "core/log.h"
 #include "core/util.h"
-#include "core/file_io.h"
+#include "core/win_headers.h"
 #include "engine/categories.h"
 #include "engine/hls.h"
 #include "engine/segment_plan.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace swiftdm {
+
+// Defined below, after the naming helpers; the transfer paths inside the
+// anonymous namespace finish their part file through it.
+bool move_file_unique(const std::string& from, const std::string& dir,
+                      const std::string& filename, std::string* final_path,
+                      std::string* error);
+
 namespace {
 
 int64_t now_ms() {
@@ -31,21 +47,103 @@ std::string pick_filename(const ProbeResult& probe, const std::string& url) {
     return name;
 }
 
-bool move_file(const std::string& from, const std::string& to, std::string* error) {
-    std::error_code ec;
-    std::filesystem::rename(path_from_utf8(from), path_from_utf8(to), ec);
-    if (!ec) return true;
-    // Cross-device move fallback.
-    std::error_code copy_ec;
-    std::filesystem::copy_file(path_from_utf8(from), path_from_utf8(to),
-                               std::filesystem::copy_options::overwrite_existing,
-                               copy_ec);
-    if (copy_ec) {
-        if (error) *error = "cannot move to '" + to + "': " + copy_ec.message();
-        return false;
+enum class ClaimResult { Claimed, Exists, Failed };
+
+// Claims `to` for `from` without ever replacing an existing file. A hard link
+// claims the destination atomically and fails when the name is taken; a
+// cross-device move falls back to creating the destination exclusively and
+// copying into it, which keeps the same no-overwrite rule.
+ClaimResult claim_path(const std::string& from, const std::string& to, std::string* error) {
+#ifdef _WIN32
+    const std::filesystem::path source = path_from_utf8(from);
+    const std::filesystem::path destination = path_from_utf8(to);
+    if (CreateHardLinkW(destination.c_str(), source.c_str(), nullptr)) {
+        // The destination is now in place; leaving the source behind only
+        // wastes space in the workspace that is about to be deleted.
+        std::error_code ignored;
+        std::filesystem::remove(source, ignored);
+        return ClaimResult::Claimed;
     }
-    std::filesystem::remove(path_from_utf8(from), ec);
-    return true;
+    const DWORD link_error = GetLastError();
+    if (link_error == ERROR_ALREADY_EXISTS || link_error == ERROR_FILE_EXISTS) {
+        return ClaimResult::Exists;
+    }
+    // A volume boundary, a filesystem without hard links (FAT32) or a protected
+    // destination falls through to the exclusive copy, which reports its own
+    // error if the destination really cannot be written.
+    if (link_error != ERROR_NOT_SAME_DEVICE && link_error != ERROR_NOT_SUPPORTED &&
+        link_error != ERROR_INVALID_FUNCTION && link_error != ERROR_ACCESS_DENIED) {
+        if (error) {
+            *error = "cannot move to '" + to + "': " +
+                     std::system_category().message(static_cast<int>(link_error));
+        }
+        return ClaimResult::Failed;
+    }
+#else
+    if (::link(from.c_str(), to.c_str()) == 0) {
+        // See above: the leftover source is cheaper than a failed download.
+        (void)::unlink(from.c_str());
+        return ClaimResult::Claimed;
+    }
+    if (errno == EEXIST) return ClaimResult::Exists;
+    const int link_errno = errno;
+    if (link_errno != EXDEV && link_errno != EPERM && link_errno != EOPNOTSUPP &&
+        link_errno != ENOSYS) {
+        if (error) {
+            *error = "cannot move to '" + to + "': " + std::strerror(link_errno);
+        }
+        return ClaimResult::Failed;
+    }
+#endif
+
+    // Different filesystem (or a filesystem without hard links): create the
+    // destination exclusively, then copy.
+    const int out_fd = open_file(to, FileWrite | FileCreate | FileExclusive);
+    if (out_fd < 0) {
+        if (errno == EEXIST) return ClaimResult::Exists;
+        if (error) *error = "cannot create '" + to + "': " + std::strerror(errno);
+        return ClaimResult::Failed;
+    }
+    const int in_fd = open_file(from, FileRead);
+    if (in_fd < 0) {
+        if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+        close_file(out_fd);
+        std::error_code ignored;
+        std::filesystem::remove(path_from_utf8(to), ignored);
+        return ClaimResult::Failed;
+    }
+    bool ok = true;
+    std::vector<char> buffer(64 * 1024);
+    while (true) {
+        const std::ptrdiff_t got = read_file(in_fd, buffer.data(), buffer.size());
+        if (got < 0) {
+            if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+            ok = false;
+            break;
+        }
+        if (got == 0) break;
+        if (write_file(out_fd, buffer.data(), static_cast<size_t>(got)) < 0) {
+            if (error) *error = "cannot write '" + to + "': " + std::strerror(errno);
+            ok = false;
+            break;
+        }
+    }
+    close_file(in_fd);
+    if (ok && sync_file(out_fd) != 0) {
+        if (error) *error = "cannot sync '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (close_file(out_fd) != 0 && ok) {
+        if (error) *error = "cannot close '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    std::error_code ignored;
+    if (!ok) {
+        std::filesystem::remove(path_from_utf8(to), ignored);
+        return ClaimResult::Failed;
+    }
+    std::filesystem::remove(path_from_utf8(from), ignored);
+    return ClaimResult::Claimed;
 }
 
 std::string lower_copy(const std::string& text) {
@@ -117,10 +215,9 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
             result.size = written;
             return result;
         }
-        const std::string final_path =
-            unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
+        std::string final_path;
         std::string move_error;
-        if (!move_file(ws.part_path, final_path, &move_error)) {
+        if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
             result.status = DownloadResult::Status::Failed;
             result.error = move_error;
             return result;
@@ -178,6 +275,11 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
             std::max_element(playlist.variants.begin(), playlist.variants.end(),
                              [](const auto& a, const auto& b) { return a.first < b.first; });
         options.url = resolve_playlist_uri(effective_url, best->second);
+        if (!is_supported_download_url(options.url)) {
+            result.status = DownloadResult::Status::Failed;
+            result.error = "the HLS master playlist references an unsupported URL scheme";
+            return result;
+        }
         text.clear();
         if (!fetch_text(options, &text, &effective_url, &fetch_error)) {
             result.status = DownloadResult::Status::Failed;
@@ -203,6 +305,22 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     if (playlist.segments.empty()) {
         result.status = DownloadResult::Status::Failed;
         result.error = "the HLS playlist has no segments";
+        return result;
+    }
+
+    // Segment URIs are remote input. A file:// entry would make libcurl copy a
+    // local file into the output, so every URI has to pass the same allowlist
+    // as a user-supplied URL before the part file is even created.
+    const auto known_scheme = [&](const std::string& uri) {
+        return is_supported_download_url(resolve_playlist_uri(effective_url, uri));
+    };
+    const bool bad_init = !playlist.init_segment.empty() && !known_scheme(playlist.init_segment);
+    const bool bad_segment = std::any_of(
+        playlist.segments.begin(), playlist.segments.end(),
+        [&](const std::string& uri) { return !known_scheme(uri); });
+    if (bad_init || bad_segment) {
+        result.status = DownloadResult::Status::Failed;
+        result.error = "the HLS playlist references an unsupported URL scheme";
         return result;
     }
 
@@ -302,10 +420,9 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         return result;
     }
 
-    const std::string final_path =
-        unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
+    std::string final_path;
     std::string move_error;
-    if (!move_file(ws.part_path, final_path, &move_error)) {
+    if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = move_error;
         result.path = ws.part_path;
@@ -336,32 +453,63 @@ DownloadWorkspace make_workspace(const Settings& settings, const std::string& ur
     return ws;
 }
 
+// Candidate `index` for a final name: index 0 is the plain name, then
+// " (1)", " (2)", … The " (N)" variant has to stay within the path-component
+// limit as well, so the stem is shortened instead of the tag.
+std::filesystem::path candidate_path(const std::filesystem::path& dir,
+                                     const std::string& filename, int index) {
+    const std::string limited = limit_filename_length(filename, kMaxFileNameBytes);
+    if (index == 0) return dir / path_from_utf8(limited);
+    // The name may hold any UTF-8 text; counting and shortening it as UTF-8
+    // keeps the component limit meaningful on Windows as well, where
+    // path::string() would go through the ANSI code page.
+    const std::filesystem::path base = path_from_utf8(limited);
+    const std::string stem = path_to_utf8(base.stem());
+    const std::string ext = path_to_utf8(base.extension());
+    const std::string tag = " (" + std::to_string(index) + ")";
+    size_t budget = 0;
+    if (kMaxFileNameBytes > tag.size() + ext.size()) {
+        budget = kMaxFileNameBytes - tag.size() - ext.size();
+    }
+    std::string trimmed = stem;
+    if (trimmed.size() > budget) trimmed = std::string(utf8_truncate(trimmed, budget));
+    return dir / path_from_utf8(trimmed + tag + ext);
+}
+
 std::string unique_path(const std::string& path) {
     std::error_code ec;
     const std::filesystem::path original = path_from_utf8(path);
-    // Guard against a caller that passes a name which was not sanitized.
-    const std::filesystem::path p =
-        original.parent_path() /
-        path_from_utf8(limit_filename_length(path_to_utf8(original.filename()), kMaxFileNameBytes));
+    // Guard against a caller that passes a name which was not sanitized; the
+    // limit also applies to the " (N)" variants.
+    const std::string filename = path_to_utf8(original.filename());
+    const std::filesystem::path p = candidate_path(original.parent_path(), filename, 0);
     if (!std::filesystem::exists(p, ec)) return path_to_utf8(p);
-    const std::string stem = path_to_utf8(p.stem());
-    const std::string ext = path_to_utf8(p.extension());
     for (int i = 1; i < 10000; ++i) {
-        const std::string tag = " (" + std::to_string(i) + ")";
-        // The " (N)" variant has to stay within the limit as well, so the
-        // stem is shortened instead of the tag.
-        size_t budget = 0;
-        if (kMaxFileNameBytes > tag.size() + ext.size()) {
-            budget = kMaxFileNameBytes - tag.size() - ext.size();
-        }
-        std::string trimmed = stem;
-        if (trimmed.size() > budget) {
-            trimmed = std::string(utf8_truncate(trimmed, budget));
-        }
-        const std::filesystem::path candidate = p.parent_path() / path_from_utf8(trimmed + tag + ext);
+        const std::filesystem::path candidate =
+            candidate_path(original.parent_path(), filename, i);
         if (!std::filesystem::exists(candidate, ec)) return path_to_utf8(candidate);
     }
     return path_to_utf8(p);
+}
+
+// Picks a free name and moves the part file there in one atomic claim, so a
+// concurrent writer can never be overwritten (audit finding 7).
+bool move_file_unique(const std::string& from, const std::string& dir,
+                      const std::string& filename, std::string* final_path,
+                      std::string* error) {
+    const std::filesystem::path out_dir = path_from_utf8(dir);
+    for (int i = 0; i < 10000; ++i) {
+        const std::string candidate = path_to_utf8(candidate_path(out_dir, filename, i));
+        const ClaimResult claim = claim_path(from, candidate, error);
+        if (claim == ClaimResult::Claimed) {
+            if (final_path) *final_path = candidate;
+            return true;
+        }
+        if (claim == ClaimResult::Failed) return false;
+        // Exists: another file claimed the name, try the next one.
+    }
+    if (error) *error = "no free file name for '" + filename + "' in '" + dir + "'";
+    return false;
 }
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
@@ -411,6 +559,8 @@ DownloadResult DownloadEngine::run(
     // A resolved link (Drive viewer links and virus-scan notices) names the URL
     // that actually serves the file; every transfer below must use it.
     if (!probe.download_url.empty()) options.url = probe.download_url;
+    options.etag = probe.etag;
+    options.last_modified = probe.last_modified;
 
     std::string filename = request.filename.empty() ? pick_filename(probe, request.url)
                                                     : sanitize_filename(request.filename);
@@ -427,7 +577,7 @@ DownloadResult DownloadEngine::run(
 
     std::string dir_error;
     if (!ensure_directory(out_dir, &dir_error) ||
-        !ensure_directory(settings_.temp_dir, &dir_error)) {
+        !ensure_private_directory(settings_.temp_dir, &dir_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = dir_error;
         return result;
@@ -436,7 +586,7 @@ DownloadResult DownloadEngine::run(
     const std::string workspace_key =
         probe.effective_url.empty() ? request.url : probe.effective_url;
     const DownloadWorkspace ws = make_workspace(settings_, workspace_key, filename);
-    if (!ensure_directory(ws.dir, &dir_error)) {
+    if (!ensure_private_directory(ws.dir, &dir_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = dir_error;
         return result;
@@ -485,9 +635,8 @@ DownloadResult DownloadEngine::run(
 
         if (outcome == TransferOutcome::Completed) {
             std::string move_error;
-            const std::string final_path =
-                unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
-            if (!move_file(ws.part_path, final_path, &move_error)) {
+            std::string final_path;
+            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;
                 return result;
@@ -600,10 +749,9 @@ DownloadResult DownloadEngine::run(
                 result.error = "incomplete download";
                 return result;
             }
-            const std::string final_path =
-                unique_path(path_to_utf8(path_from_utf8(out_dir) / path_from_utf8(filename)));
+            std::string final_path;
             std::string move_error;
-            if (!move_file(ws.part_path, final_path, &move_error)) {
+            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
                 save_transfer_state(ws.state_path, state, nullptr);
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;

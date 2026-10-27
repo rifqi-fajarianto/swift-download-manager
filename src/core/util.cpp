@@ -8,9 +8,17 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <system_error>
 #include <utility>
+
 #include "core/win_headers.h"
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace swiftdm {
 namespace {
@@ -431,6 +439,138 @@ bool remove_tree(const std::string& path) {
 #endif
 }
 
+bool ensure_private_directory(const std::string& path, std::string* error) {
+    if (!ensure_directory(path, error)) return false;
+#ifdef _WIN32
+    // Windows inherits the directory ACL from the parent (the user profile),
+    // so there is no POSIX mode bit to tighten here.
+    if (error) error->clear();
+    return true;
+#else
+    const int fd = ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        if (error) *error = "cannot open private directory '" + path + "': " +
+                            std::strerror(errno);
+        return false;
+    }
+    if (::fchmod(fd, 0700) != 0) {
+        if (error) *error = "cannot set private permissions on '" + path +
+                            "': " + std::strerror(errno);
+        ::close(fd);
+        return false;
+    }
+    ::close(fd);
+    if (error) error->clear();
+    return true;
+#endif
+}
+
+bool write_file_atomic(const std::string& path, std::string_view content,
+                       unsigned int mode, std::string* error) {
+#ifdef _WIN32
+    // No mkstemp/fchmod on Windows: write a sibling temporary file through the
+    // wide-path layer and swap it in with a replace move, which is atomic on a
+    // single volume.
+    (void)mode;  // the file inherits the ACL of its directory
+    const std::filesystem::path target = path_from_utf8(path);
+    const std::filesystem::path parent =
+        target.has_parent_path() ? target.parent_path() : path_from_utf8(".");
+    const std::filesystem::path temporary =
+        parent / path_from_utf8(path_to_utf8(target.filename()) + ".tmp");
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            if (error) *error = "cannot create temporary file for '" + path + "'";
+            return false;
+        }
+        out.write(content.data(), static_cast<std::streamsize>(content.size()));
+        out.flush();
+        if (!out) {
+            if (error) *error = "cannot write temporary file for '" + path + "'";
+            out.close();
+            std::error_code ec;
+            std::filesystem::remove(temporary, ec);
+            return false;
+        }
+    }
+    if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        if (error) *error = "cannot replace '" + path + "' (error " +
+                            std::to_string(GetLastError()) + ")";
+        std::error_code ec;
+        std::filesystem::remove(temporary, ec);
+        return false;
+    }
+    if (error) error->clear();
+    return true;
+#else
+    const std::filesystem::path target(path);
+    const std::filesystem::path parent = target.has_parent_path() ? target.parent_path() : ".";
+    std::string temporary = (parent / (target.filename().string() + ".tmp-XXXXXX")).string();
+    std::vector<char> temporary_buffer(temporary.begin(), temporary.end());
+    temporary_buffer.push_back('\0');
+    const int fd = ::mkstemp(temporary_buffer.data());
+    if (fd < 0) {
+        if (error) *error = "cannot create temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        return false;
+    }
+    temporary.assign(temporary_buffer.data());
+    if (::fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+        if (error) *error = "cannot secure temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ::close(fd);
+        ::unlink(temporary.c_str());
+        return false;
+    }
+
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < content.size()) {
+        const ssize_t written = ::write(fd, content.data() + offset, content.size() - offset);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) {
+            if (error) *error = "cannot write temporary file for '" + path + "': " +
+                                std::strerror(errno);
+            ok = false;
+            break;
+        }
+        offset += static_cast<size_t>(written);
+    }
+    if (ok && ::fchmod(fd, static_cast<mode_t>(mode)) != 0) {
+        if (error) *error = "cannot set file permissions for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (ok && ::fsync(fd) != 0) {
+        if (error) *error = "cannot sync temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (::close(fd) != 0 && ok) {
+        if (error) *error = "cannot close temporary file for '" + path + "': " +
+                            std::strerror(errno);
+        ok = false;
+    }
+    if (ok && ::rename(temporary.c_str(), path.c_str()) != 0) {
+        if (error) *error = "cannot replace '" + path + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (ok) {
+        const int dir_fd = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (dir_fd >= 0) {
+            // The rename has already committed. Directory fsync is best-effort
+            // on filesystems that do not support syncing directory handles.
+            (void)::fsync(dir_fd);
+            ::close(dir_fd);
+        }
+        if (error) error->clear();
+    } else {
+        ::unlink(temporary.c_str());
+    }
+    return ok;
+#endif
+}
+
 namespace {
 
 int64_t file_time_to_unix(std::filesystem::file_time_type time) {
@@ -504,8 +644,17 @@ std::string sanitize_filename(std::string_view name) {
     size_t b = 0;
     while (b < out.size() && (out[b] == ' ')) ++b;
     out = out.substr(b);
+    // A leading dot would make the name hidden: a server-controlled name such
+    // as ".bashrc" must not drop a dotfile into the download directory (or
+    // over a dotfile in the home directory). ".." is covered as well, as the
+    // dot is not part of that trim.
+    if (!out.empty() && out.front() == '.') out.insert(0, "_");
     // Windows reserves the device names even with an extension ("CON.txt").
     if (!out.empty() && is_windows_reserved_name(out)) out.insert(0, "_");
+    // A .desktop file in the download directory can be launched by the desktop
+    // environment (the "untrusted" marking of the desktop entry spec is not
+    // enforced everywhere), so the extension is neutralised.
+    if (ends_with(to_lower(out), ".desktop")) out += "_";
     // A single path component is limited by the filesystem, so a long name
     // (a token in the URL path, for example) has to be shortened.
     out = limit_filename_length(out, kMaxFileNameBytes);

@@ -80,6 +80,7 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(test_confirm_dialog
         test_confirm_dialog.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
     )
     target_include_directories(test_confirm_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")
@@ -92,6 +93,18 @@ if(SWIFTSDM_BUILD_UI)
     )
     add_test(NAME confirm_dialog COMMAND test_confirm_dialog)
     set_tests_properties(confirm_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Headless (offscreen) check of the queue picker: the queue entries, their
+    # item counts and the deliberate selection rule. Never shown.
+    add_executable(test_queue_picker
+        test_queue_picker.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
+    )
+    target_include_directories(test_queue_picker PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_queue_picker PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_queue_picker PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME queue_picker COMMAND test_queue_picker)
+    set_tests_properties(queue_picker PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Headless (offscreen) check of the settings window structure: five tabs
     # and every control on the tab that owns it. The dialog is never shown.
@@ -164,6 +177,30 @@ if(SWIFTSDM_BUILD_UI)
     )
     add_test(NAME download_window COMMAND test_download_window)
     set_tests_properties(download_window PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Queue scheduling rules: insertion order, limit pauses, speed sharing,
+    # all-complete detection and the shutdown countdown. The test only uses the
+    # pure logic module, so no window is created.
+    add_executable(test_queue_logic
+        test_queue_logic.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_logic.cpp"
+    )
+    target_include_directories(test_queue_logic PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(test_queue_logic PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME queue_logic COMMAND test_queue_logic)
+
+    # Headless (offscreen) check of the Queue Properties dialog: sections,
+    # defaults, special values and the result round-trip. Never shown.
+    add_executable(test_queue_dialog
+        test_queue_dialog.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"
+    )
+    target_include_directories(test_queue_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_queue_dialog PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_queue_dialog PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME queue_dialog COMMAND test_queue_dialog)
+    set_tests_properties(queue_dialog PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Headless check of the toolbar Resume/Stop availability rules.
     add_executable(test_action_state test_action_state.cpp)

@@ -46,12 +46,32 @@ class HistoryStore {
         bool resumable = false;
         int64_t first_try = 0;  // unix seconds
         int64_t last_try = 0;
+        // 0 = the main Downloads list; otherwise the queue that owns the row.
+        int64_t queue_id = 0;
     };
 
     // One stored row; `id` is the database primary key.
     struct Entry {
         int64_t id = 0;
         Record record;
+    };
+
+    // A named queue and its per-queue settings. The queue is a workspace for
+    // grouping related downloads (for example the parts of one archive), not a
+    // status on the main list.
+    struct QueueRecord {
+        int64_t id = 0;
+        std::string name;
+        // 0 = unlimited: every startable item may run at once.
+        int max_simultaneous = 1;
+        int connections = 0;  // 0 = global setting
+        bool bandwidth_limit_enabled = false;
+        int bandwidth_limit_kbps = 1024;
+        bool autostart = false;
+        bool notify_item = false;
+        bool notify_complete = false;
+        bool shutdown_when_complete = false;
+        int shutdown_delay = 60;  // seconds
     };
 
     HistoryStore() = default;
@@ -79,6 +99,17 @@ class HistoryStore {
     // Deletes a row and its headers permanently.
     bool remove(int64_t id, std::string* error = nullptr);
     int64_t count(std::string* error = nullptr) const;
+
+    // Queue CRUD. Removing a queue does not touch its downloads; the caller
+    // decides whether to move or delete those rows.
+    bool load_queues(std::vector<QueueRecord>* out, std::string* error = nullptr) const;
+    int64_t insert_queue(const QueueRecord& queue, std::string* error = nullptr);
+    bool update_queue(const QueueRecord& queue, std::string* error = nullptr);
+    bool remove_queue(int64_t id, std::string* error = nullptr);
+    // Updates only the owning queue and the status, preserving the options and
+    // headers that are already stored for the row.
+    bool update_queue_id(int64_t id, int64_t queue_id, const std::string& status,
+                         std::string* error = nullptr);
 
   private:
     bool exec(const char* sql, std::string* error) const;

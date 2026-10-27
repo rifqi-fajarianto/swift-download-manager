@@ -24,8 +24,8 @@
 
   <launchable type="desktop-id">swiftdm.desktop</launchable>
 
-  <url type="homepage">https://github.com/swiftdm/swiftdm</url>
-  <url type="bugtracker">https://github.com/swiftdm/swiftdm/issues</url>
+  <url type="homepage">https://github.com/rifqi-fajarianto/swift-download-manager</url>
+  <url type="bugtracker">https://github.com/rifqi-fajarianto/swift-download-manager/issues</url>
 
   <developer id="io.github.swiftdm">
     <name>SwiftDM contributors</name>
@@ -34,6 +34,21 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.19.3" date="2026-10-24">
+      <description>
+        <p>Completed queue items no longer open the global Download Complete window or the download folder; a queue uses its own per-item notification instead.</p>
+      </description>
+    </release>
+    <release version="0.19.2" date="2026-10-24">
+      <description>
+        <p>The Download Confirmation window asks which queue a download belongs to when several queues exist, instead of silently using the first one.</p>
+      </description>
+    </release>
+    <release version="0.19.1" date="2026-10-23">
+      <description>
+        <p>Named download queues with independent scheduling, limits, notifications and shutdown. Selecting the Queues branch shows a queue overview and switches the toolbar to queue mode.</p>
+      </description>
+    </release>
     <release version="0.18.22" date="2026-10-22">
       <description>
         <p>The Download Properties window groups its read-only values into General, Location, Source and Time sections. The Download progress and Download Confirmation windows use the same section layout.</p>
