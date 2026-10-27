@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.16 — 2026-10-27
 
 - The experimental Windows 10 port now lives on `main`; the `windows` branch was
   merged fast-forward at 0.19.15. No application behavior changed for Linux.

@@ -142,7 +142,7 @@ MinGW/libcurl/SQLite runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl
 for HTTPS, and the Chromium extension. The installer is per-user, so it needs no
 administrator rights; neither it nor the executables are code signed yet, so
 SmartScreen warns on first run. GUI checks on Windows 10 are still manual.
-Version 0.19.15 is the port tracking `main` (named queues, audit hardening, the
+Version 0.19.16 is the port tracking `main` (named queues, audit hardening, the
 module split and the Windows file I/O fixes); Windows support is still
 experimental.
 
@@ -181,7 +181,7 @@ Create a Debian package with CPack:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.19.13_amd64.deb
+sudo apt install ./swiftdm_0.19.16_amd64.deb
 ```
 
 Alternatively, install using the CMake install rules:

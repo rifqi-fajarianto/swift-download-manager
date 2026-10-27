@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.19.16" date="2026-10-27">
+      <description>
+        <p>The experimental Windows 10 port ships from main with a portable ZIP and a per-user Inno Setup installer, and release tags publish both next to the Debian package.</p>
+      </description>
+    </release>
     <release version="0.19.3" date="2026-10-24">
       <description>
         <p>Completed queue items no longer open the global Download Complete window or the download folder; a queue uses its own per-item notification instead.</p>
