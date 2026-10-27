@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.19.13 (Windows port is experimental and not yet release-validated).
+Status as of 0.19.14 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -28,6 +28,11 @@ Windows notes:
   `AttachConsole`-based CLI wrapper and is tracked as an open item.
 - The tray icon, autostart and pause/resume behaviour still need a manual pass
   on a Windows 10 machine.
+- Extending a part file does not zero-fill it: `resize_file()` seeks to the new
+  length and calls `SetEndOfFile()`, so the preallocated range stays
+  unallocated until the transfer writes into it (0.19.14). `_chsize_s()`, used
+  before, wrote every byte and stalled large downloads before the first
+  network byte arrived.
 
 
 ## v1 — core engine + GUI
@@ -177,3 +182,8 @@ URL (`download`, `view`, or a Drive folder id).
   in a Unicode directory (SHA-256 matched), a 359-character destination path,
   and an HTTPS download through the shipped `ca-bundle.crt`. Manual GUI checks
   on Windows 10 are still pending.
+- The 0.19.14 Windows build passed all 23 `ctest` tests (including the new
+  512 MiB sparse-resize regression in `file_io`). A 2 GiB download over four
+  connections reported its first progress update after 1.9 s and finished in
+  14 s with a matching SHA-256; the preallocation no longer writes the whole
+  file before the transfer starts.

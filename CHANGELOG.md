@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.14 — 2026-10-27
+
+Windows only; Linux behavior unchanged.
+
+- `resize_file()` no longer zero-fills the part file on Windows. `_chsize_s()`
+  writes every byte of the extension, so preallocating a multi-gigabyte part
+  file kept the process busy writing zeros (measured 1.4 s for 512 MiB) before
+  the first network byte arrived, which looked like a stalled download. The
+  Windows branch now seeks to the new length and calls `SetEndOfFile()`, which
+  leaves the added range unallocated (0.001 s for the same size). Preallocation
+  itself is unchanged, so resume semantics stay the same on both platforms.
+- `tests/test_file_io.cpp` grows a Windows-only regression: a 512 MiB resize
+  must report the new length, end in a zero byte and issue less than a quarter
+  of the size in process writes.
+
 ## 0.19.12 — 2026-10-25
 
 Code layout only; no behavior change.

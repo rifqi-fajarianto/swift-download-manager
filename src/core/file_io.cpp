@@ -102,9 +102,22 @@ int sync_file(int fd) {
 
 int resize_file(int fd, uint64_t size) {
 #ifdef _WIN32
-    const errno_t rc = ::_chsize_s(fd, size);
-    if (rc != 0) errno = static_cast<int>(rc);
-    return rc == 0 ? 0 : -1;
+    // _chsize_s zero-fills the extension, so preallocating a multi-gigabyte
+    // part file would stall the transfer behind gigabytes of physical writes.
+    // Moving the end of file leaves the new range unallocated (sparse).
+    const intptr_t handle = ::_get_osfhandle(fd);
+    if (handle == -1) {
+        errno = EBADF;
+        return -1;
+    }
+    LARGE_INTEGER target{};
+    target.QuadPart = static_cast<LONGLONG>(size);
+    if (!::SetFilePointerEx(reinterpret_cast<HANDLE>(handle), target, nullptr, FILE_BEGIN) ||
+        !::SetEndOfFile(reinterpret_cast<HANDLE>(handle))) {
+        errno = EIO;
+        return -1;
+    }
+    return 0;
 #else
     return ::ftruncate(fd, static_cast<off_t>(size));
 #endif
