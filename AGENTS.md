@@ -47,7 +47,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.16**. Status ini cepat
+> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.17**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -58,7 +58,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `src/ui/main_window.cpp` menjadi beberapa unit).
 - **Rilis stabil yang didukung**: 0.19.12 di Debian 13/Linux. Port Windows
   belum divalidasi GUI-nya dan belum diberi tag rilis.
-- **Versi kerja**: 0.19.16. Port Windows 10 eksperimental ada di `main` dan
+- **Versi kerja**: 0.19.17. Port Windows 10 eksperimental ada di `main` dan
   sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
@@ -76,8 +76,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   jendela 200 ms, jadi tabel serta window progress menyegar maksimal 10 Hz
   tanpa timer UI tersendiri.
   Yang masih terbuka: verifikasi GUI manual di Windows 10 (tray, dialog,
-  pause/resume, autostart), penggantian subsistem console menjadi GUI dengan
-  wrapper `AttachConsole`, dan code signing (installer serta exe belum
+  pause/resume, autostart) dan code signing (installer serta exe belum
   ditandatangani sehingga SmartScreen masih memperingatkan).
   Platform acuan dan rilis stabil tetap Debian 13/Linux.
 - **Audit hardening yang ikut masuk (0.19.4–0.19.11)**: nama file final diklaim
@@ -193,7 +192,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.16
+### Sudah tersedia sampai 0.19.17
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -244,10 +243,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `docs/spec/07-chromium-extension-reference.md`).
 - Verifikasi GUI selalu manual oleh user; tidak ada automation GUI.
 - Windows: verifikasi GUI manual di Windows 10 (tray, dialog konfirmasi,
-  pause/resume, autostart) belum dilakukan. Executable memakai subsistem
-  console sehingga GUI dari Explorer juga membuka jendela console; rencana
-  perbaikannya adalah subsistem GUI + wrapper `AttachConsole` untuk CLI.
-  Installer (MSI/NSIS) dan code signing belum ada; paket masih ZIP.
+  pause/resume, autostart) belum dilakukan. Sejak 0.19.17 executable GUI
+  memakai subsistem GUI dan mode CLI meminjam console induk lewat
+  `AttachConsole`, jadi membuka aplikasi dari Explorer tidak lagi memunculkan
+  jendela console. Installer (MSI/NSIS) dan code signing belum ada; paket masih
+  ZIP + installer Inno Setup.
 
 ## 3. Peta codebase
 

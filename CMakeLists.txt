@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.19.16
+    VERSION 0.19.17
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -164,6 +164,14 @@ target_link_libraries(swiftdm PRIVATE swiftdm_core)
 
 if(SWIFTSDM_BUILD_UI)
     set_target_properties(swiftdm PROPERTIES AUTOMOC ON)
+
+    # The GUI build uses the Windows GUI subsystem so launching it from Explorer,
+    # the installer shortcut or the login entry never opens a console window.
+    # CLI runs borrow the parent console at runtime (see main.cpp); the headless
+    # build keeps the console subsystem so its output works without one.
+    if(WIN32)
+        set_target_properties(swiftdm PROPERTIES WIN32_EXECUTABLE ON)
+    endif()
 
     # Toolbar/category icons: SVGs in ui-assets/ (provided for this project) plus
     # glyphs drawn for this project in src/ui/icons/.

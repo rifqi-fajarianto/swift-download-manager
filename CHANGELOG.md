@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.19.16 — 2026-10-27
+## Unreleased
+
+- The Windows GUI executable now uses the GUI subsystem, so launching it from
+  Explorer, the installer shortcut, the tray autostart entry or a shell no
+  longer opens a console window next to the application. CLI runs (`--version`,
+  `--help`, `get`) attach to the parent console with `AttachConsole` and keep
+  working, or allocate their own console when started without one. Output that
+  is already redirected to a pipe or a file keeps its handle, so the CI version
+  check and scripted use are unaffected. Windows shells do not wait for a
+  GUI-subsystem process; scripts that must block on `get` use
+  `Start-Process -Wait` or `start /wait`. Headless Windows builds keep the
+  console subsystem.
+
+## 0.19.16 â€” 2026-10-27
 
 - The experimental Windows 10 port now lives on `main`; the `windows` branch was
   merged fast-forward at 0.19.15. No application behavior changed for Linux.

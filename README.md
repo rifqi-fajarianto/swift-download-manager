@@ -141,8 +141,13 @@ is not installed). The packages contain the executable, the Qt plugins, the
 MinGW/libcurl/SQLite runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl
 for HTTPS, and the Chromium extension. The installer is per-user, so it needs no
 administrator rights; neither it nor the executables are code signed yet, so
-SmartScreen warns on first run. GUI checks on Windows 10 are still manual.
-Version 0.19.16 is the port tracking `main` (named queues, audit hardening, the
+SmartScreen warns on first run. The executable uses the Windows GUI subsystem, so
+starting it from Explorer, the installer shortcut or the autostart entry opens no
+console window; CLI runs attach to the parent console. Shells do not wait for a
+GUI-subsystem process, so scripts that must block on `get` use
+`Start-Process -Wait` (PowerShell) or `start /wait` (cmd). GUI checks on
+Windows 10 are still manual.
+Version 0.19.17 is the port tracking `main` (named queues, audit hardening, the
 module split and the Windows file I/O fixes); Windows support is still
 experimental.
 

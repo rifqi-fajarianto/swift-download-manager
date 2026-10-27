@@ -23,9 +23,13 @@ Windows notes:
   Linux falls back to the system bundle as before. Verified manually on
   Windows 10: an HTTPS download handed over by the Chromium extension
   completed with the package build (2026-10-23).
-- The GUI executable uses the console subsystem, so starting it from Explorer
-  also opens a console window. Switching to the GUI subsystem needs an
-  `AttachConsole`-based CLI wrapper and is tracked as an open item.
+- The GUI executable uses the Windows GUI subsystem since 0.19.17, so starting
+  it from Explorer, the installer shortcut or the login entry opens no console
+  window. CLI runs (same executable, `--version`, `--help`, `get`) attach to the
+  parent console with `AttachConsole`; output that is already redirected to a
+  pipe or a file keeps its handle. Windows shells do not wait for a
+  GUI-subsystem process, so a script that must block on `get` uses
+  `Start-Process -Wait` (PowerShell) or `start /wait` (cmd).
 - The tray icon, autostart and pause/resume behaviour still need a manual pass
   on a Windows 10 machine.
 - Extending a part file does not zero-fill it: `resize_file()` seeks to the new

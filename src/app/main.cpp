@@ -26,6 +26,25 @@
 
 namespace {
 
+#ifdef _WIN32
+// A GUI-subsystem executable has no console of its own, so a CLI run started
+// from a shell must borrow the console of the parent process. Output that was
+// already redirected to a pipe or a file keeps its handle and is left alone.
+void attach_parent_console() {
+    const HANDLE output = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    const bool redirected = output != nullptr && output != INVALID_HANDLE_VALUE;
+    if (redirected) return;
+    if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::GetConsoleWindow() == nullptr) {
+        // Started from Explorer or the task scheduler: give the CLI its own
+        // window so usage and error messages are not lost.
+        ::AllocConsole();
+    }
+    std::freopen("CONOUT$", "w", stdout);
+    std::freopen("CONOUT$", "w", stderr);
+    std::freopen("CONIN$", "r", stdin);
+}
+#endif
+
 void print_usage(std::FILE* out) {
     std::fprintf(out,
         "SwiftDM %s — segmented, resumable download manager\n"
@@ -302,6 +321,15 @@ int main(int argc, char** argv) {
     }
 
     const std::string command = argv[1];
+
+#ifdef _WIN32
+    // GUI runs (plain start, --gui, --autostart) never own a console; only CLI
+    // runs attach to the parent console so --version, help and get stay visible.
+    if (command != "--gui" && command != "--autostart") {
+        attach_parent_console();
+    }
+#endif
+
     if (command == "--version") {
         std::printf("SwiftDM %s\n", swiftdm::kVersionString);
         return 0;
@@ -326,3 +354,10 @@ int main(int argc, char** argv) {
     print_usage(stderr);
     return 2;
 }
+
+#ifdef _WIN32
+// The GUI build links against the Windows GUI subsystem; the CRT entry point
+// calls WinMain instead of main. Command-line arguments are rebuilt from
+// GetCommandLineW inside main(), so the CRT's vector is not needed here.
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) { return main(0, nullptr); }
+#endif
