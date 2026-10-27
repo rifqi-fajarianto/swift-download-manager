@@ -93,6 +93,26 @@ only picked up from `/usr/share`.
   `ext/chromium` while developing.
 - Closing the main window hides the app in the tray; quit from the tray menu.
 
+## 6. Windows packages
+
+The experimental Windows port is packaged on Windows only. With MSYS2 UCRT64
+and Inno Setup 6 installed:
+
+```sh
+cmake -S . -B build-win -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-win --parallel
+cd build-win && cpack                                     # swiftdm-<version>-win64.zip
+cmake --build . --target windows-installer                # swiftdm-<version>-win64-setup.exe
+```
+
+Both artifacts are written to the build directory. The installer is per-user
+(`%LOCALAPPDATA%\Programs\SwiftDM`) so it needs no administrator rights and
+matches the `%APPDATA%`/`%LOCALAPPDATA%` paths the app uses for config and data.
+No code signing is set up yet, so Windows SmartScreen warns before running an
+unsigned installer or executable. The script lives in
+`packaging/windows/swiftdm.iss`; CMake skips the target when `ISCC.exe` is not
+found.
+
 ## Regenerating icons
 
 The launcher icons are rendered from `ui-assets/app-icon/main-icon.svg` during

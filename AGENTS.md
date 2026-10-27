@@ -51,19 +51,21 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Branch kerja saat snapshot**: `windows`, berisi port Windows 10
-  eksperimental yang sudah menggabungkan `main` sampai 0.19.12.
+- **Branch kerja saat snapshot**: `main`, sudah memuat port Windows 10
+  eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
+  fast-forward ke 0.19.15).
 - **Rilis terakhir di jalur `main`**: 0.19.12 (pemecahan `src/net/http.cpp` dan
   `src/ui/main_window.cpp` menjadi beberapa unit).
 - **Rilis stabil yang didukung**: 0.19.12 di Debian 13/Linux. Port Windows
-  belum dirilis dan belum divalidasi GUI-nya.
-- **Versi kerja**: 0.19.15. Port Windows 10 eksperimental dikerjakan pada branch
-  `windows` dan sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
+  belum divalidasi GUI-nya dan belum diberi tag rilis.
+- **Versi kerja**: 0.19.15. Port Windows 10 eksperimental ada di `main` dan
+  sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
   dukungan path panjang `\\?\`, argumen command line UTF-8, jalur data
   `%APPDATA%`/`%LOCALAPPDATA%`, autostart registry, paket ZIP mandiri
-  (windeployqt + `tools/deploy_msys_runtime.sh`), dan CA bundle
+  (windeployqt + `tools/deploy_msys_runtime.sh`), installer Inno Setup per-user
+  (`cmake --build build --target windows-installer`), dan CA bundle
   `ca-bundle.crt` (libcurl MSYS2 default-nya memakai path POSIX yang tidak ada
   di Windows, sehingga HTTPS gagal error 77; kini `CURLOPT_CAINFO` menunjuk ke
   bundle di samping exe, dengan override env `SWIFTDM_CA_BUNDLE`) sudah ada.
@@ -74,9 +76,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   jendela 200 ms, jadi tabel serta window progress menyegar maksimal 10 Hz
   tanpa timer UI tersendiri.
   Yang masih terbuka: verifikasi GUI manual di Windows 10 (tray, dialog,
-  pause/resume, autostart) dan penggantian subsistem console menjadi GUI dengan
-  wrapper `AttachConsole`. Platform acuan dan rilis stabil tetap Debian
-  13/Linux.
+  pause/resume, autostart), penggantian subsistem console menjadi GUI dengan
+  wrapper `AttachConsole`, dan code signing (installer serta exe belum
+  ditandatangani sehingga SmartScreen masih memperingatkan).
+  Platform acuan dan rilis stabil tetap Debian 13/Linux.
 - **Audit hardening yang ikut masuk (0.19.4–0.19.11)**: nama file final diklaim
   atomik (tanpa menimpa file lain, memakai hard link dan fallback salin
   eksklusif di Windows); nama berawalan titik diberi awalan `_` dan akhiran
@@ -414,7 +417,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 | `ext/chromium/` | Ekstensi Chromium Manifest V3 (popup, service worker, cookie permission, ikon). |
 | `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, dan test protokol browser. |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
-| `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
+| `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, skrip installer Inno Setup (`packaging/windows/swiftdm.iss`), dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
 | `tools/` | Rasterizer ikon ekstensi dan ikon desktop. |
 | `ui-assets/` | Sumber SVG ikon toolbar dan ikon aplikasi/ekstensi. |
 | `cmake/` | Template `version.h.in` dan helper CMake. |
@@ -440,7 +443,9 @@ Windows 10 (1809+) adalah target port eksperimental, belum menjadi platform
 rilis yang didukung. Gunakan MSYS2 UCRT64 dengan GCC, CMake, Ninja, Qt 6.5–6.12,
 libcurl, dan SQLite; Qt 6.12 adalah lini Qt terakhir yang mendukung Windows 10.
 CI membangun executable Windows, menjalankan seluruh `ctest`, dan membuat paket
-ZIP; verifikasi GUI manual di Windows 10 masih menjadi tugas user.
+ZIP serta installer Inno Setup; verifikasi GUI manual di Windows 10 masih
+menjadi tugas user. Installer hanya dibuat bila `ISCC.exe` ditemukan, jadi
+mesin tanpa Inno Setup tetap bisa build dan `cpack`.
 
 Dependency Debian 13:
 
@@ -464,7 +469,11 @@ dengan `-DSWIFTSDM_BUILD_UI=OFF` tanpa Qt untuk menjaga batas arsitektur inti.
 Job ketiga mengulang build headless itu di bawah sanitizer (matriks
 `address+undefined` dan `thread`); `ASAN_OPTIONS=detect_leaks=0` karena Qt-free
 test menutup banyak handle socket. Rilis (`.github/workflows/release.yml`)
-menerbitkan `SHA256SUMS` dan build provenance attestation untuk `.deb`.
+menerbitkan `.deb`, ZIP portable Windows, installer `-setup.exe`, `SHA256SUMS`,
+dan build provenance attestation untuk ketiganya. `workflow_dispatch` punya
+input `dry_run` (default aktif): job yang sama dibangun dan diuji, artifact
+diunggah untuk diperiksa, tetapi release tidak dibuat, diubah, atau diberi
+attestation.
 
 Menjalankan aplikasi:
 
@@ -656,7 +665,10 @@ Rilis dipicu oleh tag `vMAJOR.MINOR.PATCH` (contoh `v0.19.0`) yang di-push ke
 `origin`. Tag itu menjalankan `.github/workflows/release.yml`, yang memvalidasi
 kesamaan tag dengan `project(... VERSION ...)`, membangun dan menguji di Debian
 13, membuat `.deb`, lalu menerbitkan GitHub Release dengan catatan dari section
-`CHANGELOG.md` versi tersebut.
+`CHANGELOG.md` versi tersebut. Job `windows-package` di runner `windows-latest`
+membangun port Windows dari tag yang sama, menjalankan seluruh `ctest`, lalu
+menghasilkan ZIP portable dan installer Inno Setup; job `release` menunggu
+artifact itu sebelum menerbitkan.
 
 Rilis dapat dimulai dengan dua cara:
 
@@ -686,9 +698,16 @@ Catatan:
 
 - Jangan memindahkan atau menghapus tag yang sudah dipublikasikan. Jika rilis
   bermasalah, perbaiki dan naikkan patch baru.
-- Workflow release membuat release sebagai draft, mengunggah `.deb`, lalu
-  mempublikasikannya. Re-run workflow akan memakai release yang sudah ada dan
-  mengganti asset `.deb` (`--clobber`).
+- Workflow release membuat release sebagai draft, mengunggah `.deb`, ZIP
+  Windows, dan installer `-setup.exe`, lalu mempublikasikannya. Re-run workflow
+  akan memakai release yang sudah ada dan mengganti aset tersebut (`--clobber`).
+- `workflow_dispatch` dengan `dry_run: true` (default) adalah cara aman menguji
+  pipeline: build, `ctest`, `cpack`, installer, dan ekstraksi catatan rilis
+  tetap dijalankan, hasilnya hanya artifact. Set `dry_run: false` untuk benar-
+  benar menerbitkan.
+- Installer dan ZIP Windows belum ditandatangani, jadi SmartScreen memperingatkan
+  pengguna saat memasang. Tambahkan code signing sebelum port Windows dianggap
+  siap rilis stabil.
 - Jika rilis gagal sebelum release terbit, perbaiki workflow di `main`, lalu
   jalankan workflow `Release` secara manual dengan input tag yang sama
   (`workflow_dispatch`). Tag tidak perlu dipindahkan.

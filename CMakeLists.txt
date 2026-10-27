@@ -224,6 +224,23 @@ if(SWIFTSDM_BUILD_UI)
             COMMENT "Deploying the Windows executable and Qt runtime"
             VERBATIM
         )
+
+        # Inno Setup is optional: without it the build and the ZIP package still
+        # work, only the windows-installer target is missing.
+        find_program(ISCC_EXECUTABLE NAMES ISCC
+            HINTS "C:/Program Files (x86)/Inno Setup 6" "C:/Program Files/Inno Setup 6")
+        if(ISCC_EXECUTABLE)
+            add_custom_target(windows-installer
+                COMMAND "${ISCC_EXECUTABLE}" /Qp
+                        "/DAppVersion=${PROJECT_VERSION}"
+                        "/DSourceDir=${SWIFTSDM_WINDOWS_DEPLOY_DIR}"
+                        "/O${CMAKE_CURRENT_BINARY_DIR}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/swiftdm.iss"
+                DEPENDS swiftdm
+                COMMENT "Building the Windows installer"
+                VERBATIM
+            )
+        endif()
     endif()
 
     # The launcher icons are rendered at build time from the app icon SVG.

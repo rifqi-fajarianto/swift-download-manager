@@ -130,13 +130,21 @@ cmake --build build-win --parallel
 ctest --test-dir build-win --output-on-failure
 ```
 
-The build produces a self-contained `build-win/windows-deploy/` directory and
-`build-win/swiftdm-<version>-win64.zip` (`cd build-win && cpack`). The package
-contains the executable, the Qt plugins, the MinGW/libcurl/SQLite runtime DLLs,
-the `ca-bundle.crt` CA bundle used by libcurl for HTTPS, and the Chromium
-extension. GUI checks on Windows 10 are still manual. Version 0.19.13 is the
-port tracking `main` 0.19.12 (named queues, audit hardening and the module
-split); Windows support is still experimental.
+The `windows-installer` target needs Inno Setup 6 (`ISCC.exe`); without it the
+build, the tests and the ZIP package still work.
+
+The build produces a self-contained `build-win/windows-deploy/` directory,
+`build-win/swiftdm-<version>-win64.zip` (`cd build-win && cpack`), and an Inno
+Setup installer `build-win/swiftdm-<version>-win64-setup.exe`
+(`cmake --build build-win --target windows-installer`, skipped when `ISCC.exe`
+is not installed). The packages contain the executable, the Qt plugins, the
+MinGW/libcurl/SQLite runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl
+for HTTPS, and the Chromium extension. The installer is per-user, so it needs no
+administrator rights; neither it nor the executables are code signed yet, so
+SmartScreen warns on first run. GUI checks on Windows 10 are still manual.
+Version 0.19.15 is the port tracking `main` (named queues, audit hardening, the
+module split and the Windows file I/O fixes); Windows support is still
+experimental.
 
 `qt6-svg-plugins` is required to load SVG icons at runtime.
 
@@ -154,8 +162,10 @@ ctest --test-dir build --output-on-failure
 ```
 
 CI runs the same build and test sequence on Debian 13 for pull requests and
-pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb` package
-to GitHub Releases; the release checklist is in [`AGENTS.md`](AGENTS.md).
+pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb` package,
+the Windows portable ZIP, and the Windows installer to GitHub Releases; a
+`workflow_dispatch` run with `dry_run` enabled builds and tests both platforms
+without publishing. The release checklist is in [`AGENTS.md`](AGENTS.md).
 
 Run the build:
 

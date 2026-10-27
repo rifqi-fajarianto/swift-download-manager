@@ -71,11 +71,19 @@ jobs:
         shell: msys2 {0}
         run: cd build && cpack
 
-      - name: Upload Windows package
+      # Inno Setup ships with the runner image; CMake skips the target when
+      # ISCC is missing, so assert the installer was actually produced.
+      - name: Build the Windows installer
+        shell: msys2 {0}
+        run: cmake --build build --target windows-installer
+
+      - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
-          name: swiftdm-windows-zip
-          path: build/*.zip
+          name: swiftdm-windows
+          path: |
+            build/*.zip
+            build/*-setup.exe
           if-no-files-found: error
           retention-days: 14
 

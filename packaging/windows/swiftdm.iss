@@ -1,0 +1,61 @@
+; Inno Setup script for the experimental Windows port.
+;
+; The tree it packages is prepared by CMake: the `swiftdm` post-build step copies
+; the executable, runs windeployqt and the MSYS2 runtime copy, so the installer
+; only wraps a directory that already runs standalone.
+;
+; Build from the build directory:  cmake --build build --target windows-installer
+; Build by hand:                   ISCC /DAppVersion=0.19.15 /DSourceDir=..\windows-deploy
+
+#define AppName "SwiftDM"
+#define AppPublisher "SwiftDM contributors"
+
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
+
+#ifndef SourceDir
+  #define SourceDir "..\windows-deploy"
+#endif
+
+; ponytail: setup and executable keep the stock Windows icon; add SetupIconFile
+; and an .ico generated from ui-assets/app-icon/main-icon.svg when one exists.
+
+[Setup]
+; A stable AppId keeps upgrades installed over the previous version.
+AppId={{7A3D6C1B-9E42-4B7F-8C55-2D6A9F13B8E4}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher={#AppPublisher}
+AppPublisherURL=https://github.com/rifqi-fajarianto/swift-download-manager
+AppSupportURL=https://github.com/rifqi-fajarianto/swift-download-manager/issues
+DefaultDirName={autopf}\{#AppName}
+DefaultGroupName={#AppName}
+DisableProgramGroupPage=yes
+; Per-user install: no UAC prompt for an unsigned setup, and the same place the
+; app already keeps its config (%APPDATA%) and data (%LOCALAPPDATA%).
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+WizardStyle=modern
+Compression=lzma2/max
+SolidCompression=yes
+OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup
+UninstallDisplayIcon={app}\swiftdm.exe
+UninstallDisplayName={#AppName}
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Files]
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\swiftdm.exe"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\swiftdm.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\swiftdm.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

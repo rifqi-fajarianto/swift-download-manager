@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- The experimental Windows 10 port now lives on `main`; the `windows` branch was
+  merged fast-forward at 0.19.15. No application behavior changed for Linux.
+- Windows packages gain an Inno Setup installer
+  (`swiftdm-<version>-win64-setup.exe`, target `windows-installer`). It installs
+  per user into `%LOCALAPPDATA%\Programs\SwiftDM`, adds Start Menu (and optional
+  desktop) shortcuts, and registers an uninstaller. The portable ZIP stays
+  available. The target is skipped when `ISCC.exe` is absent.
+- `.github/workflows/release.yml` builds the Windows port next to the Debian
+  package: the `windows-package` job runs `ctest`, `cpack` and the installer on
+  `windows-latest`, the release job waits for it and publishes `.deb`, ZIP,
+  installer and one `SHA256SUMS` covering all three, with provenance
+  attestation for each artifact.
+- `workflow_dispatch` on the release workflow gains a `dry_run` input (default
+  on): the full pipeline runs and uploads artifacts, but no release is created,
+  edited, or attested.
+- Windows packages are not code signed yet; SmartScreen warns on first run.
+
 ## 0.19.15 — 2026-10-27
 
 - Progress updates reach the UI ten times per second instead of four:

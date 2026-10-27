@@ -10,6 +10,11 @@ on:
         description: 'Existing release tag to publish (for example v0.18.22)'
         required: true
         type: string
+      dry_run:
+        description: 'Build, test and package without publishing the release'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -21,8 +26,106 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The Windows port ships next to the Debian package: the same tag produces a
+  # portable ZIP and an Inno Setup installer, both attached to the release.
+  windows-package:
+    name: Package the Windows port
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-ca-certificates
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Check CLI version
+        shell: msys2 {0}
+        run: ./build/windows-deploy/swiftdm.exe --version
+
+      # Node ships with the runner; a missing runtime would silently drop the
+      # extension tests, so assert they are registered before trusting ctest.
+      - name: Verify that the extension tests are registered
+        shell: msys2 {0}
+        run: |
+          tests="$(ctest --test-dir build -N)"
+          for name in extension_logic extension_popup; do
+            if ! echo "$tests" | grep -q " ${name}$"; then
+              echo "::error::${name} is not registered; nodejs is probably missing"
+              exit 1
+            fi
+          done
+
+      - name: Run the test suite
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build the portable ZIP
+        shell: msys2 {0}
+        run: cd build && cpack
+
+      # Inno Setup ships with the runner image; CMake skips the target when
+      # ISCC is missing, so the missing installer is caught right here.
+      - name: Build the installer
+        shell: msys2 {0}
+        run: cmake --build build --target windows-installer
+
+      - name: Write the checksum file
+        shell: msys2 {0}
+        run: |
+          cd build
+          sha256sum ./*.zip ./*-setup.exe | sed 's| \./| |' > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload the test log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-test-log
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload the Windows packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftdm-windows
+          path: |
+            build/*.zip
+            build/*-setup.exe
+            build/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    name: Publish the Debian package
+    name: Publish the release
+    needs: windows-package
     runs-on: ubuntu-24.04
     container: debian:13
     timeout-minutes: 30
@@ -62,6 +165,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Download the Windows packages
+        uses: actions/download-artifact@v7
+        with:
+          name: swiftdm-windows
+          path: windows
 
       - name: Install build and release dependencies
         run: |
@@ -128,20 +237,26 @@ jobs:
       - name: Build the Debian package
         run: cd build && cpack
 
-      # The .deb is not signed, so publish a checksum file and a build
-      # provenance attestation next to it. Verify with:
+      # The packages are not signed, so publish a checksum file and a build
+      # provenance attestation next to them. Verify with:
       #   sha256sum --check SHA256SUMS
       #   gh attestation verify swiftdm_*.deb --repo <owner>/<repo>
+      #   gh attestation verify swiftdm-*-win64-setup.exe --repo <owner>/<repo>
       - name: Write the checksum file
         run: |
           cd build
           sha256sum ./*.deb | sed 's| \./| |' > SHA256SUMS
+          cat ../windows/SHA256SUMS >> SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest the package provenance
+        if: inputs.dry_run != true
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: build/*.deb
+          subject-path: |
+            build/*.deb
+            windows/*.zip
+            windows/*-setup.exe
 
       # The changelog is the source of truth for the release notes. Require the
       # section so a tag cannot be published without documented changes.
@@ -158,21 +273,37 @@ jobs:
             exit 1
           fi
 
-      # Create the release as a draft, upload the package, then publish. A
-      # re-run reuses an existing release and replaces the package asset.
+      # A dry run stops here: the workflow artifacts keep the packages and the
+      # extracted notes for inspection, but nothing is published.
+      - name: Upload the dry-run artifacts
+        if: inputs.dry_run == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftdm-dry-run
+          path: |
+            build/*.deb
+            build/SHA256SUMS
+            release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+      # Create the release as a draft, upload the packages, then publish. A
+      # re-run reuses an existing release and replaces the assets.
       - name: Publish the GitHub release
+        if: inputs.dry_run != true
         run: |
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
+          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release upload "$tag" build/*.deb build/SHA256SUMS --clobber --repo "$repo"
+            gh release upload "$tag" $assets --clobber --repo "$repo"
             gh release edit "$tag" \
               --title "SwiftDM ${version}" \
               --notes-file release-notes.md \
               --repo "$repo"
           else
-            gh release create "$tag" build/*.deb build/SHA256SUMS --draft \
+            gh release create "$tag" $assets --draft \
               --title "SwiftDM ${version}" \
               --notes-file release-notes.md \
               --repo "$repo"

@@ -9,7 +9,7 @@ Status as of 0.19.15 (Windows port is experimental and not yet release-validated
 | Platform | Status | Notes |
 |---|---|---|
 | Debian 13/Linux | Supported | Reference platform; Linux CI and packaging remain unchanged |
-| Windows 10 1809+ | Experimental port | MSYS2 UCRT64/Qt 6.5–6.12; builds, the full `ctest` suite and the ZIP package are verified, but GUI behaviour on Windows 10 has not been checked manually |
+| Windows 10 1809+ | Experimental port | On `main` since 0.19.15. MSYS2 UCRT64/Qt 6.5–6.12; builds, the full `ctest` suite, the ZIP package and the Inno Setup installer are verified, but GUI behaviour on Windows 10 has not been checked manually |
 | Windows 10 earlier than 1809 | Not targeted | Qt 6 minimum supported Windows version applies |
 | macOS | Not targeted | No macOS port or CI |
 
@@ -187,3 +187,7 @@ URL (`download`, `view`, or a Drive folder id).
   connections reported its first progress update after 1.9 s and finished in
   14 s with a matching SHA-256; the preallocation no longer writes the whole
   file before the transfer starts.
+- 0.19.15 produced `swiftdm-0.19.15-win64-setup.exe` with Inno Setup 6 from the
+  deployed tree; the installer installs per user, so no elevation is needed.
+  The installer itself has not been installed on a clean Windows 10 machine and
+  is not code signed yet.
