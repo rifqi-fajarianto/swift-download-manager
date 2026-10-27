@@ -101,7 +101,9 @@ jobs:
         shell: msys2 {0}
         run: |
           cd build
-          sha256sum ./*.zip ./*-setup.exe | sed 's| \./| |' > SHA256SUMS
+          # sha256sum marks binary-mode entries with '*' and keeps the ./ prefix;
+          # publish plain "hash  name" lines so the file matches the .deb entry.
+          sha256sum ./*.zip ./*-setup.exe | sed -E 's| [*]?\./| |' > SHA256SUMS
           cat SHA256SUMS
 
       - name: Upload the test log
@@ -246,7 +248,7 @@ jobs:
       - name: Write the checksum file
         run: |
           cd build
-          sha256sum ./*.deb | sed 's| \./| |' > SHA256SUMS
+          sha256sum ./*.deb | sed -E 's| [*]?\./| |' > SHA256SUMS
           cat ../windows/SHA256SUMS >> SHA256SUMS
           cat SHA256SUMS
 
