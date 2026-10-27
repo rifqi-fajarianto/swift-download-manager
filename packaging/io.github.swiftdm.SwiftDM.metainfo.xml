@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.19.18" date="2026-10-27">
+      <description>
+        <p>The Windows GUI executable uses the GUI subsystem, so launching it from Explorer, a shortcut or autostart opens no console window, and the executable together with the Inno Setup installer carries the SwiftDM application icon.</p>
+      </description>
+    </release>
     <release version="0.19.16" date="2026-10-27">
       <description>
         <p>The experimental Windows 10 port ships from main with a portable ZIP and a per-user Inno Setup installer, and release tags publish both next to the Debian package.</p>

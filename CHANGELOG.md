@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.18 — 2026-10-27
 
 - The Windows GUI executable now uses the GUI subsystem, so launching it from
   Explorer, the installer shortcut, the tray autostart entry or a shell no
