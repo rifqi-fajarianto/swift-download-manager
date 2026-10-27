@@ -18,6 +18,12 @@
   on): the full pipeline runs and uploads artifacts, but no release is created,
   edited, or attested.
 - Windows packages are not code signed yet; SmartScreen warns on first run.
+- Fixed the Windows package deploy step, which aborted the CI build with
+  "ldd found no MinGW runtime DLLs". `tools/deploy_msys_runtime.sh` now walks the
+  PE import table with `objdump` and copies each imported DLL found in the MSYS2
+  prefix (following the dependencies of the copied DLLs), instead of matching
+  `ldd` output against a fixed POSIX prefix path. The prefix is normalised with
+  `cygpath`, and a failure now prints the imports and the prefix.
 
 ## 0.19.15 — 2026-10-27
 

@@ -19,23 +19,46 @@ if [[ $# -ne 2 ]]; then
     exit 2
 fi
 
+# The CI action installs MSYS2 outside C:\msys64 and exports MINGW_PREFIX as a
+# Windows path, so normalise it before building the runtime directory below.
 prefix="${MINGW_PREFIX:-/ucrt64}"
+if command -v cygpath > /dev/null 2>&1; then
+    prefix="$(cygpath -u "$prefix")"
+fi
 export PATH="/usr/bin:${prefix}/bin:${PATH}"
 
 executable="$1"
 destination="$2"
 
+# Walk the PE import table instead of parsing ldd: the paths ldd prints depend
+# on the Cygwin and mount configuration of the build machine and have silently
+# stopped matching the prefix on the CI runner. objdump reports plain DLL names,
+# and each copied DLL is walked again so libcurl's own dependencies follow.
 copied=0
-while IFS= read -r dll; do
-    [[ -f "$dll" ]] || continue
-    # Overwrite so the deployment never keeps a stale runtime from an older
-    # toolchain update.
-    cp -f "$dll" "$destination/"
-    copied=$((copied + 1))
-done < <(ldd "$executable" | awk -v prefix="${prefix}/bin/" 'index($0, prefix) {print $3}')
+declare -A seen=()
+pending=("$executable")
+while [[ ${#pending[@]} -gt 0 ]]; do
+    current="${pending[0]}"
+    pending=("${pending[@]:1}")
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        [[ -z "${seen[$name]:-}" ]] || continue
+        seen[$name]=1
+        # DLLs provided by Windows itself are not in the MSYS2 prefix.
+        source_dll="${prefix}/bin/${name}"
+        [[ -f "$source_dll" ]] || continue
+        # Overwrite so the deployment never keeps a stale runtime from an older
+        # toolchain update.
+        cp -f "$source_dll" "$destination/"
+        pending+=("$source_dll")
+        copied=$((copied + 1))
+    done < <(objdump -p "$current" | awk '$1 == "DLL" && $2 == "Name:" {print $3}')
+done
 
 if [[ $copied -eq 0 ]]; then
-    echo "error: ldd found no MinGW runtime DLLs for $executable" >&2
+    echo "error: no MinGW runtime DLLs found for $executable" >&2
+    objdump -p "$executable" | awk '$1 == "DLL" && $2 == "Name:" {print "  import: " $3}' >&2
+    echo "  prefix: $prefix" >&2
     exit 1
 fi
 
