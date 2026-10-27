@@ -47,7 +47,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.17**. Status ini cepat
+> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.18**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -58,7 +58,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `src/ui/main_window.cpp` menjadi beberapa unit).
 - **Rilis stabil yang didukung**: 0.19.12 di Debian 13/Linux. Port Windows
   belum divalidasi GUI-nya dan belum diberi tag rilis.
-- **Versi kerja**: 0.19.17. Port Windows 10 eksperimental ada di `main` dan
+- **Versi kerja**: 0.19.18. Port Windows 10 eksperimental ada di `main` dan
   sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
@@ -75,6 +75,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Sejak 0.19.15 progress dilaporkan tiap 100 ms dan kecepatan disampel per
   jendela 200 ms, jadi tabel serta window progress menyegar maksimal 10 Hz
   tanpa timer UI tersendiri.
+  Sejak 0.19.18 `swiftdm.exe` membawa resource ikon aplikasi (7 ukuran,
+  16–256 px, dari `ui-assets/app-icon/main.ico`) dan installer Inno Setup
+  memakai berkas `.ico` yang sama lewat `SetupIconFile`, sehingga shortcut,
+  taskbar, dan uninstaller tidak lagi memakai ikon bawaan Windows.
   Yang masih terbuka: verifikasi GUI manual di Windows 10 (tray, dialog,
   pause/resume, autostart) dan code signing (installer serta exe belum
   ditandatangani sehingga SmartScreen masih memperingatkan).
@@ -192,7 +196,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.17
+### Sudah tersedia sampai 0.19.18
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -263,7 +267,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 | `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, dan test protokol browser. |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
 | `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, skrip installer Inno Setup (`packaging/windows/swiftdm.iss`), dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
-| `tools/` | Rasterizer ikon ekstensi dan ikon desktop. |
+| `tools/` | Rasterizer ikon ekstensi, ikon desktop, dan ikon Windows (`.ico`). |
 | `ui-assets/` | Sumber SVG ikon toolbar dan ikon aplikasi/ekstensi. |
 | `cmake/` | Template `version.h.in` dan helper CMake. |
 
@@ -344,9 +348,11 @@ Regenerasi ikon setelah mengubah SVG:
 - Ikon launcher (hicolor) dirender otomatis saat build dari
   `ui-assets/app-icon/main-icon.svg`; hasilnya ada di
   `build/generated/icons/hicolor/` dan ikut ter-install.
-- Ikon aksi ekstensi Chromium masih manual:
+- Ikon Windows (`ui-assets/app-icon/main.ico`, dipakai resource `swiftdm.exe`
+  dan `SetupIconFile`) dan ikon aksi ekstensi Chromium masih manual:
 
 ```sh
+cmake --build build --target render-ico
 cmake --build build --target render-extension-icons
 ```
 

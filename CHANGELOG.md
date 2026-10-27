@@ -12,6 +12,12 @@
   GUI-subsystem process; scripts that must block on `get` use
   `Start-Process -Wait` or `start /wait`. Headless Windows builds keep the
   console subsystem.
+- The Windows executable and the Inno Setup installer now carry the SwiftDM
+  application icon instead of the stock Windows one. `ui-assets/app-icon/main.ico`
+  holds the icon at 16, 24, 32, 48, 64, 128 and 256 px, rendered from
+  `main-icon.svg` by the new `render-ico` target; `src/app/swiftdm.rc.in` embeds
+  it in the executable and `SetupIconFile` gives the installer, its shortcuts
+  and the uninstaller the same icon.
 
 ## 0.19.16 — 2026-10-27
 

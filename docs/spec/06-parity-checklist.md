@@ -30,6 +30,11 @@ Windows notes:
   pipe or a file keeps its handle. Windows shells do not wait for a
   GUI-subsystem process, so a script that must block on `get` uses
   `Start-Process -Wait` (PowerShell) or `start /wait` (cmd).
+- Since 0.19.18 the executable embeds `ui-assets/app-icon/main.ico` (7 sizes,
+  16–256 px) as its icon resource, and the Inno Setup script reuses that file
+  through `SetupIconFile`, so Explorer, the shortcuts and the uninstaller show
+  the SwiftDM icon instead of the stock Windows one. `render-ico` regenerates
+  the `.ico` from `main-icon.svg`.
 - The tray icon, autostart and pause/resume behaviour still need a manual pass
   on a Windows 10 machine.
 - Extending a part file does not zero-fill it: `resize_file()` seeks to the new

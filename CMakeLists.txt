@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.19.17
+    VERSION 0.19.18
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -48,6 +48,14 @@ if(SWIFTSDM_BUILD_UI)
         find_program(BASH_EXECUTABLE bash REQUIRED)
         set(SWIFTSDM_WINDOWS_DEPLOY_DIR "${CMAKE_CURRENT_BINARY_DIR}/windows-deploy")
     endif()
+
+    # Regenerates ui-assets/app-icon/main.ico, the icon of the Windows
+    # executable and installer, after an icon change:
+    # cmake --build build --target render-ico
+    add_executable(render-ico tools/render_ico.cpp)
+    target_link_libraries(render-ico PRIVATE Qt6::Gui)
+    target_compile_definitions(render-ico PRIVATE
+        SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
     # Regenerates ext/chromium/icons/*.png from the SVG sources after an icon
     # change: cmake --build build --target render-extension-icons
@@ -171,6 +179,14 @@ if(SWIFTSDM_BUILD_UI)
     # build keeps the console subsystem so its output works without one.
     if(WIN32)
         set_target_properties(swiftdm PROPERTIES WIN32_EXECUTABLE ON)
+
+        # The icon lives in the executable's resources; the resource script is
+        # generated so the .ico path is absolute whatever working directory the
+        # resource compiler is started from.
+        enable_language(RC)
+        configure_file(src/app/swiftdm.rc.in
+                       "${CMAKE_CURRENT_BINARY_DIR}/generated/swiftdm.rc" @ONLY)
+        target_sources(swiftdm PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/swiftdm.rc")
     endif()
 
     # Toolbar/category icons: SVGs in ui-assets/ (provided for this project) plus

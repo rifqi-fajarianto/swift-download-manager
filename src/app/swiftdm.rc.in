@@ -1,0 +1,4 @@
+// Resources of the GUI executable: the application icon that Explorer, the
+// task bar and the installer shortcuts show. Regenerate the .ico from the SVG
+// source with `cmake --build build --target render-ico`.
+IDI_ICON1 ICON "@CMAKE_SOURCE_DIR@/ui-assets/app-icon/main.ico"

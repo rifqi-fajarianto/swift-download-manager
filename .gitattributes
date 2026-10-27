@@ -1,2 +1,5 @@
 # Shell scripts run through bash on Windows too, so they must keep LF endings.
 *.sh text eol=lf
+
+# Windows icon: CRLF conversion would corrupt the binary frames.
+*.ico binary
