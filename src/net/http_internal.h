@@ -17,6 +17,7 @@ constexpr int kIoTimeoutMs = 100;           // curl multi poll timeout
 constexpr int64_t kReportIntervalMs = 100;  // progress callbacks per second: 10
 constexpr int64_t kSpeedSampleMs = 200;     // window for the reported speed
 constexpr int kMaxRetries = 5;
+constexpr int kMaxRedirects = 15;
 
 // Failure messages carry the host's own explanation (rate limits, captcha
 // requirements, hotlink protection) instead of a bare "HTTP/1.1 403 Forbidden".
@@ -33,6 +34,8 @@ struct RequestOriginGuard {
     std::string original_origin;
     bool guarded = false;
     bool crossed_origin = false;
+    // Redirect target that was not requested because the origin changed.
+    std::string blocked_url;
     CURL* handle = nullptr;
 };
 

@@ -58,7 +58,7 @@ Windows notes:
 | Retry with backoff | Replicated (approximation) | exact original values UNKNOWN (E23) |
 | HTTP proxy + CONNECT tunnel | Replicated | via libcurl; settings dialog |
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |
-| Custom headers / cookies passthrough | Replicated | CLI `--header`; Chromium extension forwards scoped cookies and same-origin referrer |
+| Custom headers / cookies passthrough | Replicated | CLI `--header`; Chromium extension forwards scoped cookies and a referrer/headers only while the request stays on the same origin (cross-origin redirects drop `Referer`, `x-*` headers and POST bodies) |
 | URLs containing spaces or escaped filename bytes | Fixed (0.18.5) | Browser URLs remain fully encoded and the curl layer encodes unsafe bytes; Drive folder ZIP names containing spaces no longer fail URL parsing |
 | File names longer than a path component | Fixed (0.18.18) | A name from a long URL path or `Content-Disposition` no longer fails with "File name too long": it is shortened to 240 bytes (extension kept, hash of the original name appended), and the Windows device names are sanitized |
 | User-Agent setting + reset | Replicated | default UA string (E24) |

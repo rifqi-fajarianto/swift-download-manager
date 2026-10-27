@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.19 — 2026-10-28
+
+Allow browser downloads to follow cross-origin redirects without leaking request metadata.
+
+- Probe and text fetch requests now retry a blocked cross-origin redirect at the resolved target after dropping caller `x-*` headers, `Referer`, and any POST body. 301/302/303 continue as GET; a cross-origin 307/308 that would resend a body still fails closed.
+- `DownloadEngine` transfers the probe's resolved URL directly when the origin changed and strips the same metadata before transfer, so GitHub release downloads (`github.com` -> `release-assets.githubusercontent.com`) work from the Chromium extension instead of failing with `redirect blocked because the request contains custom headers or a referer`.
+- Cookies, user agent, proxy and same-origin redirect headers keep their existing behavior. Transfers that still encounter a sensitive cross-origin redirect fail closed.
+- Regression tests cover probe, `fetch_text`, segmented transfer and sequential transfer, plus same-origin headers.
+
 ## 0.19.18 — 2026-10-27
 
 - The Windows GUI executable now uses the GUI subsystem, so launching it from

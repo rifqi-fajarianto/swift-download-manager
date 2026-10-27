@@ -86,6 +86,9 @@ bool is_ftp_url(const std::string& url);
 // redirect targets, CLI arguments) must pass this before reaching libcurl.
 bool is_supported_download_url(const std::string& url);
 
+// True when both URLs use the same scheme, host and effective port.
+bool same_url_origin(const std::string& left, const std::string& right);
+
 // Probes a URL: HEAD first, falling back to GET Range: 0-0 (or POST when
 // post_data is set). FTP URLs use a NOBODY (SIZE) probe instead. Fills
 // size/range support/validators/filename hint.

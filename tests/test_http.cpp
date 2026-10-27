@@ -372,7 +372,7 @@ void test_redirect(const std::string& dir, testutil::TestHttpServer& server) {
     CHECK(file_matches(result.path, 1048576));
 }
 
-void test_sensitive_headers_do_not_cross_redirect_origin(
+void test_sensitive_headers_are_stripped_on_cross_origin_redirect(
     const std::string& dir, testutil::TestHttpServer& server) {
     const std::string redirect_url =
         server.base_url() + "/redirect-cross-origin/65536";
@@ -380,8 +380,7 @@ void test_sensitive_headers_do_not_cross_redirect_origin(
     const int forwarded_headers_before = testutil::g_forwarded_sensitive_headers.load();
     const int forwarded_referers_before = testutil::g_forwarded_referers.load();
 
-    for (const bool use_referer : {false, true}) {
-        const int redirect_before = testutil::g_cross_origin_redirects.load();
+    auto make_options = [&](bool use_referer) {
         HttpOptions options;
         options.url = redirect_url;
         if (use_referer) {
@@ -389,23 +388,49 @@ void test_sensitive_headers_do_not_cross_redirect_origin(
         } else {
             options.headers.push_back({"x-audit-token", "secret-token"});
         }
-        const ProbeResult probe = probe_url(options);
-        CHECK(!probe.ok);
-        CHECK_EQ(probe.error, std::string(kRedirectWithSensitiveHeadersError));
+        return options;
+    };
+
+    for (const bool use_referer : {false, true}) {
+        const int redirect_before = testutil::g_cross_origin_redirects.load();
+        const ProbeResult probe = probe_url(make_options(use_referer));
+        CHECK(probe.ok);
+        CHECK(probe.effective_url.find("//localhost:") != std::string::npos);
         CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
-        CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+        CHECK(testutil::g_cross_origin_redirect_targets.load() > probe_target_before);
         CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
         CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
     }
 
-    // Exercise the transfer path independently of probe_url(): callers may
-    // reuse a previously obtained ProbeResult, but the transport must still
-    // stop before forwarding sensitive request metadata to another origin.
+    // fetch_text (HLS playlists, interstitial pages) follows the same rule.
+    {
+        HttpOptions options = make_options(/*use_referer=*/true);
+        std::string text;
+        std::string effective;
+        std::string error;
+        CHECK(fetch_text(options, &text, &effective, &error, 1u << 20));
+        CHECK_EQ(text.size(), size_t(65536));
+        CHECK(effective.find("//localhost:") != std::string::npos);
+        CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
+        CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
+    }
+
+    // The engine resolves the redirect during its own probe, transfers the final
+    // URL directly, and keeps caller metadata off the new origin on both the
+    // segmented and sequential paths.
     const Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
     for (const bool use_referer : {false, true}) {
         for (const bool segmented : {false, true}) {
-            const int redirect_before = testutil::g_cross_origin_redirects.load();
+            HttpOptions options = make_options(use_referer);
+            const ProbeResult resolved = probe_url(options);
+            CHECK(resolved.ok);
+            ProbeResult cached = resolved;
+            if (!segmented) {
+                cached.accept_ranges = false;
+                cached.content_length = 0;
+            }
+
             DownloadRequest request;
             request.url = redirect_url;
             request.output_dir = dir + (use_referer ? "/referer" : "/header") +
@@ -416,30 +441,24 @@ void test_sensitive_headers_do_not_cross_redirect_origin(
             } else {
                 request.headers.push_back({"x-audit-token", "secret-token"});
             }
-            ProbeResult cached_probe;
-            cached_probe.ok = true;
-            cached_probe.effective_url = redirect_url;
-            cached_probe.mime_type = "application/octet-stream";
-            cached_probe.content_length = segmented ? 65536 : 0;
-            cached_probe.accept_ranges = segmented;
-            request.probe = cached_probe;
+            request.probe = cached;
 
             const auto result = engine.run(request);
-            CHECK(result.status == DownloadResult::Status::Failed);
-            CHECK_EQ(result.error, std::string(kRedirectWithSensitiveHeadersError));
-            CHECK(testutil::g_cross_origin_redirects.load() > redirect_before);
-            CHECK_EQ(testutil::g_cross_origin_redirect_targets.load(), probe_target_before);
+            CHECK(result.status == DownloadResult::Status::Completed);
+            CHECK(file_matches(result.path, 65536));
             CHECK_EQ(testutil::g_forwarded_sensitive_headers.load(), forwarded_headers_before);
             CHECK_EQ(testutil::g_forwarded_referers.load(), forwarded_referers_before);
         }
     }
 
     // Ordinary same-origin redirects keep working with caller-supplied headers.
+    const int same_origin_headers_before = testutil::g_forwarded_sensitive_headers.load();
     HttpOptions same_origin;
     same_origin.url = server.base_url() + "/redirect/1024";
     same_origin.headers.push_back({"x-audit-token", "same-origin-token"});
     const ProbeResult allowed = probe_url(same_origin);
     CHECK(allowed.ok);
+    CHECK(testutil::g_forwarded_sensitive_headers.load() > same_origin_headers_before);
 
     DownloadRequest same_origin_request;
     same_origin_request.url = same_origin.url;
@@ -966,7 +985,8 @@ int main() {
     test_resume_after_pause(dir + "/resume", server);
     test_resume_validator_and_content_range(dir + "/resume-integrity", server);
     test_redirect(dir + "/redirect", server);
-    test_sensitive_headers_do_not_cross_redirect_origin(dir + "/redirect-guard", server);
+    test_sensitive_headers_are_stripped_on_cross_origin_redirect(
+        dir + "/redirect-guard", server);
     test_forbidden(dir + "/forbidden", server);
     test_probe_error_detail(server);
     test_transfer_error_detail(dir + "/transfer-error", server);

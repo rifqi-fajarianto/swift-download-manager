@@ -98,6 +98,11 @@ bool is_supported_download_url(const std::string& url) {
     return !authority.empty();
 }
 
+bool same_url_origin(const std::string& left, const std::string& right) {
+    const std::string a = request_origin(left.c_str());
+    return !a.empty() && a == request_origin(right.c_str());
+}
+
 struct TextCtx {
     std::string* text = nullptr;
     uint64_t max_bytes = 0;
@@ -128,58 +133,74 @@ bool fetch_text(const HttpOptions& options, std::string* text, std::string* effe
         return false;
     }
     ensure_curl_global();
-    CURL* handle = curl_easy_init();
-    if (!handle) {
-        if (error) *error = "cannot initialize curl";
-        return false;
-    }
-    curl_slist* headers = build_headers(options.headers);
-    char errbuf[CURL_ERROR_SIZE] = {0};
-    TextCtx ctx{text, max_bytes};
-    RequestOriginGuard origin_guard;
-    apply_common_options(handle, options, headers, &origin_guard);
-    curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
-    curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, text_write_cb);
-    curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
-    const CURLcode rc = curl_easy_perform(handle);
-    long code = 0;
-    curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
-    char* effective = nullptr;
-    if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK && effective &&
-        effective_url) {
-        *effective_url = effective;
-    }
-    curl_easy_cleanup(handle);
-    if (headers) curl_slist_free_all(headers);
+    HttpOptions current = options;
+    for (int attempt = 0; attempt <= kMaxRedirects; ++attempt) {
+        if (text) text->clear();
+        CURL* handle = curl_easy_init();
+        if (!handle) {
+            if (error) *error = "cannot initialize curl";
+            return false;
+        }
+        curl_slist* headers = build_headers(current.headers);
+        char errbuf[CURL_ERROR_SIZE] = {0};
+        TextCtx ctx{text, max_bytes};
+        RequestOriginGuard origin_guard;
+        apply_common_options(handle, current, headers, &origin_guard);
+        curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errbuf);
+        curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, text_write_cb);
+        curl_easy_setopt(handle, CURLOPT_WRITEDATA, &ctx);
+        const CURLcode rc = curl_easy_perform(handle);
+        long code = 0;
+        curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
+        char* effective = nullptr;
+        if (curl_easy_getinfo(handle, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK &&
+            effective && effective_url) {
+            *effective_url = effective;
+        }
+        curl_easy_cleanup(handle);
+        if (headers) curl_slist_free_all(headers);
 
 #if LIBCURL_VERSION_NUM < 0x075000
-    if (origin_guard.guarded && code >= 300 && code < 400) {
-        origin_guard.crossed_origin = true;
-    }
-#endif
-    if (origin_guard.crossed_origin) {
-        if (error) *error = kRedirectWithSensitiveHeadersError;
-        return false;
-    }
-    if (effective_url && effective_url->empty()) *effective_url = options.url;
-    if (rc != CURLE_OK) {
-        if (error) {
-            if (ctx.overflow) *error = "response is larger than the allowed size";
-            else if (rc == CURLE_URL_MALFORMAT) *error = kInvalidUrlError;
-            else *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+        if (origin_guard.guarded && code >= 300 && code < 400) {
+            origin_guard.crossed_origin = true;
         }
-        return false;
+#endif
+        if (origin_guard.crossed_origin) {
+            if (origin_guard.blocked_url.empty()) {
+                if (error) *error = kRedirectWithSensitiveHeadersError;
+                return false;
+            }
+            if (!is_supported_download_url(origin_guard.blocked_url)) {
+                if (error) *error = kInvalidUrlError;
+                return false;
+            }
+            current.url = origin_guard.blocked_url;
+            current.headers.clear();
+            current.referer.clear();
+            continue;
+        }
+        if (effective_url && effective_url->empty()) *effective_url = current.url;
+        if (rc != CURLE_OK) {
+            if (error) {
+                if (ctx.overflow) *error = "response is larger than the allowed size";
+                else if (rc == CURLE_URL_MALFORMAT) *error = kInvalidUrlError;
+                else *error = errbuf[0] ? errbuf : curl_easy_strerror(rc);
+            }
+            return false;
+        }
+        if (code >= 400) {
+            if (error) *error = http_error_text(code);
+            return false;
+        }
+        if (origin_guard.guarded && code >= 300 && code < 400) {
+            if (error) *error = kRedirectWithSensitiveHeadersError;
+            return false;
+        }
+        if (error) error->clear();
+        return true;
     }
-    if (code >= 400) {
-        if (error) *error = http_error_text(code);
-        return false;
-    }
-    if (origin_guard.guarded && code >= 300 && code < 400) {
-        if (error) *error = kRedirectWithSensitiveHeadersError;
-        return false;
-    }
-    if (error) error->clear();
-    return true;
+    if (error) *error = "too many redirects";
+    return false;
 }
 
 

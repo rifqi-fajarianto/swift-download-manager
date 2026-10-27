@@ -104,6 +104,7 @@ int redirect_origin_guard(void* userdata, char*, char*, int, int) {
     }
     if (request_origin(effective_url) != guard->original_origin) {
         guard->crossed_origin = true;
+        guard->blocked_url = effective_url;
         return CURL_PREREQFUNC_ABORT;
     }
     return CURL_PREREQFUNC_OK;
@@ -153,7 +154,7 @@ void apply_common_options(CURL* handle, const HttpOptions& o, curl_slist* header
         curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
 #endif
     }
-    curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 15L);
+    curl_easy_setopt(handle, CURLOPT_MAXREDIRS, static_cast<long>(kMaxRedirects));
     curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT,
                      static_cast<long>(o.connect_timeout_seconds));
     curl_easy_setopt(handle, CURLOPT_LOW_SPEED_LIMIT, 1L);

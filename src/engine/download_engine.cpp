@@ -262,6 +262,11 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         result.error = fetch_error.empty() ? "cannot read the HLS playlist" : fetch_error;
         return result;
     }
+    if (!effective_url.empty() && !same_url_origin(options.url, effective_url)) {
+        options.headers.clear();
+        options.referer.clear();
+        options.post_data.clear();
+    }
 
     HlsPlaylist playlist;
     std::string parse_error;
@@ -285,6 +290,11 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
             result.status = DownloadResult::Status::Failed;
             result.error = fetch_error;
             return result;
+        }
+        if (!effective_url.empty() && !same_url_origin(options.url, effective_url)) {
+            options.headers.clear();
+            options.referer.clear();
+            options.post_data.clear();
         }
         if (!parse_hls_playlist(text, &playlist, &parse_error)) {
             result.status = DownloadResult::Status::Failed;
@@ -365,7 +375,7 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
     bool paused = false;
     bool failed = false;
     const auto fetch_one = [&](const std::string& uri) -> bool {
-        HttpOptions segment_options = base_options;
+        HttpOptions segment_options = options;
         segment_options.url = resolve_playlist_uri(effective_url, uri);
         uint64_t written_here = 0;
         const TransferOutcome outcome =
@@ -559,6 +569,17 @@ DownloadResult DownloadEngine::run(
     // A resolved link (Drive viewer links and virus-scan notices) names the URL
     // that actually serves the file; every transfer below must use it.
     if (!probe.download_url.empty()) options.url = probe.download_url;
+    // A cross-origin redirect was followed by the probe without the caller's
+    // headers or referer. Transfer the resolved URL directly and keep those
+    // credentials off the new origin as well.
+    const std::string resolved_url =
+        probe.effective_url.empty() ? probe.download_url : probe.effective_url;
+    if (!resolved_url.empty() && !same_url_origin(request.url, resolved_url)) {
+        options.url = resolved_url;
+        options.headers.clear();
+        options.referer.clear();
+        options.post_data.clear();
+    }
     options.etag = probe.etag;
     options.last_modified = probe.last_modified;
 

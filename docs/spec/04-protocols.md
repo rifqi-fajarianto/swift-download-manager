@@ -96,11 +96,15 @@ same allowlist refuses a URL whose authority carries userinfo
 through the history, the log and the request line; the browser integration
 already rejects such URLs. Proxy authentication has its own setting
 (`05-settings.md`).
-Requests carrying caller-supplied `x-*` headers or a `Referer` are allowed to
-redirect within the same origin, but a redirect to a different origin is
-blocked before the redirected request is sent. This prevents request tokens or
-page URLs from leaking to another host; use the final download URL if a host's
-legitimate flow requires a cross-origin redirect.
+Requests carrying caller-supplied `x-*` headers or a `Referer` may redirect
+within the same origin with those values intact. When a redirect changes the
+origin, the request is retried at the resolved target without the caller
+headers, `Referer`, or any POST body; 301/302/303 continue as GET and a
+cross-origin 307/308 with a body fails closed. This keeps GitHub release
+downloads (`github.com` to `release-assets.githubusercontent.com`) working
+without leaking request tokens or page URLs to another host. Cookies stay
+URL-scoped through libcurl, and transfers reuse the probe's resolved URL so they
+do not repeat the redirect.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
 accepts only the extension ID derived from the checked-in manifest's fixed

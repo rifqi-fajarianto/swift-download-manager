@@ -148,9 +148,9 @@ entry opens no console window; CLI runs attach to the parent console. Shells do
 not wait for a GUI-subsystem process, so scripts that must block on `get` use
 `Start-Process -Wait` (PowerShell) or `start /wait` (cmd). GUI checks on
 Windows 10 are still manual.
-Version 0.19.18 is the port tracking `main` (named queues, audit hardening, the
-module split and the Windows file I/O fixes); Windows support is still
-experimental.
+Version 0.19.19 is the port tracking `main` (named queues, audit hardening, the
+module split, the Windows file I/O fixes and cross-origin redirect handling);
+Windows support is still experimental.
 
 `qt6-svg-plugins` is required to load SVG icons at runtime.
 

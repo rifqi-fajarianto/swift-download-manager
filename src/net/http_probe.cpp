@@ -96,7 +96,7 @@ size_t probe_body_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
 // Runs one probe request. Returns true when a usable response arrived.
 bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
                 bool use_post, ProbeCapture& cap, std::string& effective_url,
-                std::string& error) {
+                std::string& error, std::string* blocked_url) {
     CURL* handle = curl_easy_init();
     if (!handle) {
         error = "cannot initialize curl";
@@ -137,7 +137,7 @@ bool probe_once(const HttpOptions& o, curl_slist* headers, bool use_head,
     curl_easy_cleanup(handle);
 
     if (origin_guard.crossed_origin) {
-        cap = ProbeCapture{};
+        if (blocked_url) *blocked_url = origin_guard.blocked_url;
         error = kRedirectWithSensitiveHeadersError;
         return false;
     }
@@ -213,12 +213,47 @@ ProbeResult probe_ftp(const HttpOptions& options) {
     return out;
 }
 
+// Follows redirects that the origin guard refused to send. libcurl has already
+// resolved the target URL, so the retry only has to rebuild the request without
+// the caller-provided metadata that must not reach another origin.
+bool probe_follow(HttpOptions current, bool use_head, bool use_post, ProbeCapture& cap,
+                  std::string& effective_url, std::string& error) {
+    for (int attempt = 0; attempt <= kMaxRedirects; ++attempt) {
+        cap = ProbeCapture{};
+        std::string blocked_url;
+        curl_slist* headers = build_headers(current.headers);
+        const bool ok = probe_once(current, headers, use_head, use_post, cap, effective_url,
+                                   error, &blocked_url);
+        if (headers) curl_slist_free_all(headers);
+        if (ok) return true;
+        if (blocked_url.empty()) return false;
+        if (!is_supported_download_url(blocked_url)) {
+            error = kInvalidUrlError;
+            return false;
+        }
+        if (use_post && !current.post_data.empty()) {
+            // A redirect that keeps the method would resend the body to the new
+            // origin; fail closed. 301/302/303 turn a POST into a GET.
+            if (cap.status != 301 && cap.status != 302 && cap.status != 303) {
+                error = kRedirectWithSensitiveHeadersError;
+                return false;
+            }
+            current.post_data.clear();
+            use_post = false;
+        }
+        current.url = blocked_url;
+        current.headers.clear();
+        current.referer.clear();
+    }
+    error = "too many redirects";
+    return false;
+}
+
 // Probe without interstitial handling: HEAD first, GET Range: 0-0 as fallback.
 ProbeResult probe_url_once(const HttpOptions& options) {
     if (is_ftp_url(options.url)) return probe_ftp(options);
     ensure_curl_global();
     ProbeResult out;
-    curl_slist* headers = build_headers(options.headers);
 
     ProbeCapture cap;
     std::string error;
@@ -226,28 +261,26 @@ ProbeResult probe_url_once(const HttpOptions& options) {
 
     // 1) HEAD (unless POST data requires a POST probe).
     if (options.post_data.empty()) {
-        if (probe_once(options, headers, /*use_head=*/true, /*use_post=*/false, cap,
-                       effective_url, error)) {
+        if (probe_follow(options, /*use_head=*/true, /*use_post=*/false, cap, effective_url,
+                         error)) {
             if (cap.status >= 200 && cap.status < 400) {
                 // usable
             } else {
                 cap = ProbeCapture{};  // fall through to GET range probe
             }
+        } else {
+            cap = ProbeCapture{};  // GET may still succeed where HEAD did not
         }
     }
 
     // 2) GET with Range: 0-0 (or POST).
     if (!cap.got_status) {
         const bool use_post = !options.post_data.empty();
-        if (!probe_once(options, headers, /*use_head=*/false, use_post, cap, effective_url,
-                        error)) {
-            if (headers) curl_slist_free_all(headers);
+        if (!probe_follow(options, /*use_head=*/false, use_post, cap, effective_url, error)) {
             out.error = error.empty() ? "probe failed" : error;
             return out;
         }
     }
-
-    if (headers) curl_slist_free_all(headers);
 
     out.status_code = cap.status;
     out.effective_url = effective_url.empty() ? options.url : effective_url;
