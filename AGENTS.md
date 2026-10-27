@@ -47,7 +47,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.14**. Status ini cepat
+> Snapshot terakhir: **2026-10-27**, versi kerja **0.19.15**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -57,7 +57,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   `src/ui/main_window.cpp` menjadi beberapa unit).
 - **Rilis stabil yang didukung**: 0.19.12 di Debian 13/Linux. Port Windows
   belum dirilis dan belum divalidasi GUI-nya.
-- **Versi kerja**: 0.19.14. Port Windows 10 eksperimental dikerjakan pada branch
+- **Versi kerja**: 0.19.15. Port Windows 10 eksperimental dikerjakan pada branch
   `windows` dan sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
@@ -70,6 +70,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   Sejak 0.19.14 `resize_file()` memperpanjang part file lewat
   `SetEndOfFile()` sehingga prealokasi tidak lagi menulis nol fisik
   (`_chsize_s()` sebelumnya memblokir unduhan besar sebelum byte pertama tiba).
+  Sejak 0.19.15 progress dilaporkan tiap 100 ms dan kecepatan disampel per
+  jendela 200 ms, jadi tabel serta window progress menyegar maksimal 10 Hz
+  tanpa timer UI tersendiri.
   Yang masih terbuka: verifikasi GUI manual di Windows 10 (tray, dialog,
   pause/resume, autostart) dan penggantian subsistem console menjadi GUI dengan
   wrapper `AttachConsole`. Platform acuan dan rilis stabil tetap Debian
@@ -187,7 +190,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.14
+### Sudah tersedia sampai 0.19.15
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi

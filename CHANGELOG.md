@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.15 — 2026-10-27
+
+- Progress updates reach the UI ten times per second instead of four:
+  `kReportIntervalMs` is now 100 ms (was 250 ms) and the segment loop no longer
+  sleeps past the next report. The Bandwidth column, the Remaining Time
+  estimate and the progress window follow the same cadence, so the reported
+  speed moves fluidly instead of stepping every few ticks.
+- The speed sample window shrinks to 200 ms (was 500 ms) so the displayed value
+  reacts sooner; the EMA smoothing (`0.6 * old + 0.4 * instant`) is unchanged.
+  The window is now `kSpeedSampleMs` in `net/http_internal.h`.
+- Tuning only: DB checkpoints (5 s), resume state (2 s) and the transfer paths
+  are untouched; sequential/FTP/HLS downloads still report no speed value.
+
 ## 0.19.14 — 2026-10-27
 
 Windows only; Linux behavior unchanged.

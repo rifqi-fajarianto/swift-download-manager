@@ -143,7 +143,9 @@ are our own choices where the original is UNKNOWN (E23).
 
 - Bandwidth column shows current aggregate speed (bytes/s, human units);
   Remaining Time = remaining bytes / current speed, falling back to `--` when
-  speed is 0. Table refresh interval **[design: 1 s]**.
+  speed is 0. The engine reports progress every 100 ms and samples the speed
+  over a 200 ms window; the UI has no timer of its own, so the table and the
+  progress window repaint at up to 10 Hz.
 
 ## 7. Scheduling and limits (0.19.0)
 

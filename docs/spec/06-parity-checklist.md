@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.19.14 (Windows port is experimental and not yet release-validated).
+Status as of 0.19.15 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -45,7 +45,7 @@ Windows notes:
 | Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts. Named queues and scheduling are implemented in 0.19.0 (see the v1.1 rows below) |
 | Categories + category folders | Replicated | tree filter + extension-based routing |
 | Per-download bandwidth limit | Replicated | enable toggle + presets; active limit shown in orange. 0.18.2: live changes apply across transfer paths with 500 ms UI debounce; other Options fields require pause. |
-| Speed + remaining time display | Replicated | 250 ms engine progress → 1 Hz effective UI refresh |
+| Speed + remaining time display | Replicated | 100 ms engine progress, 200 ms speed window → up to 10 Hz UI refresh (0.19.15); sequential/FTP/HLS still show no speed |
 | Retry with backoff | Replicated (approximation) | exact original values UNKNOWN (E23) |
 | HTTP proxy + CONNECT tunnel | Replicated | via libcurl; settings dialog |
 | SOCKS4/SOCKS5 + auth | Replicated | via libcurl; settings dialog |

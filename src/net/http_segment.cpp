@@ -463,13 +463,18 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                     goto finish;
                 }
             }
-            curl_multi_poll(impl.multi, nullptr, 0, kIoTimeoutMs, nullptr);
+            // Do not sleep past the next report, otherwise an idle poll drags
+            // the progress cadence below kReportIntervalMs.
+            const int64_t to_report = kReportIntervalMs - (now_ms() - last_report);
+            const int poll_ms = static_cast<int>(
+                std::max<int64_t>(1, std::min<int64_t>(kIoTimeoutMs, to_report)));
+            curl_multi_poll(impl.multi, nullptr, 0, poll_ms, nullptr);
         }
 
         // Speed sampling and progress/pause reporting.
         const int64_t t = now_ms();
         const uint64_t done = impl.done_bytes();
-        if (t - last_sample >= 500) {
+        if (t - last_sample >= kSpeedSampleMs) {
             const double dt = static_cast<double>(t - last_sample) / 1000.0;
             if (dt > 0) {
                 const double inst = static_cast<double>(done - last_done) / dt;
