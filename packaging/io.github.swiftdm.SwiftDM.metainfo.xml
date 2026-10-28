@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.20.2" date="2026-10-28">
+      <description>
+        <p>Every download row keeps its own log file, opened from Download Properties, and the "Get File Creation Date From Server" option now sets the finished file's modification time from the HTTP Creation-Date/Last-Modified header or the FTP MDTM time. Settings loses the empty Passwords tab, and the Settings, Properties, Browser Extensions and About windows no longer block the Download Complete and progress windows.</p>
+      </description>
+    </release>
     <release version="0.19.18" date="2026-10-27">
       <description>
         <p>The Windows GUI executable uses the GUI subsystem, so launching it from Explorer, a shortcut or autostart opens no console window, and the executable together with the Inno Setup installer carries the SwiftDM application icon.</p>
