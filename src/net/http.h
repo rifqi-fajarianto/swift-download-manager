@@ -45,6 +45,9 @@ struct ProbeResult {
     std::string mime_type;
     std::string etag;
     std::string last_modified;
+    // File time advertised by the server (Unix seconds): Creation-Date or
+    // Last-Modified for HTTP, MDTM for FTP. 0 when the server sent none.
+    int64_t server_time = 0;
     // URL the transfer has to use when it differs from the requested one
     // (a resolved download interstitial, or a normalised site link). Empty
     // means "the requested URL is already correct".

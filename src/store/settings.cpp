@@ -199,6 +199,14 @@ std::string default_database_path() {
 #endif
 }
 
+std::string default_log_dir() {
+#ifdef _WIN32
+    return xdg_data_home() + "/SwiftDM/logs";
+#else
+    return xdg_data_home() + "/swiftdm/logs";
+#endif
+}
+
 bool is_valid_theme(const std::string& value) {
     const std::string v = to_lower(trim(value));
     return v == "system" || v == "light" || v == "dark";

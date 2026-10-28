@@ -70,6 +70,7 @@ bool is_valid_tray_icon_style(const std::string& value);  // colorful | simple
 std::string default_config_path();  // platform config root/SwiftDM/swiftdm.ini
 std::string default_temp_dir();     // platform local data root/SwiftDM/tmp
 std::string default_database_path();  // platform local data root/SwiftDM/swiftdm.db
+std::string default_log_dir();  // platform local data root/SwiftDM/logs
 
 Settings default_settings();
 

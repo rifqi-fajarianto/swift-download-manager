@@ -17,6 +17,7 @@
 
 class QAction;
 class QCloseEvent;
+class QDialog;
 class QLabel;
 class QListWidget;
 class QListWidgetItem;
@@ -124,6 +125,7 @@ class MainWindow : public QMainWindow {
     void open_folder_for_row(int row);
     void show_properties_for_row(int row);
     void remove_row_with_cleanup(int row, bool check_queue = true);
+    void remove_download_log(const DownloadItem* item);
     void update_action_states();
     int row_at_view_pos(const QPoint& pos) const;  // source row, or -1
     QList<int> selected_rows() const;  // source rows, descending
@@ -225,6 +227,9 @@ class MainWindow : public QMainWindow {
     bool shutting_down_ = false;
 
     QHash<int, QPointer<DownloadWindow>> windows_;
+    // Kept so a second Settings request raises the open window instead of
+    // stacking another one.
+    QPointer<QDialog> settings_dialog_;
     QHash<qint64, qint64> last_progress_save_ms_;  // history id -> last DB write
     bool quitting_ = false;
     bool tray_note_shown_ = false;

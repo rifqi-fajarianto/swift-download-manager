@@ -140,15 +140,14 @@ int main(int argc, char** argv) {
     check(tabs != nullptr, "the dialog has a tab widget");
     if (!tabs) return 1;
 
-    check(tabs->count() == 5, "the dialog has five tabs");
+    check(tabs->count() == 4, "the dialog has four tabs");
     // The section layout owns the minimum size. A fixed minimum below the
     // layout minimum lets Qt compress rows, which once collapsed the directory
     // editors to zero height.
     check(dialog.minimumSize().isNull(),
           "the dialog leaves the minimum size to the layout");
     const QStringList expected = {QStringLiteral("General"), QStringLiteral("Interface"),
-                                   QStringLiteral("Download"), QStringLiteral("Proxy/Socks"),
-                                   QStringLiteral("Passwords")};
+                                   QStringLiteral("Download"), QStringLiteral("Proxy/Socks")};
     for (int i = 0; i < tabs->count() && i < expected.size(); ++i) {
         check(tabs->tabText(i) == expected[i], "the tabs keep the expected order");
     }
@@ -159,8 +158,7 @@ int main(int argc, char** argv) {
     const QWidget* interface_page = tabs->widget(1);
     const QWidget* download_page = tabs->widget(2);
     const QWidget* proxy_page = tabs->widget(3);
-    const QWidget* passwords_page = tabs->widget(4);
-    check(general_page && interface_page && download_page && proxy_page && passwords_page,
+    check(general_page && interface_page && download_page && proxy_page,
           "every settings tab exists");
     if (general_page) {
         check(section_titles(general_page) ==
@@ -195,10 +193,6 @@ int main(int argc, char** argv) {
               "the proxy tab has the Proxy type, Server and Authentication sections");
         check(all_controls_are_in_sections(proxy_page),
               "the proxy tab has no control outside a section");
-    }
-    if (passwords_page) {
-        check(section_titles(passwords_page) == QStringList({QStringLiteral("Saved passwords")}),
-              "the passwords tab has its section");
     }
 
     // General tab: the confirmation dialog, the completion dialog and the app
@@ -403,10 +397,6 @@ int main(int argc, char** argv) {
                   no_proxy->parentWidget() == socks_proxy->parentWidget(),
               "the proxy type radio buttons share a parent");
     }
-
-    // Passwords tab: the placeholder note.
-    check(passwords_page != nullptr && !passwords_page->findChildren<QLabel*>().isEmpty(),
-          "the passwords tab shows its placeholder");
 
     if (failures == 0) std::printf("settings_dialog: all checks passed\n");
     return failures == 0 ? 0 : 1;

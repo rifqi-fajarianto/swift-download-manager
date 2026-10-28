@@ -570,11 +570,24 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::on_settings() {
-    SettingsDialog dialog(settings_, this);
-    if (dialog.exec() != QDialog::Accepted) return;
-    // The appearance settings take effect right away; no restart needed.
-    apply_interface_settings();
-    apply_tray_visibility();
+    // Window-modal instead of exec(): the main window stays blocked, but other
+    // top-level windows (Download Complete, progress windows) still take
+    // clicks while the settings dialog is open.
+    if (settings_dialog_) {
+        settings_dialog_->raise();
+        settings_dialog_->activateWindow();
+        return;
+    }
+    auto* dialog = new SettingsDialog(settings_, this);
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    settings_dialog_ = dialog;
+    connect(dialog, &QDialog::accepted, this, [this] {
+        // The appearance settings take effect right away; no restart needed.
+        apply_interface_settings();
+        apply_tray_visibility();
+    });
+    dialog->open();
 }
 
 void MainWindow::on_tree_selection() {

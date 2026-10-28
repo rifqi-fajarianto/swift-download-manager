@@ -457,6 +457,8 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
     // The GUI always resolves the folder (category included) before the task
     // starts, so the engine must not append a category subfolder again.
     options.apply_category_folder = false;
+    // Fresh row id on every start: the per-download log follows the history row.
+    options.history_id = item->history_id;
 
     auto* task = new DownloadTask(settings_, options, model_);
     if (probe) task->set_cached_probe(*probe);

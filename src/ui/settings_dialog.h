@@ -15,9 +15,10 @@ class QSpinBox;
 
 namespace swiftdm::ui {
 
-// Settings dialog with tabs General / Interface / Download / Proxy-Socks /
-// Passwords, mirroring the reference options window
-// (docs/spec/01-product.md §3.7, 05-settings.md).
+// Settings dialog with tabs General / Interface / Download / Proxy-Socks,
+// mirroring the reference options window
+// (docs/spec/01-product.md §3.7, 05-settings.md). The Passwords tab waits for
+// the `auths` store and is documented as planned instead of shown empty.
 class SettingsDialog : public QDialog {
     Q_OBJECT
   public:
@@ -31,7 +32,6 @@ class SettingsDialog : public QDialog {
     QWidget* build_interface_tab();
     QWidget* build_download_tab();
     QWidget* build_proxy_tab();
-    QWidget* build_passwords_tab();
 
     // Adds a directory picker row to `layout`; returns the line edit. The row
     // widgets are parented to `parent` so they stay inside the owning section.

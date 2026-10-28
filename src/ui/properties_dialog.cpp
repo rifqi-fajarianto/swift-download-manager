@@ -15,6 +15,8 @@
 #include <QVBoxLayout>
 
 #include "core/util.h"
+#include "engine/download_engine.h"
+#include "store/settings.h"
 #include "ui/download_task.h"
 #include "ui/icons.h"
 #include "ui/section_box.h"
@@ -137,6 +139,30 @@ PropertiesDialog::PropertiesDialog(const DownloadItem& item, const DownloadTask*
     const QString temp_path =
         task && !task->workspace_dir().isEmpty() ? task->workspace_dir() : item.temp_path;
     add_read_only_row(location, tr("Temp path"), temp_path, "properties_temp_path");
+
+    // Per-download log written by the engine (docs/spec/02-data-model.md §3).
+    // The row is a viewer; a missing file just disables the button.
+    const QString log_name =
+        item.dest_path.isEmpty() ? item.file_name : QFileInfo(item.dest_path).fileName();
+    const QString log_path = QString::fromStdString(swiftdm::download_log_path(
+        swiftdm::default_log_dir(), item.history_id, log_name.toStdString()));
+    auto* log_row = new QWidget(location->parentWidget());
+    auto* log_layout = new QHBoxLayout(log_row);
+    log_layout->setContentsMargins(0, 0, 0, 0);
+    log_layout->setSpacing(6);
+    auto* log_edit = new QLineEdit(log_path, log_row);
+    log_edit->setObjectName(QStringLiteral("properties_log_path"));
+    log_edit->setReadOnly(true);
+    log_edit->setCursorPosition(0);
+    if (!log_path.isEmpty()) log_edit->setToolTip(log_path);
+    log_layout->addWidget(log_edit, 1);
+    auto* open_log = new QPushButton(tr("Open Log"), log_row);
+    open_log->setObjectName(QStringLiteral("properties_open_log"));
+    open_log->setEnabled(!log_path.isEmpty() && QFileInfo::exists(log_path));
+    log_layout->addWidget(open_log);
+    connect(open_log, &QPushButton::clicked, this,
+            [log_path] { QDesktopServices::openUrl(QUrl::fromLocalFile(log_path)); });
+    location->addRow(tr("Log file"), log_row);
 
     auto* source = add_form_section(layout, this, tr("Source"));
     add_read_only_row(source, tr("URL"), item.url, "properties_url");

@@ -248,6 +248,7 @@ void DownloadTask::run() {
     // `probe` is either the confirmation result or a fresh result from this
     // run. In both cases DownloadEngine must use it instead of probing again.
     request.probe = probe;
+    request.history_id = options_.history_id;
 
     swiftdm::DownloadEngine engine(settings_);
     QElapsedTimer transfer_timer;

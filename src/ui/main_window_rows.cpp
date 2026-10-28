@@ -38,12 +38,14 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
 
 #include "core/util.h"
 #include "engine/categories.h"
+#include "engine/download_engine.h"
 #include "engine/segment_plan.h"
 #include "swiftdm/version.h"
 #include "ui/add_download_dialog.h"
@@ -197,6 +199,7 @@ void MainWindow::remove_row_with_cleanup(int row, bool check_queue) {
         history_.remove(item->history_id);
         last_progress_save_ms_.remove(item->history_id);
     }
+    remove_download_log(item);
     DownloadTask* task = item->task;
     if (task) {
         if (task->active()) {
@@ -220,6 +223,19 @@ void MainWindow::remove_row_with_cleanup(int row, bool check_queue) {
         check_queue_completion(queue_id);
         rebuild_queue_tree();
     }
+}
+
+// The per-download log belongs to the history row, so deleting the row deletes
+// it too (docs/spec/02-data-model.md §3).
+void MainWindow::remove_download_log(const DownloadItem* item) {
+    if (!item || item->history_id <= 0) return;
+    const QString name =
+        item->dest_path.isEmpty() ? item->file_name : QFileInfo(item->dest_path).fileName();
+    const std::string path = swiftdm::download_log_path(
+        swiftdm::default_log_dir(), item->history_id, name.toStdString());
+    if (path.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove(swiftdm::path_from_utf8(path), ec);
 }
 
 void MainWindow::update_action_states() {

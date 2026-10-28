@@ -34,9 +34,9 @@ Neat Download Manager.
 | ![Download options](screenshots/download-options.png) | ![Download properties](screenshots/download-properties.png) | ![SwiftDM settings](screenshots/options.png) |
 
 > The settings screenshot still shows the window of 0.18.9 (three tabs). Since
-> 0.18.10 the window has the tabs `General`, `Interface`, `Download`,
-> `Proxy/Socks` and `Passwords`; since 0.18.20 each tab groups its options into
-> labeled sections.
+> 0.18.10 the window has the tabs `General`, `Interface`, `Download` and
+> `Proxy/Socks`; since 0.18.20 each tab groups its options into labeled
+> sections. The `Passwords` tab is planned and currently hidden (0.20.0).
 
 ## Features
 
@@ -57,6 +57,9 @@ Neat Download Manager.
 - Use HTTP, SOCKS4, or SOCKS5 proxies; configure HTTP headers, cookies, referer,
   User-Agent, and POST data.
 - Store download history in SQLite and application settings in an INI file.
+- Keep a per-download log (`logs/<id>-<name>.log`, opened from Download
+  Properties) and optionally stamp the file with the server's date
+  (`Get File Creation Date From Server`).
 - Handle long file names: a name that does not fit the filesystem is shortened
   automatically, keeping the beginning of the name and its extension.
 - Adjust the appearance: light, dark, or follow the system theme; toolbar size

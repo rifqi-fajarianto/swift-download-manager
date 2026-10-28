@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -963,6 +964,77 @@ void test_unique_path(const std::string& dir) {
     CHECK_EQ(slashed(unique_path(base)), slashed(dir + "/unique (2).bin"));
 }
 
+void test_server_creation_date(const std::string& dir, testutil::TestHttpServer& server) {
+    // The test server sends Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT.
+    constexpr int64_t kServerTime = 1445412480;
+    auto written_seconds = [](const std::string& path) {
+        std::error_code ec;
+        const auto ft = std::filesystem::last_write_time(path_from_utf8(path), ec);
+        if (ec) return int64_t(0);
+        // file_clock has no portable epoch, so compare it against the system
+        // clock instead of casting the raw value.
+        const auto sys = std::chrono::system_clock::now() +
+                         (ft - std::filesystem::file_time_type::clock::now());
+        return std::chrono::duration_cast<std::chrono::seconds>(sys.time_since_epoch()).count();
+    };
+
+    Settings settings = test_settings(dir);
+    settings.server_creation_date = true;
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = server.base_url() + "/file/1048576";
+    request.output_dir = dir + "/dated";
+    const DownloadResult dated = engine.run(request);
+    CHECK(dated.status == DownloadResult::Status::Completed);
+    const int64_t applied = written_seconds(dated.path);
+    CHECK(applied > kServerTime - 2 && applied < kServerTime + 2);
+
+    settings.server_creation_date = false;
+    DownloadEngine plain_engine(settings);
+    DownloadRequest plain = request;
+    plain.output_dir = dir + "/undated";
+    const DownloadResult undated = plain_engine.run(plain);
+    CHECK(undated.status == DownloadResult::Status::Completed);
+    CHECK(written_seconds(undated.path) > kServerTime + 86400);
+}
+
+void test_download_log(const std::string& dir, testutil::TestHttpServer& server) {
+    // The engine writes next to the app data root, so point that at the test
+    // directory for this check.
+#ifdef _WIN32
+    _putenv_s("LOCALAPPDATA", dir.c_str());
+#else
+    setenv("XDG_DATA_HOME", dir.c_str(), 1);
+#endif
+    const std::string log_path =
+        download_log_path(default_log_dir(), 42, "sample-1048576.bin");
+    CHECK(!log_path.empty());
+    std::filesystem::remove(path_from_utf8(log_path));
+
+    DownloadEngine engine(test_settings(dir));
+    for (const char* folder : {"logged-1", "logged-2"}) {
+        DownloadRequest request;
+        request.url = server.base_url() + "/file/1048576";
+        request.output_dir = dir + "/" + folder;
+        request.history_id = 42;
+        const DownloadResult result = engine.run(request);
+        CHECK(result.status == DownloadResult::Status::Completed);
+    }
+
+    std::ifstream log(log_path);
+    CHECK(log.good());
+    const std::string text((std::istreambuf_iterator<char>(log)),
+                           std::istreambuf_iterator<char>());
+    CHECK(text.find("probe: size=1048576") != std::string::npos);
+    CHECK(text.find("plan: ") != std::string::npos);
+    CHECK(text.find("completed: ") != std::string::npos);
+    // The second run appends instead of replacing the first one.
+    CHECK(text.find("probe:", text.find("probe:") + 1) != std::string::npos);
+
+    // CLI callers (history_id 0) keep no log file.
+    CHECK(download_log_path(default_log_dir(), 0, "sample-1048576.bin").empty());
+}
+
 }  // namespace
 
 int main() {
@@ -996,6 +1068,8 @@ int main() {
     test_chunked_unknown_size(dir + "/chunked", server);
     test_bandwidth_limit_toggle(dir + "/bandwidth-limit", server);
     test_live_bandwidth_limit(dir + "/live-bandwidth-limit", server);
+    test_server_creation_date(dir + "/server-date", server);
+    test_download_log(dir + "/download-log", server);
     test_drive_link_helpers();
     test_drive_folder_link_probe();
     test_download_confirmation_url();

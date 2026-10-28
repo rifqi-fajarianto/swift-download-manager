@@ -40,6 +40,8 @@ class DownloadTask : public QObject {
         // value is kept while off so it can be edited and enabled later.
         bool limit_enabled = false;
         int limit_kbps = 0;    // KB/s; ignored while `limit_enabled` is false
+        // History row that owns the per-download log; 0 = no log file.
+        qint64 history_id = 0;
     };
 
     struct Snapshot {

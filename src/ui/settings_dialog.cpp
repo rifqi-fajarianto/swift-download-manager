@@ -68,7 +68,6 @@ SettingsDialog::SettingsDialog(swiftdm::Settings& settings, QWidget* parent)
     tabs->addTab(build_interface_tab(), tr("Interface"));
     tabs->addTab(build_download_tab(), tr("Download"));
     tabs->addTab(build_proxy_tab(), tr("Proxy/Socks"));
-    tabs->addTab(build_passwords_tab(), tr("Passwords"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, [this] {
@@ -273,7 +272,8 @@ QWidget* SettingsDialog::build_download_tab() {
     server_creation_date_ =
         new QCheckBox(tr("Get file creation date from server"), page);
     server_creation_date_->setToolTip(
-        tr("Not implemented in SwiftDM yet; the value is only stored."));
+        tr("Set the downloaded file's modification time from the server date "
+           "(HTTP Creation-Date/Last-Modified, FTP MDTM)."));
     files->addRow(QString(), server_creation_date_);
 
     layout->addStretch(1);
@@ -326,24 +326,6 @@ QWidget* SettingsDialog::build_proxy_tab() {
     connect(proxy_none_, &QRadioButton::toggled, this, [this] { update_proxy_enabled(); });
     connect(proxy_http_, &QRadioButton::toggled, this, [this] { update_proxy_enabled(); });
     connect(proxy_socks_, &QRadioButton::toggled, this, [this] { update_proxy_enabled(); });
-    return page;
-}
-
-QWidget* SettingsDialog::build_passwords_tab() {
-    auto* page = new QWidget(this);
-    auto* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(10, 10, 10, 10);
-    layout->setSpacing(kSectionSpacing);
-
-    auto* saved = add_section(layout, page, tr("Saved passwords"));
-    auto* note = new QLabel(
-        tr("Saved server credentials (Basic/Digest) will live here in a later\n"
-           "milestone; the storage layout is specified in docs/spec/02-data-model.md\n"
-           "(auths table)."),
-        page);
-    note->setWordWrap(true);
-    saved->addWidget(note);
-    layout->addStretch(1);
     return page;
 }
 

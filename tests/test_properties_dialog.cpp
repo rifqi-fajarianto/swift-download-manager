@@ -166,8 +166,19 @@ int main(int argc, char** argv) {
     }
     check(is_in_section(&dialog, QStringLiteral("Location"), "properties_saved_to") &&
               is_in_section(&dialog, QStringLiteral("Location"), "properties_open_folder") &&
-              is_in_section(&dialog, QStringLiteral("Location"), "properties_temp_path"),
+              is_in_section(&dialog, QStringLiteral("Location"), "properties_temp_path") &&
+              is_in_section(&dialog, QStringLiteral("Location"), "properties_log_path") &&
+              is_in_section(&dialog, QStringLiteral("Location"), "properties_open_log"),
           "the location values sit in the Location section");
+    auto* log_path = qobject_cast<QLineEdit*>(named_widget(&dialog, "properties_log_path"));
+    check(log_path != nullptr && log_path->isReadOnly(), "the log path stays read-only");
+    auto* open_log = qobject_cast<QPushButton*>(named_widget(&dialog, "properties_open_log"));
+    check(open_log != nullptr && open_log->text() == QStringLiteral("Open Log"),
+          "the location section has the Open Log button");
+    if (open_log) {
+        check(!open_log->isEnabled(),
+              "the Open Log button stays disabled until the row owns a log file");
+    }
 
     auto* url = qobject_cast<QLineEdit*>(named_widget(&dialog, "properties_url"));
     check(url != nullptr, "the source section has the URL");

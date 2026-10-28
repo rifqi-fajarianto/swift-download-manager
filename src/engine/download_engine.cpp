@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -524,6 +525,91 @@ bool move_file_unique(const std::string& from, const std::string& dir,
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
 
+namespace {
+
+// The log keeps one file per download row, appended across runs so a resume
+// shows the earlier attempts. Past the cap the old content is dropped instead
+// of growing without bound (ponytail: no rotation beyond that).
+constexpr uint64_t kMaxLogBytes = 1u << 20;
+
+std::string log_timestamp() {
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char buf[32] = {0};
+    std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", &tm);
+    return buf;
+}
+
+void append_download_log(const std::string& path, const std::string& text) {
+    if (path.empty()) return;
+    const std::filesystem::path file = path_from_utf8(path);
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    if (!ec && std::filesystem::file_size(file, ec) > kMaxLogBytes && !ec) {
+        std::filesystem::remove(file, ec);
+    }
+    const int fd = open_file(path, FileWrite | FileCreate | FileAppend);
+    if (fd < 0) return;
+    const std::string line = log_timestamp() + " " + text + "\n";
+    write_file(fd, line.data(), line.size());
+    close_file(fd);
+}
+
+// ServerCreationDate: give the finished file the date the server advertised.
+// Only the modification time is set; Windows keeps its own creation time.
+void apply_server_time(const std::string& path, int64_t server_time) {
+    if (path.empty() || server_time <= 0) return;
+    using std::chrono::system_clock;
+    const auto delta = system_clock::from_time_t(static_cast<std::time_t>(server_time)) -
+                       system_clock::now();
+    std::error_code ec;
+    std::filesystem::last_write_time(
+        path_from_utf8(path), std::filesystem::file_time_type::clock::now() + delta, ec);
+}
+
+// Reports every run outcome through the same path, including the early
+// failures that return without a transfer.
+struct RunReporter {
+    const DownloadResult& result;
+    const Settings& settings;
+    const ProbeResult& probe;
+    std::string log_path;
+
+    ~RunReporter() {
+        switch (result.status) {
+            case DownloadResult::Status::Completed:
+                if (settings.server_creation_date) {
+                    apply_server_time(result.path, probe.server_time);
+                }
+                append_download_log(log_path, "completed: " + result.path);
+                break;
+            case DownloadResult::Status::Paused:
+                append_download_log(log_path, "paused");
+                break;
+            case DownloadResult::Status::Failed:
+                append_download_log(log_path, "failed: " + result.error);
+                break;
+        }
+    }
+};
+
+}  // namespace
+
+std::string download_log_path(const std::string& log_dir, int64_t history_id,
+                              const std::string& filename) {
+    if (history_id <= 0 || log_dir.empty()) return {};
+    const std::string name =
+        limit_filename_length(sanitize_filename(filename), kMaxFileNameBytes);
+    return path_to_utf8(path_from_utf8(log_dir) /
+                        path_from_utf8(std::to_string(history_id) + "-" +
+                                       (name.empty() ? "download" : name) + ".log"));
+}
+
 DownloadResult DownloadEngine::run(
     const DownloadRequest& request,
     const std::function<bool(const ProgressInfo&)>& on_progress) {
@@ -564,6 +650,10 @@ DownloadResult DownloadEngine::run(
     if (!probe.ok) {
         result.status = DownloadResult::Status::Failed;
         result.error = probe.error.empty() ? "probe failed" : probe.error;
+        append_download_log(
+            download_log_path(default_log_dir(), request.history_id,
+                              request.filename.empty() ? "probe" : request.filename),
+            "probe failed: " + result.error);
         return result;
     }
     // A resolved link (Drive viewer links and virus-scan notices) names the URL
@@ -589,6 +679,13 @@ DownloadResult DownloadEngine::run(
     // the filesystem no matter where it came from.
     filename = limit_filename_length(sanitize_filename(filename), kMaxFileNameBytes);
     if (filename.empty()) filename = "download.bin";
+
+    RunReporter reporter{result, settings_, probe};
+    reporter.log_path = download_log_path(default_log_dir(), request.history_id, filename);
+    append_download_log(reporter.log_path,
+                        "probe: size=" + std::to_string(probe.content_length) + ", ranges=" +
+                            (probe.accept_ranges ? "yes" : "no") + ", etag=" + probe.etag +
+                            ", last-modified=" + probe.last_modified);
 
     std::string out_dir =
         request.output_dir.empty() ? settings_.download_dir : request.output_dir;
@@ -618,13 +715,15 @@ DownloadResult DownloadEngine::run(
     // FTP and HLS take dedicated paths (04-protocols.md §2, HLS spec note).
     // ------------------------------------------------------------------
     if (is_ftp_url(workspace_key)) {
-        return run_ftp(options, probe, filename, out_dir, ws, request.resume, bandwidth_limit,
-                       on_progress);
+        result = run_ftp(options, probe, filename, out_dir, ws, request.resume, bandwidth_limit,
+                         on_progress);
+        return result;
     }
     if (is_hls_url(workspace_key, probe.mime_type)) {
-        return run_hls(options, probe,
-                       limit_filename_length(hls_output_filename(filename), kMaxFileNameBytes),
-                       out_dir, ws, request.resume, bandwidth_limit, on_progress);
+        result = run_hls(options, probe,
+                         limit_filename_length(hls_output_filename(filename), kMaxFileNameBytes),
+                         out_dir, ws, request.resume, bandwidth_limit, on_progress);
+        return result;
     }
 
     const bool can_resume = probe.accept_ranges && request.post_data.empty();
@@ -711,6 +810,9 @@ DownloadResult DownloadEngine::run(
         const int planned = can_resume ? connections : 1;
         state.segments = plan_segments(state.file_size, planned);
     }
+    append_download_log(reporter.log_path,
+                        std::string(have_state ? "resume: " : "plan: ") +
+                            std::to_string(state.segments.size()) + " segments");
 
     const int fd = open_file(ws.part_path, FileRead | FileWrite | FileCreate);
     if (fd < 0) {
@@ -754,6 +856,8 @@ DownloadResult DownloadEngine::run(
     if (outcome == TransferOutcome::Failed && connections > 1 && state.segments.size() > 1 &&
         http_error_status(transfer_error) == 403) {
         log_warn("parallel ranges refused with 403; retrying with a single connection");
+        append_download_log(reporter.log_path,
+                            "parallel ranges refused (403); retrying with one connection");
         std::this_thread::sleep_for(std::chrono::seconds(1));
         downloader.set_one_by_one(true);
         transfer_error.clear();

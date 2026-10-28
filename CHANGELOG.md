@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.20.2 — 2026-10-28
+
+- The Download Complete window (and the other notification windows) now takes
+  clicks while the Settings dialog, the Download Properties window, the Browser
+  Extensions window or About is open. Those dialogs used `exec()`, whose
+  application-wide modal loop blocked every other top-level window of the app.
+  They are now window-modal and opened non-blocking, so only the main window is
+  blocked; Settings keeps raising its existing window instead of opening a
+  second one.
+
+## 0.20.1 — 2026-10-28
+
+- The `Get file creation date from server` option no longer carries the stale
+  "Not implemented in SwiftDM yet" tooltip; it now describes what 0.20.0
+  applies (HTTP `Creation-Date`/`Last-Modified`, FTP `MDTM`).
+
+## 0.20.0 — 2026-10-28
+
+Per-download logs, the server file date, and a smaller Settings window.
+
+- Every download row now keeps its own log at
+  `<app data>/logs/<history id>-<filename>.log` (Linux
+  `~/.local/share/swiftdm/logs`, Windows `%LOCALAPPDATA%\SwiftDM\logs`). The
+  engine appends a timestamped line per event — probe result, segment plan or
+  resume, the 403 single-connection fallback, pause, completion, failure with
+  the host error — so a resumed download keeps the earlier attempts. The file
+  is capped at 1 MiB (the oldest content is dropped past that), CLI runs write
+  no log, and deleting the row deletes its log.
+- Download Properties gains a `Log file` row with an `Open Log` button; the
+  button stays disabled until the row owns a log file.
+- `ServerCreationDate` ("Get File Creation Date From Server") is applied: the
+  probe now records the server file time from the HTTP `Creation-Date` /
+  `Last-Modified` headers or from `CURLINFO_FILETIME` (the FTP `MDTM` the probe
+  already asks for), and a completed download gets that value as its
+  modification time. Only the modification time is set; Windows keeps its own
+  creation time.
+- The empty `Passwords` tab is gone from the Settings window until the `auths`
+  store exists; the planned tab is documented in `docs/spec/01-product.md` and
+  the parity checklist. The window keeps four tabs (General, Interface,
+  Download, Proxy/Socks).
+- Tests cover the applied server date (HTTP and disabled cases), the log file
+  (content and append across runs), the Properties log row, and the four-tab
+  dialog.
+
 ## 0.19.19 — 2026-10-28
 
 Allow browser downloads to follow cross-origin redirects without leaking request metadata.

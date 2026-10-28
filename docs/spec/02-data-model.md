@@ -222,7 +222,19 @@ not required for a clean-room implementation and stays UNKNOWN.
 
 Per-download `Log File` buttons imply a per-download log; extension/name is
 `.LogFile.txt` (static wide string). SwiftDM writes
-`~/.local/share/swiftdm/logs/<id>-<filename>.log`.
+`~/.local/share/swiftdm/logs/<id>-<filename>.log` (Windows:
+`%LOCALAPPDATA%\SwiftDM\logs\...`).
+
+Implemented 0.20.0:
+
+- One file per history row, named after the row id and the file name; the
+  engine appends one line per event (probe result, plan or resume, the 403
+  single-connection fallback, pause, completion, failure with the error text),
+  each prefixed with a local `YYYY-MM-DD HH:MM:SS` stamp.
+- Runs for the same row append, so a resume keeps its earlier attempts. Past
+  1 MiB the old content is dropped and writing continues in a fresh file.
+- CLI runs and rows without a history id write no log. The Properties window
+  shows the path and an `Open Log` button; removing the row deletes the file.
 
 ## 4. Settings store (Linux divergence)
 

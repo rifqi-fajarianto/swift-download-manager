@@ -38,6 +38,8 @@ struct DownloadRequest {
     // A recent UI probe can be reused for the first transfer attempt. Resume
     // callers leave this empty so the engine validates the remote file again.
     std::optional<ProbeResult> probe;
+    // History row that owns the per-download log. 0 means no log (CLI runs).
+    int64_t history_id = 0;
 };
 
 struct ProgressInfo {
@@ -66,6 +68,12 @@ struct DownloadWorkspace {
 
 DownloadWorkspace make_workspace(const Settings& settings, const std::string& url,
                                  const std::string& filename);
+
+// Per-download log file (docs/spec/02-data-model.md §3):
+// `<log_dir>/<history_id>-<filename>.log`. Empty when `history_id` is 0, so
+// CLI runs and tests do not leave files behind.
+std::string download_log_path(const std::string& log_dir, int64_t history_id,
+                              const std::string& filename);
 
 // Returns `path` if free, else "name (1).ext", "name (2).ext", ...
 std::string unique_path(const std::string& path);

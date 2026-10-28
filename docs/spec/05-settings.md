@@ -64,7 +64,7 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `DownloadDirectory` | download | STRING | `%USERPROFILE%\Downloads` | destination root |
 | `CategoryFolders` | download | DWORD | 2 | create per-category subfolders |
 | `TempDirectory` | download | STRING | `%APPDATA%\Roaming\NeatDM` | temp/state root |
-| `ServerCreationDate` | download | DWORD | 2 | derive file creation date from server header |
+| `ServerCreationDate` | download | DWORD | 2 | derive file creation date from server header (SwiftDM: sets the finished file's modification time from `Creation-Date`/`Last-Modified`, or FTP `MDTM`; applied 0.20.0) |
 | `CompletionDialog` | general | DWORD | 0 | show completion dialog (main Downloads list only; queue items use `notify_item`, 0.19.3) |
 | `AppAutoStart` | general | DWORD | 0 | start at login (SwiftDM: XDG autostart entry) |
 | `ShowTrayIcon` | general | BOOL | 1 (SwiftDM) | show the system tray icon |
@@ -101,7 +101,8 @@ of being stored, so a typo cannot break the appearance of the app.
 task (E4). The per-download row also stores the limiter toggle
 (`bandwidthlimit_enabled`): off means unlimited for that task while the value
 is kept for a later resume. Proxy/auth are global; saved credentials live in
-the `auths` table and are matched per host/target (E4, E18 Passwords tab).
+the `auths` table and are matched per host/target (E4, E18 Passwords tab) —
+planned, the tab is hidden until that store lands (0.20.0).
 
 A download inside a queue is an exception while it stays there: the queue's
 `connections` and shared speed budget control the transfer, and the stored

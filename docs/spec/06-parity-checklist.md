@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.19.15 (Windows port is experimental and not yet release-validated).
+Status as of 0.20.0 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -72,7 +72,7 @@ Windows notes:
 | Download confirmation window | Implemented | shown immediately for manual and browser-sent downloads while a worker probes; fallback name + `Checking…`, Download Now disabled until metadata arrives, user category/location choices preserved, no row/DB entry on Cancel; initial transfer reuses the successful probe; independent of main-window visibility; `File`/`Save` sections, default 650×330 (minimum 560×320), elided filename, separate size row, uniform controls, Cancel on the left and Add to queue/Download Now on the right (0.18.9, latency improvement 0.18.19, section layout 0.18.22). Add to queue opens a `Choose Queue` picker (name + item count, no preselection) when several queues exist; a single queue is used directly, a download started from a queue view keeps that queue without a picker, and Download Now stays the default otherwise and targets Downloads (0.19.0, picker 0.19.2). The General tab can switch the window off; the download then starts with default category/folder, and New URL from a queue view targets that queue (0.18.17, queue behavior 0.19.0) |
 | Download window (progress + segments) | Replicated | Download/Options/Connections tabs, segment bar |
 | Item context menu (Open File / Open File Location / Properties) | Replicated | right-click on a row; original shows it on the list's `NM_RCLICK` (E25) |
-| Properties dialog (read-only) | Replicated (partial) | fields per E18; per-download log file and editable URL are v1.1 |
+| Properties dialog (read-only) | Replicated (partial) | fields per E18; editable URL is v1.1 (per-download log file done in 0.20.0) |
 | Delete File (remove the downloaded file from disk) | Added (not in the original) | toolbar button + warning dialog; drops the list entry too |
 | Extensions dialog | Implemented | Shows local integration server status and Chromium development setup |
 | About dialog | Diverges | no update check, no license tier |
@@ -97,9 +97,9 @@ kept here as the completion history of the release line.
 | Queue scheduling and limits | Implemented | `Start Queue` resumes Queued/Paused/Error in insertion order; the scheduler starts only Queued; max simultaneous 0–64 (0 = Unlimited); lowering the limit pauses the newest active rows and returns them to Queued, manual pauses stay Paused; manual starts from the context menu/progress window also honor the limit; queue speed budget is split across active items (min 1 KB/s) and queue connections override per-item values; autostart queues start after restore (0.19.0) |
 | Queue completion actions | Implemented | Per-item and all-complete notifications via the tray (status-bar fallback); optional cancellable shutdown countdown (5–3600 s, default 60 s, one active countdown at a time) pauses every active download and queue, persists state, then runs `systemctl poweroff` with a `shutdown -h now` fallback (0.19.0). Queue items do not open the global completion dialog or the download folder; those global options apply to the main Downloads list only (0.19.3) |
 | Move items between Downloads and queues; delete queue | Implemented | Inactive and completed items can move; completed items stay visible in the queue; `Move to Downloads` lives in the item context menu (not the toolbar); deleting a queue asks for confirmation, removes its rows and workspaces, and leaves completed files on disk (0.19.0, context-menu-only 0.19.1) |
-| Per-download log file (Properties "Log File") + editable URL field | Planned |
-| Saved-passwords UI (Passwords tab; `auths` table) | Planned |
-| "Get File Creation Date From Server" applied to file mtime | Planned (setting saved, not applied) |
+| Per-download log file (Properties "Log File") + editable URL field | Log file implemented (0.20.0); editable URL still planned | Engine appends `logs/<id>-<filename>.log` per run (probe, plan/resume, 403 fallback, pause, completion, failure), capped at 1 MiB; Properties shows the path with an `Open Log` button and row deletion removes the file |
+| Saved-passwords UI (Passwords tab; `auths` table) | Planned (tab removed 0.20.0) | The empty `Passwords` tab is gone from Settings; it returns together with the `auths` store and Basic/Digest matching |
+| "Get File Creation Date From Server" applied to file mtime | Implemented (0.20.0) | Probe records `Creation-Date`/`Last-Modified` (HTTP) or `CURLINFO_FILETIME` from the FTP `MDTM` probe; a completed file gets that modification time when the option is on |
 | Firefox extension | Planned |
 
 ## v2 — browser integration

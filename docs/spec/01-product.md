@@ -159,20 +159,23 @@ Layout (from `main-window.png`):
    labeled sections, in this order: `General` (file size in bytes plus the
    formatted size, status in its status color, category, downloaded amount,
    resumable, segment count), `Location` (Saved To path with `Open Folder`,
-   Temp Path), `Source` (read-only URL; Page URL, Page title and Pair only when
-   the item carries them) and `Time` (Added On, Last Try). The header keeps the
-   properties icon and file name; a long name is elided in the middle and keeps
-   the full name in its tooltip. Section titles are bold, labels use sentence
-   case and left alignment. The dialog opens at 650×690 and its minimum size
-   follows the sections; optional source rows make it taller. Editable URL,
-   the Browser source and `Log File` remain future work.
+   Temp Path, Log File), `Source` (read-only URL; Page URL, Page title and Pair
+   only when the item carries them) and `Time` (Added On, Last Try). The header
+   keeps the properties icon and file name; a long name is elided in the middle
+   and keeps the full name in its tooltip. Section titles are bold, labels use
+   sentence case and left alignment. The dialog opens at 650×690 and its
+   minimum size follows the sections; optional source rows make it taller.
+   Since 0.20.0 the `Log file` row shows the per-download log path with an
+   `Open Log` button (disabled until the engine has written one). Editable URL
+   and the Browser source remain future work.
 9. **Settings** (`options-window.png`), tabs:
    Every tab groups its options into labeled sections (0.18.20): `General`
    (Downloads, Startup, System tray), `Interface` (Toolbar, Appearance, System
    tray), `Download` (Connections, Bandwidth, User-Agent, Files and folders),
-   `Proxy/Socks` (Proxy type, Server, Authentication) and `Passwords` (Saved
-   passwords). Queue settings are not in this window; each queue has its own
-   `Queue Properties` dialog (0.19.0).
+   `Proxy/Socks` (Proxy type, Server, Authentication); the `Passwords` tab is
+   planned but not shown until the `auths` store exists (removed from the
+   dialog in 0.20.0). Queue settings are not in this window; each queue has its
+   own `Queue Properties` dialog (0.19.0).
    - *General*: app-wide behavior options — Show Download Confirmation Dialog
      (with a note that all files are downloaded automatically without
      confirmation while it is off, 0.18.17); Show Download Completion Dialog;
@@ -193,11 +196,14 @@ Layout (from `main-window.png`):
      the toggle is off — 0.18.1); Default User-Agent (+Reset,
      + "use for both manual and browser-sent downloads"); Download Directory
      (+ category folders toggle); Temporary Directory; Get File Creation Date
-     From Server.
+     From Server (since 0.20.0 the finished file gets the server's
+     `Creation-Date`/`Last-Modified`, or the FTP MDTM time, as its modification
+     time).
    - *Proxy/Socks*: No Proxy/Socks | HTTP Proxy | Socks Proxy (V4/V5),
      Address/Port/User/Password, "https protocol" handling note.
    - *Passwords*: credential table (Target/User/Password; remembered auth per
-     server), matching the `auths` DB table.
+     server), matching the `auths` DB table. Planned; the tab is hidden until
+     the store exists (0.20.0).
 10. **Browser integration**: `Browsers` toolbar button shows supported browsers
     (Chrome, Firefox, Edge, Opera) and instructions; the app runs a local
     WebSocket server accepting download requests from browser extensions.

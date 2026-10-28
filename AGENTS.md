@@ -18,6 +18,8 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 5. Tentukan modul yang tersentuh, lalu baca spec terkait sebelum mengubah
    perilaku aplikasi.
 6. Build dan jalankan test sebelum menyimpulkan pekerjaan sudah selesai.
+7. Sarankan refactor ke user untuk file yang berisi lebih dari 2000 line of code, 
+8. setiap refactor jangan sampai ada fitur dan UI yang berubah atau tidak berfungsi.
 
 ## 1. Ringkasan proyek & tujuan
 
@@ -47,7 +49,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-28**, versi kerja **0.19.19**. Status ini cepat
+> Snapshot terakhir: **2026-10-28**, versi kerja **0.20.2**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -143,11 +145,12 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   campuran menyalakan tombol yang punya item cocok. Toolbar memakai divider
   setelah `New URL` dan setelah `Stop`. Batch UX ini memakai patch 0.18.21 atas
   keputusan maintainer, meskipun kebijakan normal untuk UX adalah MINOR +1.
-  Window Settings memakai section berlabel di kelima
-  tab (General, Interface, Download, Proxy/Socks, Passwords) agar opsi lebih
-  mudah dipindai; hanya layout/teks yang berubah, tanpa perubahan key, default,
-  atau perilaku. Batch layout ini memakai patch 0.18.20 atas keputusan
-  maintainer, meskipun kebijakan normal untuk UX adalah MINOR +1.
+  Window Settings memakai section berlabel di setiap
+  tab (General, Interface, Download, Proxy/Socks; tab `Passwords` saat itu masih
+  ada dan dihapus pada 0.20.0) agar opsi lebih mudah dipindai; hanya
+  layout/teks yang berubah, tanpa perubahan key, default, atau perilaku. Batch
+  layout ini memakai patch 0.18.20 atas keputusan maintainer, meskipun
+  kebijakan normal untuk UX adalah MINOR +1.
   Konfirmasi unduhan langsung muncul saat probe
   berjalan di background; tombol Download Now aktif setelah metadata tersedia,
   dan probe sukses dipakai ulang untuk transfer awal (Resume tetap probe ulang).
@@ -181,9 +184,10 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   (`[general]`, `[download]`, `[interface]`, `[proxy]`); config lama dengan
   opsi unduhan di `[general]` tetap terbaca karena section `[general]`
   dibaca lebih dulu dan `[download]` menimpanya.
-  Window Settings dibagi menjadi lima tab
-  (`General`, `Interface`, `Download`, `Proxy/Socks`, `Passwords`); opsi
-  unduhan pindah ke tab `Download`, tab `General` menyimpan opsi perilaku
+  Window Settings dibagi menjadi empat tab
+  (`General`, `Interface`, `Download`, `Proxy/Socks`); tab `Passwords` masih
+  direncanakan dan disembunyikan sejak 0.20.0 sampai penyimpanan `auths` ada.
+  Opsi unduhan pindah ke tab `Download`, tab `General` menyimpan opsi perilaku
   aplikasi, dan tab `Interface` menyimpan opsi tampilan.
   Dialog konfirmasi download memakai section `File` dan `Save` dengan judul
   bold, ukuran default 650×330 (minimum 560×320), nama file di-elide di tengah
@@ -200,7 +204,17 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.19.19
+### Sudah tersedia sampai 0.20.0
+
+- Per-download log (`$XDG_DATA_HOME/swiftdm/logs/<id>-<filename>.log`, cap
+  1 MiB) yang di-append tiap run dan dibuka dari baris `Log file` di Download
+  Properties; file log ikut terhapus saat row dihapus.
+- `ServerCreationDate`: file hasil unduhan memakai waktu server
+  (`Creation-Date`/`Last-Modified` HTTP, `MDTM` FTP) sebagai mtime.
+- Window Settings empat tab; tab `Passwords` (fitur `auths`) belum ada.
+- Window Settings/Properties/Browser Extensions/About memakai `open()` dengan
+  modalitas window (0.20.2), jadi window notifikasi `Download Complete` dan
+  window progress tetap bisa diklik selama dialog itu terbuka.
 
 - Engine HTTP/HTTPS tersegmentasi via libcurl multi: resume, retry/backoff,
   proxy HTTP/SOCKS, cookie ter-scope, header kustom, POST body, dan validasi
@@ -237,13 +251,11 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   argumen UTF-8, `sqlite3_open16`, autostart registry, paket ZIP mandiri,
   `ca-bundle.crt`, dan target CPack ZIP.
 
-### 0.18.1–0.19.3 — Periksa CHANGELOG.md
-
 ### Rencana / gap yang diketahui
 
-- Per-download log file dan URL yang dapat diedit di Properties.
-- UI saved passwords (`auths`).
-- Penerapan "Get File Creation Date From Server" ke mtime file.
+- URL yang dapat diedit di Properties. (Per-download log file selesai di 0.20.0:
+  `logs/<id>-<filename>.log`, dibuka dari `Open Log`.)
+- UI saved passwords (`auths`); tab `Passwords` sengaja belum ditampilkan.
 - Ekstensi Firefox.
 - Muxing MKV/WebM untuk pasangan video+audio (saat ini dua file terpisah
   dengan `groupid`).
@@ -456,9 +468,10 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
 - Windows: config di `%APPDATA%\SwiftDM\swiftdm.ini`, database dan temp di
   `%LOCALAPPDATA%\SwiftDM\`, autostart lewat nilai `SwiftDM` di
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
-- Log per-download direncanakan di
-  `$XDG_DATA_HOME/swiftdm/logs/<id>-<filename>.log`; ini belum menjadi fitur
-  yang selesai (lihat parity checklist).
+- Log per-download ditulis ke
+  `$XDG_DATA_HOME/swiftdm/logs/<id>-<filename>.log` (Windows:
+  `%LOCALAPPDATA%\SwiftDM\logs`) sejak 0.20.0; cap 1 MiB per file, dihapus
+  bersama row history-nya.
 
 ## 9. Dokumen acuan
 

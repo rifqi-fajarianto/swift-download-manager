@@ -34,10 +34,54 @@ struct ProbeCapture {
     bool accept_ranges = false;
     std::string etag;
     std::string last_modified;
+    std::string creation_date;
     std::string content_type;
     std::string filename_hint;
     std::string error_body;  // start of a 4xx/5xx body, for the error message
 };
+
+int month_index(const char* name) {
+    static const char* const kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    for (int i = 0; i < 12; ++i) {
+        if (std::strncmp(name, kMonths[i], 3) == 0) return i + 1;
+    }
+    return 0;
+}
+
+int64_t days_to_unix(int year, int month, int day, int hour, int minute, int second) {
+    const std::chrono::year_month_day ymd{
+        std::chrono::year{year}, std::chrono::month{static_cast<unsigned>(month)},
+        std::chrono::day{static_cast<unsigned>(day)}};
+    if (!ymd.ok() || hour > 23 || minute > 59 || second > 60) return 0;
+    const auto tp = std::chrono::sys_days{ymd} + std::chrono::hours{hour} +
+                    std::chrono::minutes{minute} + std::chrono::seconds{second};
+    return std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count();
+}
+
+// RFC 1123 date ("Wed, 21 Oct 2015 07:28:00 GMT"). 0 when it does not parse.
+int64_t parse_http_date(const std::string& value) {
+    char weekday[4] = {0};
+    char month[4] = {0};
+    int day = 0, year = 0, hour = 0, minute = 0, second = 0;
+    if (std::sscanf(value.c_str(), "%3s, %d %3s %d %d:%d:%d", weekday, &day, month, &year,
+                    &hour, &minute, &second) != 7) {
+        return 0;
+    }
+    const int m = month_index(month);
+    return m == 0 ? 0 : days_to_unix(year, m, day, hour, minute, second);
+}
+
+// ISO 8601 date used by the WebDAV Creation-Date header
+// ("1997-12-23T10:00:00Z"). 0 when it does not parse.
+int64_t parse_iso_date(const std::string& value) {
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    if (std::sscanf(value.c_str(), "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute,
+                    &second) != 6) {
+        return 0;
+    }
+    return days_to_unix(year, month, day, hour, minute, second);
+}
 
 size_t probe_header_cb(char* buffer, size_t size, size_t nitems, void* userdata) {
     auto* cap = static_cast<ProbeCapture*>(userdata);
@@ -71,6 +115,8 @@ size_t probe_header_cb(char* buffer, size_t size, size_t nitems, void* userdata)
         cap->etag = value;
     } else if (name == "last-modified") {
         cap->last_modified = value;
+    } else if (name == "creation-date") {
+        cap->creation_date = value;
     } else if (name == "content-type") {
         cap->content_type = value;
     } else if (name == "content-disposition") {
@@ -192,6 +238,10 @@ ProbeResult probe_ftp(const HttpOptions& options) {
     }
     curl_off_t length = -1;
     curl_easy_getinfo(handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &length);
+    // libcurl asks for MDTM in the same probe, so FTP gets the server file
+    // time without a second connection.
+    curl_off_t filetime = -1;
+    curl_easy_getinfo(handle, CURLINFO_FILETIME_T, &filetime);
     curl_easy_cleanup(handle);
     if (headers) curl_slist_free_all(headers);
 
@@ -209,6 +259,7 @@ ProbeResult probe_ftp(const HttpOptions& options) {
     out.status_code = 0;  // no HTTP status over FTP
     out.content_length = length > 0 ? static_cast<uint64_t>(length) : 0;
     out.accept_ranges = out.content_length > 0;  // REST-based resume
+    out.server_time = filetime > 0 ? static_cast<int64_t>(filetime) : 0;
     out.ok = true;
     return out;
 }
@@ -291,6 +342,8 @@ ProbeResult probe_url_once(const HttpOptions& options) {
     if (semi != std::string::npos) out.mime_type = trim(out.mime_type.substr(0, semi));
     out.etag = cap.etag;
     out.last_modified = cap.last_modified;
+    out.server_time = parse_iso_date(cap.creation_date);
+    if (out.server_time == 0) out.server_time = parse_http_date(cap.last_modified);
 
     if (cap.status >= 400 && cap.status != 416) {
         out.error = http_error_with_detail(cap.status, cap.error_body, cap.content_type);

@@ -248,8 +248,12 @@ void MainWindow::open_folder_for_row(int row) {
 void MainWindow::show_properties_for_row(int row) {
     DownloadItem* item = model_->item_at(row);
     if (!item) return;
-    PropertiesDialog dialog(*item, item->task, this);
-    dialog.exec();
+    // Window-modal and non-blocking: the dialog only reads the row when it is
+    // built, and a Download Complete window may still pop up while it is open.
+    auto* dialog = new PropertiesDialog(*item, item->task, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->open();
 }
 
 void MainWindow::on_browsers() {
@@ -268,22 +272,26 @@ void MainWindow::on_browsers() {
             state += QLatin1Char('.');
         }
     }
-    QMessageBox box(this);
-    box.setIconPixmap(dialog_info_pixmap());
-    box.setWindowTitle(tr("Browser Extensions"));
-    box.setText(tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
-                   "Firefox based browser integration coming soon.\n\n"
-                   "Automatic browser download handoff is enabled in the extension popup.\n")
-                    .arg(state));
-    box.exec();
+    QMessageBox* box = new QMessageBox(this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::WindowModal);
+    box->setIconPixmap(dialog_info_pixmap());
+    box->setWindowTitle(tr("Browser Extensions"));
+    box->setText(tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
+                    "Firefox based browser integration coming soon.\n\n"
+                    "Automatic browser download handoff is enabled in the extension popup.\n")
+                     .arg(state));
+    box->open();
 }
 
 void MainWindow::on_about() {
-    QMessageBox about(this);
-    about.setWindowTitle(tr("About SwiftDM"));
-    about.setIconPixmap(extension_icon().pixmap(96, 96));
-    about.setTextFormat(Qt::RichText);
-    about.setText(
+    auto* about = new QMessageBox(this);
+    about->setAttribute(Qt::WA_DeleteOnClose);
+    about->setWindowModality(Qt::WindowModal);
+    about->setWindowTitle(tr("About SwiftDM"));
+    about->setIconPixmap(extension_icon().pixmap(96, 96));
+    about->setTextFormat(Qt::RichText);
+    about->setText(
         QStringLiteral(
             "<b>SwiftDM</b> %1<br><br>"
             "Simple lightweight download manager with browser integration.<br><br>"
@@ -291,7 +299,7 @@ void MainWindow::on_about() {
             "no original code or assets are used.<br><br>"
             "Created By RF Design with AI Agent.")
             .arg(swiftdm::kVersionString));
-    about.exec();
+    about->open();
 }
 
 void MainWindow::on_quit() {
