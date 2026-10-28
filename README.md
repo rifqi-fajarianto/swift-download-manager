@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ui-assets/app-icon/main-icon.svg" alt="SwiftDM icon" width="128">
+</p>
+
 # SwiftDM
 
 [![CI](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rifqi-fajarianto/swift-download-manager/actions/workflows/ci.yml)
@@ -70,7 +74,51 @@ Neat Download Manager.
 > [parity checklist](docs/spec/06-parity-checklist.md) for feature status and
 > limitations.
 
-## Running SwiftDM
+## Building and running
+
+Each platform has its own build and run sections. Debian 13 (trixie) is the
+reference platform; the Windows port is experimental.
+
+### Linux
+
+#### Building on Linux
+
+Install the dependencies:
+
+```sh
+sudo apt install build-essential cmake file ninja-build \
+  qt6-base-dev qt6-svg-plugins libqt6svg6 \
+  libcurl4-openssl-dev libsqlite3-dev
+```
+
+`qt6-svg-plugins` is required to load SVG icons at runtime.
+
+Configure, build, and run the tests:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Create a Debian package with CPack, or use the CMake install rules:
+
+```sh
+cd build
+cpack
+sudo apt install ./swiftdm_0.19.19_amd64.deb
+```
+
+```sh
+sudo cmake --install build --prefix /usr/local
+```
+
+The package installs the executable, desktop launcher, icons, AppStream
+metadata, and Chromium extension source. It does not install a browser; load the
+extension in any Chromium-based browser. See
+[`packaging/README.md`](packaging/README.md) for more packaging details.
+
+#### Running on Linux
 
 After installation, launch the graphical application from your desktop menu or
 run:
@@ -79,15 +127,15 @@ run:
 swiftdm
 ```
 
-To run the freshly built application, use `./build/swiftdm`. The GUI starts by
-default. When you add a URL in the GUI, SwiftDM checks the link and shows a
-confirmation dialog before starting the download.
-
-SwiftDM also provides a headless CLI:
+The freshly built binary behaves the same way:
 
 ```sh
-swiftdm get <url>
+./build/swiftdm                 # GUI
+./build/swiftdm get <url>       # headless CLI
 ```
+
+The GUI starts by default. When you add a URL, SwiftDM checks the link and shows
+a confirmation dialog before starting the download.
 
 For example, set the output directory, filename, and a 1.5 MB/s speed limit:
 
@@ -98,27 +146,17 @@ swiftdm get 'https://example.org/file.zip' \
 
 Other CLI options include `--connections`, `--no-resume`, `--referer`,
 `--header`, `--ua`, `--post`, `--config`, `--quiet`, and `--log-level`. For a
-complete list, run:
+complete list, run `swiftdm --help`; `swiftdm --version` prints the version.
 
-```sh
-swiftdm --help
-swiftdm --version
-```
+### Windows
 
-## Building from source
+Windows 10 (version 1809+) is an experimental target, not a supported release
+yet. The build uses MSYS2 UCRT64/MinGW-w64 with GCC, CMake, Ninja, Qt 6.5–6.12,
+libcurl, and SQLite (Qt 6.12 is the last Qt release that supports Windows 10).
 
-Debian 13 (trixie) is the reference platform. Install the dependencies:
+#### Building on Windows
 
-```sh
-sudo apt install build-essential cmake file ninja-build \
-  qt6-base-dev qt6-svg-plugins libqt6svg6 \
-  libcurl4-openssl-dev libsqlite3-dev
-```
-
-The Windows build is experimental and is not yet a supported release. It uses
-MSYS2 UCRT64/MinGW-w64 with GCC, CMake, Ninja, Qt 6.5–6.12, libcurl and SQLite
-(Qt 6.12 is the last Qt release that supports Windows 10). In an MSYS2 UCRT64
-shell:
+In an MSYS2 UCRT64 shell:
 
 ```sh
 pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake \
@@ -130,76 +168,55 @@ cmake --build build-win --parallel
 ctest --test-dir build-win --output-on-failure
 ```
 
-The `windows-installer` target needs Inno Setup 6 (`ISCC.exe`); without it the
-build, the tests and the ZIP package still work.
+From PowerShell, set `$env:QT_QPA_PLATFORM = "offscreen"` before `ctest` so the
+Qt tests run without a desktop.
 
 The build produces a self-contained `build-win/windows-deploy/` directory,
 `build-win/swiftdm-<version>-win64.zip` (`cd build-win && cpack`), and an Inno
 Setup installer `build-win/swiftdm-<version>-win64-setup.exe`
 (`cmake --build build-win --target windows-installer`, skipped when `ISCC.exe`
-is not installed). The packages contain the executable, the Qt plugins, the
-MinGW/libcurl/SQLite runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl
-for HTTPS, and the Chromium extension. The installer is per-user, so it needs no
-administrator rights; neither it nor the executables are code signed yet, so
-SmartScreen warns on first run. The executable carries the SwiftDM icon, which the
-installer and its shortcuts use as well. The executable uses the Windows GUI
-subsystem, so starting it from Explorer, the installer shortcut or the autostart
-entry opens no console window; CLI runs attach to the parent console. Shells do
-not wait for a GUI-subsystem process, so scripts that must block on `get` use
-`Start-Process -Wait` (PowerShell) or `start /wait` (cmd). GUI checks on
-Windows 10 are still manual.
-Version 0.19.19 is the port tracking `main` (named queues, audit hardening, the
-module split, the Windows file I/O fixes and cross-origin redirect handling);
-Windows support is still experimental.
+is not installed; the build, the tests, and the ZIP package still work without
+it).
 
-`qt6-svg-plugins` is required to load SVG icons at runtime.
+The packages contain the executable, the Qt plugins, the MinGW/libcurl/SQLite
+runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl for HTTPS, and the
+Chromium extension. The installer is per-user, so it needs no administrator
+rights; neither it nor the executables are code signed yet, so SmartScreen warns
+on first run. The executable carries the SwiftDM icon, which the installer and
+its shortcuts use as well.
 
-Configure and build:
+#### Running on Windows
 
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+Start `swiftdm.exe` from the installer shortcut, from
+`build-win/windows-deploy/`, or from the unzipped portable package. The
+executable uses the Windows GUI subsystem, so starting it from Explorer opens no
+console window.
+
+CLI runs attach to the parent console, but shells do not wait for a
+GUI-subsystem process, so scripts that must block on a download use
+`Start-Process -Wait` (PowerShell) or `start /wait` (cmd):
+
+```powershell
+Start-Process -Wait .\swiftdm.exe -ArgumentList `
+  'get', 'https://example.org/file.zip', '--dir', "$HOME\Downloads"
 ```
 
-Run the backend/unit and integration tests:
-
-```sh
-ctest --test-dir build --output-on-failure
+```bat
+start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Downloads
 ```
 
-CI runs the same build and test sequence on Debian 13 for pull requests and
-pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb` package,
-the Windows portable ZIP, and the Windows installer to GitHub Releases; a
-`workflow_dispatch` run with `dry_run` enabled builds and tests both platforms
+The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
+full list. Version 0.19.19 is the port tracking `main` (named queues, audit
+hardening, the module split, the Windows file I/O fixes, and cross-origin
+redirect handling); GUI checks on Windows 10 are still manual.
+
+### Continuous integration and releases
+
+CI runs the Linux build and test sequence above on Debian 13 for pull requests
+and pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb`
+package, the Windows portable ZIP, and the Windows installer to GitHub Releases;
+a `workflow_dispatch` run with `dry_run` enabled builds and tests both platforms
 without publishing. The release checklist is in [`AGENTS.md`](AGENTS.md).
-
-Run the build:
-
-```sh
-./build/swiftdm                 # GUI
-./build/swiftdm get <url>       # headless CLI
-```
-
-### Installing
-
-Create a Debian package with CPack:
-
-```sh
-cd build
-cpack
-sudo apt install ./swiftdm_0.19.18_amd64.deb
-```
-
-Alternatively, install using the CMake install rules:
-
-```sh
-sudo cmake --install build --prefix /usr/local
-```
-
-The package installs the executable, desktop launcher, icons, AppStream
-metadata, and Chromium extension source. It does not install a browser; load the
-extension in any Chromium-based browser. See
-[`packaging/README.md`](packaging/README.md) for more packaging details.
 
 ## Application data
 
@@ -213,6 +230,9 @@ app directories (`0700`). Temporary download workspaces are also owner-only
 (`0700`); partial files inside them retain mode `0644`. Proxy passwords remain
 stored as plaintext in the settings file for now; Secret Service integration is
 deferred.
+
+On Windows the same files live under `%APPDATA%\SwiftDM\swiftdm.ini` and
+`%LOCALAPPDATA%\SwiftDM\` (database and `tmp`).
 
 ## License and attribution
 
