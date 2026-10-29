@@ -108,9 +108,11 @@ plus `WindowX`/`WindowY` once the window has been placed; 0.20.3). The values
 are written about half a second after the last resize/move and again when the
 app quits. At startup they are clamped to the screen that holds the window; a
 saved position that no longer overlaps any screen is ignored so the window
-cannot open out of reach, and a maximized window stores its normal geometry so
-the next start opens as a normal window. Wayland compositors may ignore the
-restored position, which makes this best-effort on that platform.
+cannot open out of reach. Maximizing or entering full screen does not overwrite
+the saved normal geometry, so the next start opens at the last normal
+size/position (the maximize state itself is not remembered). Wayland
+compositors may ignore the restored position, which makes this best-effort on
+that platform.
 
 ## Per-download overrides
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.20.4 — 2026-10-29
+
+The main window no longer drifts down when it is reopened.
+
+- The saved position came from `geometry()` (the client area) while `move()`
+  uses the window-frame position, so every restore added the title-bar offset
+  and the window crept downward. The position is now read from `pos()` (the
+  frame position); the size still comes from the client size that `resize()`
+  expects.
+- Maximizing or entering full screen no longer overwrites the saved normal
+  geometry: the debounced save before the maximize keeps the last normal
+  position/size, and the next start opens there. The maximize state itself is
+  still not remembered.
+
 ## 0.20.3 — 2026-10-29
 
 The main window remembers its size and position.

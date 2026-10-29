@@ -111,7 +111,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.20.3_amd64.deb
+sudo apt install ./swiftdm_0.20.4_amd64.deb
 ```
 
 ```sh
@@ -211,7 +211,7 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.20.3 is the port tracking `main` (window geometry,
+full list. Version 0.20.4 is the port tracking `main` (window geometry,
 per-download logs, the server file date, named queues, audit hardening, the
 module split, the Windows file I/O fixes, and cross-origin redirect handling);
 GUI checks on Windows 10 are still manual.

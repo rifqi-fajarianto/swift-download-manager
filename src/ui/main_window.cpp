@@ -647,22 +647,29 @@ void MainWindow::save_window_geometry() {
     // A tray-only start that quits before the window was ever shown has no
     // placement to remember; saving it would pin the next start to (0, 0).
     if (!window_shown_) return;
-    // A maximized/full-screen window reports the screen size; its normal
-    // geometry is what should be restored on the next start.
-    const QRect normal =
-        (isMaximized() || isFullScreen()) ? normalGeometry() : geometry();
-    if (!normal.isValid() || normal.width() <= 0 || normal.height() <= 0) return;
-    if (settings_.main_window_width == normal.width() &&
-        settings_.main_window_height == normal.height() &&
+    // The maximize state is not persisted. The normal geometry was already
+    // saved by the debounce before the user maximized, so keep it instead of
+    // overwriting it with screen coordinates.
+    if (isMaximized() || isFullScreen()) return;
+    // pos() is the window-frame position, which is what move() expects before
+    // the window is created at startup, while geometry().topLeft() is the
+    // client area. Saving the client position made every restore treat it as
+    // a frame position and shift the window down by the title bar. The size
+    // stays the client size that resize() expects.
+    const QPoint top_left = pos();
+    const QSize client_size = size();
+    if (client_size.width() <= 0 || client_size.height() <= 0) return;
+    if (settings_.main_window_width == client_size.width() &&
+        settings_.main_window_height == client_size.height() &&
         settings_.has_main_window_position &&
-        settings_.main_window_x == normal.x() &&
-        settings_.main_window_y == normal.y()) {
+        settings_.main_window_x == top_left.x() &&
+        settings_.main_window_y == top_left.y()) {
         return;
     }
-    settings_.main_window_width = normal.width();
-    settings_.main_window_height = normal.height();
-    settings_.main_window_x = normal.x();
-    settings_.main_window_y = normal.y();
+    settings_.main_window_width = client_size.width();
+    settings_.main_window_height = client_size.height();
+    settings_.main_window_x = top_left.x();
+    settings_.main_window_y = top_left.y();
     settings_.has_main_window_position = true;
     std::string error;
     if (!swiftdm::save_settings(settings_, &error)) {

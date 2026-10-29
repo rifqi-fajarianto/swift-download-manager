@@ -49,7 +49,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-29**, versi kerja **0.20.3**. Status ini cepat
+> Snapshot terakhir: **2026-10-29**, versi kerja **0.20.4**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -208,7 +208,9 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 - Main window menyimpan ukuran dan posisinya di `[interface]`
   (`WindowWidth`/`WindowHeight`/`WindowX`/`WindowY`, sejak 0.20.3) dan
-  memulihkannya saat start dengan clamp ke layar yang tersedia.
+  memulihkannya saat start dengan clamp ke layar yang tersedia. Sejak 0.20.4
+  posisi memakai koordinat frame (`pos()`) agar window tidak bergeser turun
+  sebesar title bar tiap kali dibuka.
 - Per-download log (`$XDG_DATA_HOME/swiftdm/logs/<id>-<filename>.log`, cap
   1 MiB) yang di-append tiap run dan dibuka dari baris `Log file` di Download
   Properties; file log ikut terhapus saat row dihapus.
