@@ -22,8 +22,12 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMoveEvent>
 #include <QProcess>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QScreen>
+#include <QShowEvent>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -73,6 +77,39 @@ const CategoryEntry kCategories[] = {
     {"Application", ":/icons/applications.svg"},
     {"Misc", ":/icons/other.svg"},
 };
+
+// A saved window rectangle is only restored when enough of it still overlaps a
+// screen; otherwise a removed monitor (or a smaller resolution) would put the
+// window out of reach.
+constexpr int kWindowVisibleWidth = 140;
+constexpr int kWindowVisibleHeight = 40;
+
+bool window_rect_reachable(const QRect& rect) {
+    for (const QScreen* screen : QGuiApplication::screens()) {
+        const QRect visible = rect.intersected(screen->availableGeometry());
+        if (visible.width() >= kWindowVisibleWidth &&
+            visible.height() >= kWindowVisibleHeight) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Picks the screen with the largest overlap with the saved rectangle. The
+// primary screen is the fallback for a rectangle that is not on any screen.
+QScreen* screen_for_rect(const QRect& rect) {
+    QScreen* best = nullptr;
+    qint64 best_area = 0;
+    for (QScreen* screen : QGuiApplication::screens()) {
+        const QRect visible = rect.intersected(screen->availableGeometry());
+        const qint64 area = static_cast<qint64>(visible.width()) * visible.height();
+        if (area > best_area) {
+            best_area = area;
+            best = screen;
+        }
+    }
+    return best ? best : QGuiApplication::primaryScreen();
+}
 }  // namespace
 
 MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
@@ -93,6 +130,16 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
 
     build_actions();
     build_body();
+
+    // Geometry writes are debounced so dragging or resizing does not rewrite
+    // the config file for every pixel. The saved size is applied once the body
+    // exists, because the layout's minimum size is only known then.
+    geometry_save_timer_ = new QTimer(this);
+    geometry_save_timer_->setSingleShot(true);
+    geometry_save_timer_->setInterval(500);
+    connect(geometry_save_timer_, &QTimer::timeout, this,
+            &MainWindow::save_window_geometry);
+    restore_window_geometry();
 
     shutdown_timer_ = new QTimer(this);
     shutdown_timer_->setInterval(1000);
@@ -144,6 +191,10 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    // Flush a resize/move that is still inside the debounce window so the last
+    // geometry survives a quit right after dragging the window.
+    if (geometry_save_timer_) geometry_save_timer_->stop();
+    save_window_geometry();
     // A pending countdown must not outlive the window.
     shutdown_scheduler_.cancel_all();
     if (shutdown_timer_) shutdown_timer_->stop();
@@ -540,6 +591,101 @@ void MainWindow::apply_tray_visibility() {
     tray_->deleteLater();
     tray_ = nullptr;
     tray_note_shown_ = false;
+}
+
+void MainWindow::restore_window_geometry() {
+    const QRect saved(settings_.main_window_x, settings_.main_window_y,
+                      settings_.main_window_width, settings_.main_window_height);
+    QScreen* screen =
+        settings_.has_main_window_position ? screen_for_rect(saved)
+                                           : QGuiApplication::primaryScreen();
+    if (!screen) {
+        // No screen information (offscreen/headless run): keep the saved size.
+        restoring_geometry_ = true;
+        resize(settings_.main_window_width, settings_.main_window_height);
+        restoring_geometry_ = false;
+        return;
+    }
+
+    const QRect available = screen->availableGeometry();
+    const QSize minimum = minimumSizeHint().expandedTo(QSize(320, 240));
+    // A saved size larger than the screen (or below the layout minimum) is
+    // reduced/clamped so the window stays usable.
+    const int min_width = std::min(minimum.width(), available.width());
+    const int min_height = std::min(minimum.height(), available.height());
+    const int width =
+        std::clamp(settings_.main_window_width, min_width, available.width());
+    const int height =
+        std::clamp(settings_.main_window_height, min_height, available.height());
+
+    restoring_geometry_ = true;
+    resize(width, height);
+    if (settings_.has_main_window_position && window_rect_reachable(saved)) {
+        // Keep part of the title bar inside the screen even when the saved
+        // point was partially off-screen.
+        const int visible_width =
+            std::min({kWindowVisibleWidth, width, available.width()});
+        const int visible_height =
+            std::min({kWindowVisibleHeight, height, available.height()});
+        const int min_x = available.left() - width + visible_width;
+        const int max_x = std::max(min_x, available.right() - visible_width);
+        const int min_y = available.top();
+        const int max_y = std::max(min_y, available.bottom() - visible_height);
+        const int x = std::clamp(settings_.main_window_x, min_x, max_x);
+        const int y = std::clamp(settings_.main_window_y, min_y, max_y);
+        move(x, y);
+    }
+    restoring_geometry_ = false;
+}
+
+void MainWindow::schedule_geometry_save() {
+    if (restoring_geometry_ || !geometry_save_timer_) return;
+    geometry_save_timer_->start();  // restarts the single-shot debounce
+}
+
+void MainWindow::save_window_geometry() {
+    // A tray-only start that quits before the window was ever shown has no
+    // placement to remember; saving it would pin the next start to (0, 0).
+    if (!window_shown_) return;
+    // A maximized/full-screen window reports the screen size; its normal
+    // geometry is what should be restored on the next start.
+    const QRect normal =
+        (isMaximized() || isFullScreen()) ? normalGeometry() : geometry();
+    if (!normal.isValid() || normal.width() <= 0 || normal.height() <= 0) return;
+    if (settings_.main_window_width == normal.width() &&
+        settings_.main_window_height == normal.height() &&
+        settings_.has_main_window_position &&
+        settings_.main_window_x == normal.x() &&
+        settings_.main_window_y == normal.y()) {
+        return;
+    }
+    settings_.main_window_width = normal.width();
+    settings_.main_window_height = normal.height();
+    settings_.main_window_x = normal.x();
+    settings_.main_window_y = normal.y();
+    settings_.has_main_window_position = true;
+    std::string error;
+    if (!swiftdm::save_settings(settings_, &error)) {
+        qWarning() << "window geometry: cannot save settings:"
+                   << QString::fromStdString(error);
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    schedule_geometry_save();
+}
+
+void MainWindow::moveEvent(QMoveEvent* event) {
+    QMainWindow::moveEvent(event);
+    schedule_geometry_save();
+}
+
+void MainWindow::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    // Placement is only meaningful after the window manager has shown the
+    // window; until then a tray-only run has nothing to save.
+    window_shown_ = true;
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

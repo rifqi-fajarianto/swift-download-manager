@@ -30,6 +30,12 @@ const char* const kDefaultUserAgent =
 
 namespace {
 
+// Sanity bounds for the saved main-window size. Values outside the range are
+// ignored, so a damaged config cannot produce a huge or degenerate window.
+constexpr int kMinWindowWidth = 480;
+constexpr int kMinWindowHeight = 320;
+constexpr int kMaxWindowDimension = 16384;
+
 bool parse_bool(const std::string& v, bool fallback) {
     const std::string s = to_lower(trim(v));
     if (s == "1" || s == "true" || s == "yes" || s == "on") return true;
@@ -141,6 +147,18 @@ void apply_section(Settings& s, const std::string& section,
             } else if (k == "trayiconstyle") {
                 s.tray_icon_style =
                     pick_choice(value, {"colorful", "simple"}, s.tray_icon_style);
+            } else if (k == "windowwidth") {
+                int width = 0;
+                if (parse_int(value, width) && width >= kMinWindowWidth &&
+                    width <= kMaxWindowDimension) {
+                    s.main_window_width = width;
+                }
+            } else if (k == "windowheight") {
+                int height = 0;
+                if (parse_int(value, height) && height >= kMinWindowHeight &&
+                    height <= kMaxWindowDimension) {
+                    s.main_window_height = height;
+                }
             }
         } else if (section == "proxy") {
             if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
@@ -148,6 +166,21 @@ void apply_section(Settings& s, const std::string& section,
             else if (k == "proxyport") parse_int(value, s.proxy.port);
             else if (k == "proxyuser") s.proxy.user = value;
             else if (k == "proxypassword") s.proxy.password = value;
+        }
+    }
+
+    // A position needs both coordinates; a file with only one of them keeps
+    // the window manager's placement.
+    if (section == "interface") {
+        int x = 0;
+        int y = 0;
+        const auto saved_x = keys.find("windowx");
+        const auto saved_y = keys.find("windowy");
+        if (saved_x != keys.end() && saved_y != keys.end() &&
+            parse_int(saved_x->second, x) && parse_int(saved_y->second, y)) {
+            s.main_window_x = x;
+            s.main_window_y = y;
+            s.has_main_window_position = true;
         }
     }
 }
@@ -380,7 +413,15 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "ToolbarSize = " << ini_value(settings.toolbar_size) << "\n"
         << "ShowToolbarText = " << (settings.show_toolbar_text ? 1 : 0) << "\n"
         << "TrayIconStyle = " << ini_value(settings.tray_icon_style) << "\n"
-        << "\n[proxy]\n"
+        << "WindowWidth = " << settings.main_window_width << "\n"
+        << "WindowHeight = " << settings.main_window_height << "\n";
+    // The position is only written once the window has actually been placed;
+    // until then the window manager keeps choosing the location.
+    if (settings.has_main_window_position) {
+        out << "WindowX = " << settings.main_window_x << "\n"
+            << "WindowY = " << settings.main_window_y << "\n";
+    }
+    out << "\n[proxy]\n"
         << "SocksVersion = " << proxy_type_to_token(settings.proxy.type) << "\n"
         << "ProxyAddress = " << ini_value(settings.proxy.address) << "\n"
         << "ProxyPort = " << settings.proxy.port << "\n"

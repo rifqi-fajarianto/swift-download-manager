@@ -33,6 +33,10 @@ Theme = dark                   ; system | light | dark
 ToolbarSize = normal           ; normal | small
 ShowToolbarText = 1
 TrayIconStyle = colorful       ; colorful | simple
+WindowWidth = 1020             ; main window size restored at startup
+WindowHeight = 580
+WindowX = 40                   ; only written once the window has been placed
+WindowY = 40
 
 [proxy]
 SocksVersion = 0               ; 0 = none, 4, 5, or "http"
@@ -75,6 +79,10 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `ToolbarSize` | interface | STRING | normal (SwiftDM) | toolbar size: `normal`, `small` |
 | `ShowToolbarText` | interface | BOOL | 1 (SwiftDM) | show the text under the toolbar icons |
 | `TrayIconStyle` | interface | STRING | colorful (SwiftDM) | tray icon: `colorful`, `simple` |
+| `WindowWidth` | interface | DWORD | 1020 (SwiftDM) | main window width restored at startup; values outside 480–16384 keep the default |
+| `WindowHeight` | interface | DWORD | 580 (SwiftDM) | main window height restored at startup; values outside 320–16384 keep the default |
+| `WindowX` | interface | DWORD | — | saved window x position (written together with `WindowY` after the window was placed) |
+| `WindowY` | interface | DWORD | — | saved window y position |
 | `LastDownloadID` | — | DWORD | — | last allocated download id (also DB rowid) |
 | `SocksVersion` | proxy | DWORD | — | proxy type selector |
 | `ChromePanel`/`FoxPanel`/`EdgePanel`/`IEUser` | browser | DWORD | 1 | browser panel show flags (E9) |
@@ -94,6 +102,15 @@ the sections in the file. Unknown keys and unknown sections are ignored.
 
 Unknown interface values (for example `Theme = neon`) keep the default instead
 of being stored, so a typo cannot break the appearance of the app.
+
+The main window remembers its size and position (`WindowWidth`/`WindowHeight`
+plus `WindowX`/`WindowY` once the window has been placed; 0.20.3). The values
+are written about half a second after the last resize/move and again when the
+app quits. At startup they are clamped to the screen that holds the window; a
+saved position that no longer overlaps any screen is ignored so the window
+cannot open out of reach, and a maximized window stores its normal geometry so
+the next start opens as a normal window. Wayland compositors may ignore the
+restored position, which makes this best-effort on that platform.
 
 ## Per-download overrides
 

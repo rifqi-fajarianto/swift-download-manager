@@ -51,6 +51,14 @@ struct Settings {
     std::string toolbar_size = "normal";     // ToolbarSize: "normal" | "small"
     bool show_toolbar_text = true;           // ShowToolbarText
     std::string tray_icon_style = "colorful";  // TrayIconStyle: "colorful" | "simple"
+    // Main window geometry, written when the window is resized or moved. The
+    // position is only restored when both coordinates were saved; otherwise
+    // the window manager places the window.
+    int main_window_width = 1020;   // WindowWidth
+    int main_window_height = 580;   // WindowHeight
+    int main_window_x = 0;          // WindowX
+    int main_window_y = 0;          // WindowY
+    bool has_main_window_position = false;  // WindowX and WindowY both present
 
     // [proxy]
     ProxySettings proxy;

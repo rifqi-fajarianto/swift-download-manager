@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.20.3 — 2026-10-29
+
+The main window remembers its size and position.
+
+- Resizing or moving the main window now saves `WindowWidth`/`WindowHeight`
+  and `WindowX`/`WindowY` in the `[interface]` section, and the next start
+  restores them. The write is debounced (about half a second after the last
+  resize/move) and flushed when the app quits, so a quit right after dragging
+  the window keeps the new geometry.
+- A maximized or full-screen window stores its normal geometry, so the next
+  start opens as a normal window at the previous size/position. Restored values
+  are clamped to the screen that holds the window; a saved position that no
+  longer overlaps any screen (removed monitor, smaller resolution) is ignored
+  so the window cannot open out of reach. Wayland compositors may ignore the
+  restored position.
+- Tests cover loading valid, partial, and invalid geometry keys plus the
+  save/load round-trip.
+- Version policy note: this UI behavior change ships as a PATCH bump
+  (0.20.2 → 0.20.3) on the maintainer's request instead of the usual MINOR
+  bump.
+
 ## 0.20.2 — 2026-10-28
 
 - The Download Complete window (and the other notification windows) now takes

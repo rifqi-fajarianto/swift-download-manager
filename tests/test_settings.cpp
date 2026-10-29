@@ -30,6 +30,9 @@ void test_defaults() {
     CHECK_EQ(s.toolbar_size, std::string("normal"));
     CHECK(s.show_toolbar_text);
     CHECK_EQ(s.tray_icon_style, std::string("colorful"));
+    CHECK_EQ(s.main_window_width, 1020);
+    CHECK_EQ(s.main_window_height, 580);
+    CHECK(!s.has_main_window_position);
     CHECK(!s.proxy.enabled());
     CHECK(s.default_agent.find("Mozilla/5.0") == 0);
     CHECK(s.download_dir.find("Downloads") != std::string::npos);
@@ -402,6 +405,8 @@ void test_written_sections(const std::string& dir) {
         CHECK(download < interface);
         CHECK(content.find("MaxConnections", download) < interface);
         CHECK(content.find("Theme", interface) != std::string::npos);
+        CHECK(content.find("WindowWidth", interface) != std::string::npos);
+        CHECK(content.find("WindowHeight", interface) != std::string::npos);
     }
     // The confirmation option belongs to the general section.
     const size_t general = content.find("[general]");
@@ -440,6 +445,71 @@ void test_confirmation_option(const std::string& dir) {
     CHECK(missing.show_download_confirmation);
 }
 
+// The main window size is optional state: valid values round-trip, malformed
+// ones keep the defaults, and a position needs both coordinates.
+void test_window_geometry(const std::string& dir) {
+    const std::string path = dir + "/geometry.ini";
+    {
+        std::ofstream out(path);
+        out << "[interface]\n"
+            << "WindowWidth = 1280\n"
+            << "WindowHeight = 800\n"
+            << "WindowX = -120\n"
+            << "WindowY = 40\n";
+    }
+    Settings saved;
+    std::string err;
+    CHECK(load_settings(path, saved, &err));
+    CHECK_EQ(saved.main_window_width, 1280);
+    CHECK_EQ(saved.main_window_height, 800);
+    CHECK(saved.has_main_window_position);
+    CHECK_EQ(saved.main_window_x, -120);
+    CHECK_EQ(saved.main_window_y, 40);
+
+    {
+        std::ofstream out(dir + "/geometry-invalid.ini");
+        out << "[interface]\n"
+            << "WindowWidth = 10\n"
+            << "WindowHeight = nope\n"
+            << "WindowX = 100\n";  // Y missing: the position stays unset.
+    }
+    Settings invalid = default_settings();
+    CHECK(load_settings(dir + "/geometry-invalid.ini", invalid, &err));
+    CHECK_EQ(invalid.main_window_width, 1020);
+    CHECK_EQ(invalid.main_window_height, 580);
+    CHECK(!invalid.has_main_window_position);
+    CHECK_EQ(invalid.main_window_x, 0);
+
+    // A saved position is written back, and without one the file keeps no
+    // WindowX/WindowY keys so the window manager still places the window.
+    Settings roundtrip = default_settings();
+    roundtrip.config_path = dir + "/geometry-written.ini";
+    roundtrip.main_window_width = 900;
+    roundtrip.main_window_height = 640;
+    roundtrip.main_window_x = 15;
+    roundtrip.main_window_y = 25;
+    roundtrip.has_main_window_position = true;
+    CHECK(save_settings(roundtrip, &err));
+    Settings reloaded;
+    CHECK(load_settings(roundtrip.config_path, reloaded, &err));
+    CHECK_EQ(reloaded.main_window_width, 900);
+    CHECK_EQ(reloaded.main_window_height, 640);
+    CHECK(reloaded.has_main_window_position);
+    CHECK_EQ(reloaded.main_window_x, 15);
+    CHECK_EQ(reloaded.main_window_y, 25);
+
+    Settings no_position = default_settings();
+    no_position.config_path = dir + "/geometry-no-position.ini";
+    no_position.main_window_width = 800;
+    no_position.main_window_height = 600;
+    CHECK(save_settings(no_position, &err));
+    Settings no_position_loaded;
+    CHECK(load_settings(no_position.config_path, no_position_loaded, &err));
+    CHECK_EQ(no_position_loaded.main_window_width, 800);
+    CHECK_EQ(no_position_loaded.main_window_height, 600);
+    CHECK(!no_position_loaded.has_main_window_position);
+}
+
 }  // namespace
 
 int main() {
@@ -472,6 +542,7 @@ int main() {
     test_interface_values(dir);
     test_written_sections(dir);
     test_confirmation_option(dir);
+    test_window_geometry(dir);
 
     testutil::cleanup_dir(dir);
     return testutil::finish("test_settings");

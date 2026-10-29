@@ -23,7 +23,10 @@ class QListWidget;
 class QListWidgetItem;
 class QMessageBox;
 class QModelIndex;
+class QMoveEvent;
 class QPushButton;
+class QResizeEvent;
+class QShowEvent;
 class QStackedWidget;
 class QSystemTrayIcon;
 class QTableView;
@@ -52,6 +55,9 @@ class MainWindow : public QMainWindow {
 
   protected:
     void closeEvent(QCloseEvent* event) override;
+    void moveEvent(QMoveEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
   private slots:
     void on_new_url();
@@ -83,6 +89,14 @@ class MainWindow : public QMainWindow {
     // Applies the appearance settings (theme, toolbar, tray icon) after the
     // settings dialog was accepted.
     void apply_interface_settings();
+    // Applies the saved main-window size/position, clamped to a reachable
+    // screen; called once the body (and its minimum size) exists.
+    void restore_window_geometry();
+    // Debounces geometry writes while the user drags/resizes the window.
+    void schedule_geometry_save();
+    // Writes the normal geometry (not the maximized size) to the settings
+    // file when it differs from the saved values.
+    void save_window_geometry();
     void apply_toolbar_settings();
     void apply_tray_settings();
     // Creates or removes the tray icon after the setting changed.
@@ -230,6 +244,13 @@ class MainWindow : public QMainWindow {
     // Kept so a second Settings request raises the open window instead of
     // stacking another one.
     QPointer<QDialog> settings_dialog_;
+    // Pending geometry write (resize/move) and the guard that suppresses
+    // writes while the saved geometry is being applied at startup.
+    QTimer* geometry_save_timer_ = nullptr;
+    bool restoring_geometry_ = false;
+    // A window that was never shown (a tray-only autostart that quits before
+    // the user opens it) has no meaningful placement to save.
+    bool window_shown_ = false;
     QHash<qint64, qint64> last_progress_save_ms_;  // history id -> last DB write
     bool quitting_ = false;
     bool tray_note_shown_ = false;
