@@ -43,23 +43,30 @@ int common_control_height(const QList<QWidget*>& controls) {
 
 }  // namespace
 
-QString default_download_location(const QString& download_dir, const QString& category,
-                                  bool category_folders) {
-    QString base = download_dir.trimmed();
+QString default_download_location(const QString& download_dir,
+                                  const std::map<std::string, std::string>& category_dirs,
+                                  const QString& category, bool category_folders) {
+    const QString trimmed_category = category.trimmed();
+    const auto custom = category_dirs.find(trimmed_category.toStdString());
+    QString base = custom != category_dirs.end()
+                       ? QString::fromStdString(custom->second)
+                       : download_dir.trimmed();
     if (base.isEmpty()) base = QDir::homePath();
     base = QString::fromStdString(swiftdm::expand_tilde(base.toStdString()));
-    if (category_folders && !category.trimmed().isEmpty()) {
-        return QDir::cleanPath(QDir(base).filePath(category.trimmed()));
+    if (custom != category_dirs.end()) return QDir::cleanPath(base);
+    if (category_folders && !trimmed_category.isEmpty()) {
+        return QDir::cleanPath(QDir(base).filePath(trimmed_category));
     }
     return QDir::cleanPath(base);
 }
 
-ConfirmDownloadDialog::ConfirmDownloadDialog(const QString& file_name, quint64 size,
-                                             const QString& url,
-                                             const QString& download_dir,
-                                             bool category_folders, QWidget* parent)
+ConfirmDownloadDialog::ConfirmDownloadDialog(
+    const QString& file_name, quint64 size, const QString& url, const QString& download_dir,
+    const std::map<std::string, std::string>& category_dirs, bool category_folders,
+    QWidget* parent)
     : QDialog(parent),
       download_dir_(download_dir),
+      category_dirs_(category_dirs),
       category_folders_(category_folders),
       file_name_(file_name.isEmpty() ? tr("(from URL)") : file_name) {
     setWindowTitle(tr("Download Confirmation"));
@@ -311,8 +318,8 @@ void ConfirmDownloadDialog::set_probe_result(const QString& file_name, quint64 s
 }
 
 QString ConfirmDownloadDialog::default_location() const {
-    return default_download_location(download_dir_, category_box_->currentText(),
-                                     category_folders_);
+    return default_download_location(download_dir_, category_dirs_,
+                                     category_box_->currentText(), category_folders_);
 }
 
 void ConfirmDownloadDialog::use_default_location() {

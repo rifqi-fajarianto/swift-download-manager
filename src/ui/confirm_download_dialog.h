@@ -4,6 +4,9 @@
 #include <QString>
 #include <QVector>
 
+#include <map>
+#include <string>
+
 #include "ui/queue_picker_dialog.h"
 
 class QComboBox;
@@ -17,8 +20,9 @@ namespace swiftdm::ui {
 // category folder when the category folders are enabled. The dialog and the
 // automatic download path share it, so a download that skips the confirmation
 // ends up in the same place as a confirmed one.
-QString default_download_location(const QString& download_dir, const QString& category,
-                                  bool category_folders);
+QString default_download_location(const QString& download_dir,
+                                  const std::map<std::string, std::string>& category_dirs,
+                                  const QString& category, bool category_folders);
 
 // Confirmation step shown before any transfer starts (manual "New URL" and
 // browser handoff): the server-resolved file name and size, the category
@@ -41,8 +45,9 @@ class ConfirmDownloadDialog : public QDialog {
     static constexpr int kMinWindowHeight = 320;
 
     ConfirmDownloadDialog(const QString& file_name, quint64 size, const QString& url,
-                          const QString& download_dir, bool category_folders,
-                          QWidget* parent = nullptr);
+                          const QString& download_dir,
+                          const std::map<std::string, std::string>& category_dirs,
+                          bool category_folders, QWidget* parent = nullptr);
 
     QString category() const;
     // Exact destination folder, tilde-expanded and cleaned.
@@ -77,6 +82,7 @@ class ConfirmDownloadDialog : public QDialog {
     QString queue_target_name() const;
 
     QString download_dir_;
+    std::map<std::string, std::string> category_dirs_;
     bool category_folders_ = true;
     // True once the user edited or picked a location: category changes must no
     // longer move it.

@@ -198,7 +198,11 @@ Layout (from `main-window.png`):
      (+ category folders toggle); Temporary Directory; Get File Creation Date
      From Server (since 0.20.0 the finished file gets the server's
      `Creation-Date`/`Last-Modified`, or the FTP MDTM time, as its modification
-     time).
+     time). Since 0.21.0 a `Category folders` section picks a category from a
+     combo and shows one folder field below it (with `...` picker and `Reset`);
+     an empty field shows the default location as placeholder. A filled field
+     sends that category straight into the folder (no category subfolder) and
+     applies even when the category folders toggle is off.
    - *Proxy/Socks*: No Proxy/Socks | HTTP Proxy | Socks Proxy (V4/V5),
      Address/Port/User/Password, "https protocol" handling note.
    - *Passwords*: credential table (Target/User/Password; remembered auth per

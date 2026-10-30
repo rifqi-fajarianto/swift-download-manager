@@ -28,6 +28,10 @@ CategoryFolders = 1
 TempDirectory = ~/.local/share/swiftdm/tmp
 ServerCreationDate = 0
 
+[categories]                   ; optional: custom folder per category
+Video = ~/Videos/Incoming      ; replaces DownloadDirectory/Video, applies even
+                               ; when CategoryFolders = 0; omitted = default
+
 [interface]
 Theme = dark                   ; system | light | dark
 ToolbarSize = normal           ; normal | small
@@ -67,6 +71,7 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `DefaultAgent` | download | STRING | Chrome-like modern UA | default User-Agent |
 | `DownloadDirectory` | download | STRING | `%USERPROFILE%\Downloads` | destination root |
 | `CategoryFolders` | download | DWORD | 2 | create per-category subfolders |
+| `[categories]` keys | categories | STRING | (SwiftDM, 0.21.0) | optional custom destination per category; the key is the category name (`Video`, `Audio`, `Compressed`, `Document`, `Application`, `Misc`), the value a folder. Replaces `DownloadDirectory/<Category>` entirely and still applies when `CategoryFolders` is 0. Unknown names and empty values are ignored; absent section keeps the default tree. |
 | `TempDirectory` | download | STRING | `%APPDATA%\Roaming\NeatDM` | temp/state root |
 | `ServerCreationDate` | download | DWORD | 2 | derive file creation date from server header (SwiftDM: sets the finished file's modification time from `Creation-Date`/`Last-Modified`, or FTP `MDTM`; applied 0.20.0) |
 | `CompletionDialog` | general | DWORD | 0 | show completion dialog (main Downloads list only; queue items use `notify_item`, 0.19.3) |

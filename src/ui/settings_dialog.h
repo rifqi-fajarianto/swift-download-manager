@@ -2,6 +2,9 @@
 
 #include <QDialog>
 
+#include <map>
+#include <string>
+
 #include "store/settings.h"
 #include "ui/speed_limit_editor.h"
 
@@ -66,6 +69,12 @@ class SettingsDialog : public QDialog {
     QCheckBox* use_ua_browser_ = nullptr;
     QLineEdit* download_dir_ = nullptr;
     QCheckBox* category_folders_ = nullptr;
+    QComboBox* category_picker_ = nullptr;
+    QLineEdit* category_dir_edit_ = nullptr;
+    // Per-category folders as edited so far; the visible field only shows the
+    // picked category, so switching commits it here first.
+    std::map<std::string, std::string> category_draft_;
+    bool category_refreshing_ = false;
     QLineEdit* temp_dir_ = nullptr;
     QCheckBox* server_creation_date_ = nullptr;
 
@@ -80,6 +89,13 @@ class SettingsDialog : public QDialog {
     QLineEdit* proxy_password_ = nullptr;
 
     void update_proxy_enabled();
+
+    // Category folder section: the combo picks one category, the field below
+    // shows its custom folder or the default location as placeholder.
+    void select_category();
+    void show_category_dir();
+    QString default_category_location(const std::string& category) const;
+    std::string current_category() const;
 };
 
 }  // namespace swiftdm::ui

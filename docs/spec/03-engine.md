@@ -63,7 +63,9 @@ are our own choices where the original is UNKNOWN (E23).
 - Temp directory: global default from settings, per-download `temppath`
   override (E8, E22).
 - Destination: `folderpath` + `filename`, with per-category subfolders when
-  `CategoryFolders` is enabled (E8/E19).
+  `CategoryFolders` is enabled (E8/E19). A category with a custom folder in
+  `[categories]` writes straight to that folder instead, even when
+  `CategoryFolders` is off (0.21.0).
 - Temp workspace lifecycle: one directory per download
   (`download-<hash>/` with `<filename>.part` and `segments.json`) is kept for
   resume while the item exists (pause, failure, quit) and removed on

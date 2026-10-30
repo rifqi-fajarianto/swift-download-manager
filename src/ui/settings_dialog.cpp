@@ -17,7 +17,9 @@
 #include <QVBoxLayout>
 
 #include "core/util.h"
+#include "engine/categories.h"
 #include "swiftdm/version.h"
+#include "ui/confirm_download_dialog.h"
 #include "ui/icons.h"
 
 namespace swiftdm::ui {
@@ -126,6 +128,37 @@ QLineEdit* SettingsDialog::add_directory_row(QFormLayout* layout, QWidget* paren
         if (!dir.isEmpty()) edit->setText(dir);
     });
     return edit;
+}
+
+// Remembers the typed folder of the category that is being left, then shows the
+// folder of the newly picked one.
+void SettingsDialog::select_category() {
+    if (!category_refreshing_ && !category_dir_edit_->text().trimmed().isEmpty()) {
+        category_draft_[current_category()] = category_dir_edit_->text().trimmed().toStdString();
+    }
+    show_category_dir();
+}
+
+void SettingsDialog::show_category_dir() {
+    category_refreshing_ = true;
+    const std::string category = current_category();
+    category_dir_edit_->setText(QString::fromStdString(swiftdm::category_dir_for(settings_, category)));
+    category_dir_edit_->setPlaceholderText(default_category_location(category));
+    category_refreshing_ = false;
+}
+
+// Default destination of the selected category. Shown as placeholder while the
+// field is empty, so the folder the download would use stays visible. A stale
+// category configuration is not part of the placeholder.
+QString SettingsDialog::default_category_location(const std::string& category) const {
+    return default_download_location(download_dir_->text().trimmed(),
+                                     std::map<std::string, std::string>{},
+                                     QString::fromStdString(category),
+                                     category_folders_->isChecked());
+}
+
+std::string SettingsDialog::current_category() const {
+    return category_picker_->currentData().toString().toStdString();
 }
 
 QWidget* SettingsDialog::build_general_tab() {
@@ -275,6 +308,29 @@ QWidget* SettingsDialog::build_download_tab() {
         tr("Set the downloaded file's modification time from the server date "
            "(HTTP Creation-Date/Last-Modified, FTP MDTM)."));
     files->addRow(QString(), server_creation_date_);
+    auto* category_dirs = add_form_section(layout, page, tr("Category folders"));
+    category_dirs->addRow(QString(), new QLabel(
+                                         tr("Leave the folder empty to use the default location. A "
+                                            "custom folder replaces the category subfolder and is "
+                                            "used even when category folders are off."),
+                                         page));
+    category_picker_ = new QComboBox(page);
+    for (const std::string& category : category_names()) {
+        category_picker_->addItem(QString::fromStdString(category),
+                                  QString::fromStdString(category));
+    }
+    category_dirs->addRow(tr("Category:"), category_picker_);
+    category_dir_edit_ = add_directory_row(category_dirs, page, tr("Folder:"),
+                                           tr("Category Folder"));
+    auto* reset = new QPushButton(tr("Reset"), category_dir_edit_->parentWidget());
+    static_cast<QHBoxLayout*>(category_dir_edit_->parentWidget()->layout())
+        ->addWidget(reset);
+    connect(reset, &QPushButton::clicked, category_dir_edit_, &QLineEdit::clear);
+    connect(category_dir_edit_, &QLineEdit::textEdited, this, [this] { show_category_dir(); });
+    connect(category_picker_, &QComboBox::currentIndexChanged, this,
+            [this] { select_category(); });
+    // Category folders off means the default location has no subfolder either.
+    connect(category_folders_, &QCheckBox::toggled, this, [this] { show_category_dir(); });
 
     layout->addStretch(1);
     return page;
@@ -373,7 +429,10 @@ void SettingsDialog::load_from_settings() {
     default_agent_->setText(QString::fromStdString(settings_.default_agent));
     use_ua_browser_->setChecked(settings_.use_ua_for_browser);
     download_dir_->setText(QString::fromStdString(settings_.download_dir));
+    connect(download_dir_, &QLineEdit::textChanged, this, [this] { show_category_dir(); });
     category_folders_->setChecked(settings_.category_folders);
+    category_draft_ = settings_.category_dirs;
+    show_category_dir();
     temp_dir_->setText(QString::fromStdString(settings_.temp_dir));
     server_creation_date_->setChecked(settings_.server_creation_date);
 
@@ -425,6 +484,16 @@ void SettingsDialog::store_to_settings() {
     settings_.download_dir =
         swiftdm::expand_tilde(download_dir_->text().trimmed().toStdString());
     settings_.category_folders = category_folders_->isChecked();
+    settings_.category_dirs.clear();
+    for (const auto& [category, dir] : category_draft_) {
+        if (!dir.empty()) settings_.category_dirs[category] = dir;
+    }
+    // The visible row may still hold an edit that was never committed by
+    // switching category.
+    const QString current_dir = category_dir_edit_->text().trimmed();
+    if (!current_dir.isEmpty()) {
+        settings_.category_dirs[current_category()] = current_dir.toStdString();
+    }
     settings_.temp_dir = swiftdm::expand_tilde(temp_dir_->text().trimmed().toStdString());
     settings_.server_creation_date = server_creation_date_->isChecked();
 

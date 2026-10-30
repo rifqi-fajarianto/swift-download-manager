@@ -22,6 +22,7 @@
 #include <algorithm>
 
 #include "core/util.h"
+#include "ui/confirm_download_dialog.h"
 #include "ui/download_model.h"
 #include "ui/download_task.h"
 #include "ui/icons.h"
@@ -488,10 +489,9 @@ void DownloadWindow::refresh() {
     if (!options_initialized_) {
         QString dir = item->output_dir;
         if (dir.isEmpty()) {
-            dir = QString::fromStdString(settings_.download_dir);
-            if (settings_.category_folders && !item->category.isEmpty()) {
-                dir += QLatin1Char('/') + item->category;
-            }
+            dir = swiftdm::ui::default_download_location(
+                QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+                item->category, settings_.category_folders);
         }
         dir_edit_->setText(dir);
         name_edit_->setText(item->file_name);

@@ -209,10 +209,9 @@ void MainWindow::restore_history() {
         }
         item.output_dir = QString::fromStdString(record.folder_path);
         if (item.output_dir.isEmpty()) {
-            item.output_dir = QString::fromStdString(settings_.download_dir);
-            if (settings_.category_folders && !record.category.empty()) {
-                item.output_dir += QLatin1Char('/') + QString::fromStdString(record.category);
-            }
+            item.output_dir = swiftdm::ui::default_download_location(
+                QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+                QString::fromStdString(record.category), settings_.category_folders);
         }
         item.size = record.file_size;
         item.done = record.done;
@@ -241,10 +240,12 @@ void MainWindow::restore_history() {
             // with a unique suffix, so resolve it against the folder.
             std::string folder = record.folder_path;
             if (folder.empty()) {
-                folder = settings_.download_dir;
-                if (settings_.category_folders && !record.category.empty()) {
-                    folder += "/" + record.category;
-                }
+                folder = swiftdm::ui::default_download_location(
+                             QString::fromStdString(settings_.download_dir),
+                             settings_.category_dirs,
+                             QString::fromStdString(record.category),
+                             settings_.category_folders)
+                             .toStdString();
             }
             const std::string resolved = swiftdm::resolve_existing_file(
                 folder, item.file_name.toStdString(), record.last_try);
@@ -313,12 +314,12 @@ DownloadTask::Options MainWindow::options_from_record(
     DownloadTask::Options options;
     options.url = QString::fromStdString(record.url);
     QString folder = QString::fromStdString(record.folder_path);
-    if (folder.isEmpty()) folder = QString::fromStdString(settings_.download_dir);
     // Rows written before the `folderexact` column stored the base folder
     // only; their category subfolder still has to be appended on restore.
-    if (!record.folder_exact && settings_.category_folders && !record.category.empty()) {
-        const QString suffix = QLatin1Char('/') + QString::fromStdString(record.category);
-        if (!folder.endsWith(suffix)) folder += suffix;
+    if (folder.isEmpty() || !record.folder_exact) {
+        folder = swiftdm::ui::default_download_location(
+            QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+            QString::fromStdString(record.category), settings_.category_folders);
     }
     options.output_dir = QDir::cleanPath(folder);
     // The rebuilt folder already includes the category: the engine must not

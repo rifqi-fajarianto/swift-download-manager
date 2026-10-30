@@ -49,7 +49,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-29**, versi kerja **0.20.4**. Status ini cepat
+> Snapshot terakhir: **2026-10-30**, versi kerja **0.21.0**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -204,8 +204,16 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
   dari versi aplikasi. Popup mengikuti desain `ext/extension-ui-template.html`
   (referensi desain, tidak ikut dipaketkan).
 
-### Sudah tersedia sampai 0.20.0
+### Sudah tersedia sampai 0.21.0
 
+- Custom download folder per kategori (0.21.0): section `Category folders` di
+  tab `Download` berisi combo kategori (Video, Audio, Compressed, Document,
+  Application, Misc) dan satu field folder untuk kategori terpilih, dengan
+  tombol `...` dan `Reset`. Field kosong menampilkan lokasi default
+  (`Download directory/<Kategori>`) sebagai placeholder. Folder terisi
+  menggantikan seluruh tujuan default (tanpa subfolder kategori) dan tetap
+  berlaku walau `Create category folders` dimatikan. Disimpan di section
+  opsional `[categories]` pada `swiftdm.ini`.
 - Main window menyimpan ukuran dan posisinya di `[interface]`
   (`WindowWidth`/`WindowHeight`/`WindowX`/`WindowY`, sejak 0.20.3) dan
   memulihkannya saat start dengan clamp ke layar yang tersedia. Sejak 0.20.4

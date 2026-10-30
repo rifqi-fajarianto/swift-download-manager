@@ -111,6 +111,8 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(test_settings_dialog
         test_settings_dialog.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/settings_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
     )
@@ -157,6 +159,8 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(test_download_window
         test_download_window.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/download_window.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/download_model.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/download_task.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"

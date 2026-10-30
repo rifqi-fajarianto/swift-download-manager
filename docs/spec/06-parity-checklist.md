@@ -52,7 +52,7 @@ Windows notes:
 | Pause / resume / restart | Replicated | JSON state + probe validation; Pause/Resume toggle in the download window |
 | Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished main-list rows stay Paused until the user resumes, while unfinished queue rows return as Queued and start only when their queue is running or autostart is on (0.19.0) |
 | Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts. Named queues and scheduling are implemented in 0.19.0 (see the v1.1 rows below) |
-| Categories + category folders | Replicated | tree filter + extension-based routing |
+| Categories + category folders | Replicated | tree filter + extension-based routing; since 0.21.0 each category can have its own destination folder (Settings → Download → Category folders), which replaces the category subfolder and applies even with `CategoryFolders` off |
 | Per-download bandwidth limit | Replicated | enable toggle + presets; active limit shown in orange. 0.18.2: live changes apply across transfer paths with 500 ms UI debounce; other Options fields require pause. |
 | Speed + remaining time display | Replicated | 100 ms engine progress, 200 ms speed window → up to 10 Hz UI refresh (0.19.15); sequential/FTP/HLS still show no speed |
 | Retry with backoff | Replicated (approximation) | exact original values UNKNOWN (E23) |

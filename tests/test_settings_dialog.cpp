@@ -125,6 +125,7 @@ int main(int argc, char** argv) {
     settings.proxy.port = 3128;
     settings.default_agent = "TestAgent/2.0";
     settings.download_dir = "/tmp/swiftdm-dialog-downloads";
+    settings.category_dirs["Video"] = "/tmp/swiftdm-dialog-video";
     settings.toolbar_size = "small";
     settings.show_toolbar_text = false;
     settings.theme = "light";
@@ -180,9 +181,10 @@ int main(int argc, char** argv) {
         check(section_titles(download_page) ==
                   QStringList({QStringLiteral("Connections"), QStringLiteral("Bandwidth"),
                                QStringLiteral("User-Agent"),
-                               QStringLiteral("Files and folders")}),
-              "the download tab has the Connections, Bandwidth, User-Agent and "
-              "Files and folders sections");
+                               QStringLiteral("Files and folders"),
+                               QStringLiteral("Category folders")}),
+              "the download tab has the Connections, Bandwidth, User-Agent, "
+              "Files and folders and Category folders sections");
         check(all_controls_are_in_sections(download_page),
               "the download tab has no control outside a section");
     }
@@ -296,6 +298,35 @@ int main(int argc, char** argv) {
     check(download_dir != nullptr, "the dialog has the download directory field");
     check(tab_index_of(tabs, download_dir) == 2,
           "the download directory field sits on the download tab");
+
+    const QLineEdit* video_dir =
+        line_edit_with_text(&dialog, QStringLiteral("/tmp/swiftdm-dialog-video"));
+    check(video_dir != nullptr, "the dialog loads the custom Video folder");
+    if (video_dir) {
+        check(tab_index_of(tabs, video_dir) == 2,
+              "the custom Video folder sits on the download tab");
+    }
+    // One combo picks the category; the folder field below follows it.
+    const QComboBox* category_picker = nullptr;
+    for (const QComboBox* combo : dialog.findChildren<QComboBox*>()) {
+        if (combo->findText(QStringLiteral("Misc")) >= 0) category_picker = combo;
+    }
+    check(category_picker != nullptr, "the category folder section has a category combo");
+    if (category_picker && video_dir) {
+        check(category_picker->count() == 6, "the category combo lists the six categories");
+        check(category_picker->currentText() == QStringLiteral("Video"),
+              "the category combo starts on the first category");
+        const int audio = category_picker->findText(QStringLiteral("Audio"));
+        auto* picker = const_cast<QComboBox*>(category_picker);
+        picker->setCurrentIndex(audio);
+        check(video_dir->text().isEmpty(), "another category shows no custom folder");
+        check(video_dir->placeholderText() ==
+                  QStringLiteral("/tmp/swiftdm-dialog-downloads/Audio"),
+              "the empty field shows the default location as placeholder");
+        picker->setCurrentIndex(0);
+        check(video_dir->text() == QStringLiteral("/tmp/swiftdm-dialog-video"),
+              "switching back shows the category's custom folder again");
+    }
 
     if (download_page) {
         const QGroupBox* connections =

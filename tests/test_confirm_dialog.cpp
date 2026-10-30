@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
 
     ConfirmDownloadDialog dialog(QStringLiteral("movie.mp4"), 1500000,
                                  QStringLiteral("https://example.com/movie.mp4"),
-                                 QStringLiteral("/tmp"), true);
+                                 QStringLiteral("/tmp"), {}, true);
 
     check(dialog.windowTitle() == QStringLiteral("Download Confirmation"),
           "the window title is Download Confirmation");
@@ -158,13 +158,13 @@ int main(int argc, char** argv) {
 
     ConfirmDownloadDialog unknown(QStringLiteral("movie.mp4"), 0,
                                   QStringLiteral("https://example.com/movie.mp4"),
-                                  QStringLiteral("/tmp"), true);
+                                  QStringLiteral("/tmp"), {}, true);
     check(label_texts(&unknown).contains(QStringLiteral("Unknown size")),
           "an unknown size is shown");
 
     ConfirmDownloadDialog pending(QStringLiteral("fallback.bin"), 0,
                                   QStringLiteral("https://example.com/fallback.bin"),
-                                  QStringLiteral("/tmp"), true);
+                                  QStringLiteral("/tmp"), {}, true);
     pending.set_probe_pending();
     QPushButton* download_button = nullptr;
     for (QPushButton* button : pending.findChildren<QPushButton*>()) {
@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
     check(resolved_name_shown, "probe result replaces the fallback filename");
 
     // A long file name or URL never widens the window.
-    ConfirmDownloadDialog long_dialog(long_name, 1500000, long_url, QStringLiteral("/tmp"),
+    ConfirmDownloadDialog long_dialog(long_name, 1500000, long_url, QStringLiteral("/tmp"), {},
                                       true);
     check(long_dialog.size() == dialog.size(),
           "a long file name does not change the window size");
@@ -285,7 +285,7 @@ int main(int argc, char** argv) {
     // becomes the default action, without a picker.
     ConfirmDownloadDialog queued(QStringLiteral("movie.mp4"), 1500000,
                                  QStringLiteral("https://example.com/movie.mp4"),
-                                 QStringLiteral("/tmp"), true);
+                                 QStringLiteral("/tmp"), {}, true);
     queued.set_queue_choices({{7, QStringLiteral("Batch"), 2},
                               {9, QStringLiteral("Parts"), 0}},
                              9);
@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
     // dialog itself stays open and no queue is guessed.
     ConfirmDownloadDialog choose(QStringLiteral("movie.mp4"), 1500000,
                                  QStringLiteral("https://example.com/movie.mp4"),
-                                 QStringLiteral("/tmp"), true);
+                                 QStringLiteral("/tmp"), {}, true);
     choose.set_queue_choices({{7, QStringLiteral("Batch"), 2},
                               {9, QStringLiteral("Parts"), 0}},
                              0);
@@ -321,7 +321,7 @@ int main(int argc, char** argv) {
     // A single queue leaves nothing to choose: Add to queue uses it directly.
     ConfirmDownloadDialog single(QStringLiteral("movie.mp4"), 1500000,
                                  QStringLiteral("https://example.com/movie.mp4"),
-                                 QStringLiteral("/tmp"), true);
+                                 QStringLiteral("/tmp"), {}, true);
     single.set_queue_choices({{7, QStringLiteral("Batch"), 2}}, 0);
     auto* single_button =
         qobject_cast<QPushButton*>(named_widget(&single, "confirm_queue"));
@@ -336,7 +336,7 @@ int main(int argc, char** argv) {
     // Download Now always targets the main list, even after a target was set.
     ConfirmDownloadDialog main_list(QStringLiteral("movie.mp4"), 1500000,
                                     QStringLiteral("https://example.com/movie.mp4"),
-                                    QStringLiteral("/tmp"), true);
+                                    QStringLiteral("/tmp"), {}, true);
     main_list.set_queue_choices({{7, QStringLiteral("Batch"), 2},
                                  {9, QStringLiteral("Parts"), 0}},
                                 9);
@@ -366,17 +366,32 @@ int main(int argc, char** argv) {
     // The default location is shared with the automatic download path: the
     // download root plus the category folder when category folders are on.
     using swiftdm::ui::default_download_location;
-    check(default_download_location(QStringLiteral("/tmp/downloads"),
-                                   QStringLiteral("Video"), true) ==
+    const std::map<std::string, std::string> no_dirs;
+    check(default_download_location(QStringLiteral("/tmp/downloads"), no_dirs,
+                                    QStringLiteral("Video"), true) ==
               QStringLiteral("/tmp/downloads/Video"),
           "the default location holds the category folder");
-    check(default_download_location(QStringLiteral("/tmp/downloads"),
-                                   QStringLiteral("Video"), false) ==
+    check(default_download_location(QStringLiteral("/tmp/downloads"), no_dirs,
+                                    QStringLiteral("Video"), false) ==
               QStringLiteral("/tmp/downloads"),
           "the default location is the download root without category folders");
-    check(default_download_location(QStringLiteral("  "), QStringLiteral("Video"),
-                                   false) == QDir::homePath(),
+    check(default_download_location(QStringLiteral("  "), no_dirs,
+                                    QStringLiteral("Video"), false) == QDir::homePath(),
           "an empty download root falls back to the home folder");
+
+    const std::map<std::string, std::string> custom{{"Video", "/tmp/videos"}};
+    check(default_download_location(QStringLiteral("/tmp/downloads"), custom,
+                                    QStringLiteral("Video"), true) ==
+              QStringLiteral("/tmp/videos"),
+          "a custom category folder replaces the category subfolder");
+    check(default_download_location(QStringLiteral("/tmp/downloads"), custom,
+                                    QStringLiteral("Video"), false) ==
+              QStringLiteral("/tmp/videos"),
+          "a custom category folder applies without category folders");
+    check(default_download_location(QStringLiteral("/tmp/downloads"), custom,
+                                    QStringLiteral("Audio"), true) ==
+              QStringLiteral("/tmp/downloads/Audio"),
+          "other categories keep the default location");
 
     if (failures == 0) std::printf("confirm_dialog: all checks passed\n");
     return failures == 0 ? 0 : 1;

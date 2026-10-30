@@ -219,7 +219,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
         if (fallback_name.isEmpty()) fallback_name = QStringLiteral("download.bin");
         auto* dialog = new ConfirmDownloadDialog(
             fallback_name, 0, flow->options.url,
-            QString::fromStdString(settings_.download_dir), settings_.category_folders);
+            QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+            settings_.category_folders);
         dialog->set_queue_choices(queue_choices(), flow->item.queue_id);
         dialog->set_probe_pending();
         flow->dialog = dialog;
@@ -325,8 +326,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             flow->dialog = nullptr;
         } else {
             draft.output_dir = default_download_location(
-                QString::fromStdString(settings_.download_dir), draft.category,
-                settings_.category_folders);
+                QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+                draft.category, settings_.category_folders);
             start_options.output_dir = draft.output_dir;
             start_options.apply_category_folder = false;
         }
@@ -449,10 +450,9 @@ void MainWindow::start_task_at_row(int row, const DownloadTask::Options* options
         options.connections = item->connections;
     }
     if (options.output_dir.isEmpty()) {
-        options.output_dir = QString::fromStdString(settings_.download_dir);
-        if (settings_.category_folders && !options.category.isEmpty()) {
-            options.output_dir += QLatin1Char('/') + options.category;
-        }
+        options.output_dir = default_download_location(
+            QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+            options.category, settings_.category_folders);
     }
     // The GUI always resolves the folder (category included) before the task
     // starts, so the engine must not append a category subfolder again.

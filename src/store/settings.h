@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <string>
 
 namespace swiftdm {
@@ -63,6 +64,11 @@ struct Settings {
     // [proxy]
     ProxySettings proxy;
 
+    // [categories] custom destination per category name. An entry replaces the
+    // whole default destination (DownloadDirectory/category) and still applies
+    // while category_folders is off. Empty map keeps the default tree.
+    std::map<std::string, std::string> category_dirs;
+
     // Location this settings object was loaded from / saved to.
     std::string config_path;
 };
@@ -81,6 +87,10 @@ std::string default_database_path();  // platform local data root/SwiftDM/swiftd
 std::string default_log_dir();  // platform local data root/SwiftDM/logs
 
 Settings default_settings();
+
+// Custom folder configured for category, or empty when the category keeps the
+// default destination.
+std::string category_dir_for(const Settings& settings, const std::string& category);
 
 // Loads settings; missing file yields defaults (not an error). Unparseable
 // lines are skipped so a partially corrupted file still loads.

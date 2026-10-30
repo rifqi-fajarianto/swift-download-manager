@@ -44,8 +44,9 @@ Neat Download Manager.
 - Split HTTP/HTTPS downloads across multiple connections; configure the
   connection count.
 - Pause, resume, and restore downloads after restarting the application.
-- Organize downloads by category and destination folder; view progress, speed,
-  estimated time remaining, and active connections/segments.
+- Organize downloads by category and destination folder, with an optional custom
+  folder per category (Video, Audio, Compressed, Document, Application, Misc);
+  view progress, speed, estimated time remaining, and active connections/segments.
 - Group downloads into named queues. Selecting the `Queues` branch shows a
   queue overview and switches the toolbar to queue mode. Each queue has its own
   workspace, simultaneous-download limit, connection count, shared speed limit,
@@ -111,7 +112,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.20.4_amd64.deb
+sudo apt install ./swiftdm_0.21.0_amd64.deb
 ```
 
 ```sh
@@ -211,7 +212,8 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.20.4 is the port tracking `main` (window geometry,
+full list. Version 0.21.0 is the port tracking `main` (per-category custom
+folders, window geometry,
 per-download logs, the server file date, named queues, audit hardening, the
 module split, the Windows file I/O fixes, and cross-origin redirect handling);
 GUI checks on Windows 10 are still manual.

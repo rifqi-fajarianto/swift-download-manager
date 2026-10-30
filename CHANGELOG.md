@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.21.0 — 2026-10-30
+
+Each category can download to its own folder.
+
+- Settings → Download has a new compact `Category folders` section: a combo
+  picks the category, the folder field below shows that category's custom
+  folder, with `...` picker and `Reset`. While the field is empty it shows the
+  default location (`Download directory/<Category>`) as placeholder text,
+  following changes to the download directory and the category folders toggle.
+- Stored in a new optional `[categories]` section of `swiftdm.ini`, one
+  `Category = /path` line per category; unknown names are ignored and old
+  configs without the section keep the default tree.
+- A configured folder replaces the whole default destination (no category
+  subfolder appended) and is used even when `Create category folders` is off.
+- The custom folder applies everywhere a destination is resolved: the Download
+  Confirmation dialog (changing the category moves the location until the user
+  edits it), downloads that skip the confirmation, downloads started from a
+  queue or from the progress window, and restored history rows that have no
+  stored folder.
+- Tests cover the settings round-trip, unknown/empty keys, `~` expansion, the
+  destination resolution rules, and that the settings dialog shows the picked
+  category's folder and the default location as placeholder.
+
 ## 0.20.4 — 2026-10-29
 
 The main window no longer drifts down when it is reopened.

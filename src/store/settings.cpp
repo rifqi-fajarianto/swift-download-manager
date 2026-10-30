@@ -11,6 +11,7 @@
 
 #include "core/util.h"
 #include "core/win_headers.h"
+#include "engine/categories.h"
 
 #ifndef _WIN32
 #include <cerrno>
@@ -160,6 +161,19 @@ void apply_section(Settings& s, const std::string& section,
                     s.main_window_height = height;
                 }
             }
+        } else if (section == "categories") {
+            // Keys arrive lowercased (INI parser); store canonical category
+            // names so readers do not depend on the parser.
+            for (const std::string& known : category_names()) {
+                if (k == to_lower(known)) {
+                    const std::string dir = expand_tilde(value);
+                    if (dir.empty()) {
+                        s.category_dirs.erase(known);
+                    } else {
+                        s.category_dirs[known] = dir;
+                    }
+                }
+            }
         } else if (section == "proxy") {
             if (k == "socksversion") s.proxy.type = proxy_token_to_type(value);
             else if (k == "proxyaddress") s.proxy.address = trim(value);
@@ -253,6 +267,11 @@ bool is_valid_toolbar_size(const std::string& value) {
 bool is_valid_tray_icon_style(const std::string& value) {
     const std::string v = to_lower(trim(value));
     return v == "colorful" || v == "simple";
+}
+
+std::string category_dir_for(const Settings& settings, const std::string& category) {
+    const auto found = settings.category_dirs.find(category);
+    return found == settings.category_dirs.end() ? std::string() : found->second;
 }
 
 Settings default_settings() {
@@ -354,7 +373,7 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
     // [general] is applied first because it still holds the download options
     // of older configs; the dedicated [download] section overrides them.
     bool saw_bandwidth_toggle = false;
-    for (const char* name : {"general", "download", "interface", "proxy"}) {
+    for (const char* name : {"general", "download", "interface", "proxy", "categories"}) {
         const auto found = sections.find(name);
         if (found == sections.end()) continue;
         apply_section(out, name, found->second, &saw_bandwidth_toggle);
@@ -427,6 +446,16 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "ProxyPort = " << settings.proxy.port << "\n"
         << "ProxyUser = " << ini_value(settings.proxy.user) << "\n"
         << "ProxyPassword = " << ini_value(settings.proxy.password) << "\n";
+
+    // Only categories with a custom folder are written, so an untouched
+    // config stays free of the section.
+    if (!settings.category_dirs.empty()) {
+        out << "\n[categories]\n";
+        for (const auto& entry : settings.category_dirs) {
+            if (entry.second.empty()) continue;
+            out << entry.first << " = " << ini_value(entry.second) << "\n";
+        }
+    }
 
     return write_file_atomic(path, out.str(), 0600, error);
 }

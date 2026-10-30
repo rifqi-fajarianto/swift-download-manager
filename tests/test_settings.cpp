@@ -510,6 +510,42 @@ void test_window_geometry(const std::string& dir) {
     CHECK(!no_position_loaded.has_main_window_position);
 }
 
+// Custom category folders round-trip through their own section, are matched
+// case-insensitively, and stay out of the file when unset.
+void test_category_dirs(const std::string& dir) {
+    Settings s = default_settings();
+    s.config_path = dir + "/category-dirs.ini";
+    s.category_dirs["Video"] = dir + "/videos";
+    s.category_dirs["Misc"] = "~/misc";
+    std::string err;
+    CHECK(save_settings(s, &err));
+
+    Settings loaded;
+    CHECK(load_settings(s.config_path, loaded, &err));
+    CHECK_EQ(category_dir_for(loaded, "Video"), dir + "/videos");
+    CHECK_EQ(category_dir_for(loaded, "Misc"), expand_tilde("~/misc"));
+    CHECK(category_dir_for(loaded, "Audio").empty());
+
+    // Hand-written config: lower-case keys map to the canonical name, unknown
+    // names are ignored and an empty value clears the entry.
+    {
+        std::ofstream out(dir + "/category-dirs-manual.ini");
+        out << "[categories]\nVideo = /data/video\nnonsense = /tmp/x\nAudio =\n";
+    }
+    Settings manual;
+    CHECK(load_settings(dir + "/category-dirs-manual.ini", manual, &err));
+    CHECK_EQ(manual.category_dirs.size(), static_cast<size_t>(1));
+    CHECK_EQ(category_dir_for(manual, "Video"), std::string("/data/video"));
+
+    Settings plain = default_settings();
+    plain.config_path = dir + "/category-dirs-plain.ini";
+    CHECK(save_settings(plain, &err));
+    std::ifstream in(plain.config_path);
+    const std::string content((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    CHECK(content.find("[categories]") == std::string::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -543,6 +579,7 @@ int main() {
     test_written_sections(dir);
     test_confirmation_option(dir);
     test_window_geometry(dir);
+    test_category_dirs(dir);
 
     testutil::cleanup_dir(dir);
     return testutil::finish("test_settings");
