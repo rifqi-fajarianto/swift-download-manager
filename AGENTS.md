@@ -50,7 +50,7 @@ Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
 ## 2. Status pengembangan
 
-Status pengembangan dipindahkan ke file terpisah:
+Cek status terbaru di file ini:
 [`docs/development_status.md`](docs/development_status.md)
 
 ## 3. Peta codebase
@@ -169,25 +169,19 @@ Format `MAJOR.MINOR.PATCH`, dengan satu sumber kebenaran di `CMakeLists.txt`:
 
 Aturan kenaikan versi pada setiap perubahan aplikasi:
 
-1. **Perubahan fitur** — fitur baru, penambahan/perubahan fungsi UI, atau
-   perubahan UX → MINOR +1 dan PATCH di-reset ke 0.
+1. **Perubahan MINOR** — fitur baru, penambahan/perubahan fungsi UI secara besar, atau
+   perubahan UX drastis → MINOR +1 dan PATCH di-reset ke 0.
    Contoh: `0.18.1` → `0.19.0`.
-2. **Perubahan non-fitur** — perbaikan bug, refactor, penyesuaian kecil tanpa
-   fitur/fungsi UI/UX baru → PATCH +1.
+2. **Perubahan PATCH** — perbaikan bug, refactor, penyesuaian kecil, perbaikan/penambahan fitur kecil → PATCH +1.
    Contoh: `0.18.1` → `0.18.2`.
-3. Setiap perubahan perilaku aplikasi wajib disertai kenaikan versi yang
-   sesuai, catatan `CHANGELOG.md`, dan pembaruan status di `README.md`.
-4. Untuk rilis, periksa juga versi contoh di `packaging/README.md` dan
+3. **Pengecualian** — user meminta secara explisit untuk memasukkan ke versi yang user tentukan
+4. Setiap perubahan perilaku aplikasi wajib disertai kenaikan versi yang
+   sesuai, catatan `CHANGELOG.md`.
+5. Untuk rilis, periksa juga versi contoh di `packaging/README.md` dan
    `packaging/io.github.swiftdm.SwiftDM.metainfo.xml`. Prosedur rilis otomatis
    ada di bagian 11.
-5. Perubahan dokumentasi murni (tanpa perilaku aplikasi) tidak perlu menaikkan
+6. Perubahan dokumentasi murni (tanpa perilaku aplikasi) tidak perlu menaikkan
    versi aplikasi.
-6. **Pengecualian yang disetujui**: batch restrukturisasi window Settings
-   (0.18.10 → 0.18.13) memakai seri patch `0.18.x` atas keputusan maintainer,
-   walaupun isinya perubahan fitur, karena seluruhnya adalah satu batch
-   restrukturisasi yang tidak dirilis terpisah. Penyimpangan ini dicatat di
-   `CHANGELOG.md` (0.18.10) dan di bagian 2 dokumen ini. Batch berikutnya
-   kembali memakai aturan biasa (fitur baru → MINOR +1).
 
 ## 6. Pengujian oleh agen AI (WAJIB)
 
@@ -324,9 +318,8 @@ artifact itu sebelum menerbitkan.
 
 Rilis dapat dimulai dengan dua cara:
 
-1. Maintainer membuat dan push tag versi rilis.
-2. Maintainer secara eksplisit meminta agen membuat rilis versi tertentu
-   (contoh: "buat rilis 0.19.0"). Permintaan itu adalah izin untuk menjalankan
+1. Maintainer membuat dan push tag versi rilis. Atau meminta AI agent untuk release
+2. Maintainer secara eksplisit meminta agen membuat rilis versi tertentu. Permintaan itu adalah izin untuk menjalankan
    seluruh prosedur di bawah, termasuk push commit rilis dan tag. Tanpa
    permintaan eksplisit, agen tetap tidak push (bagian 10).
 
