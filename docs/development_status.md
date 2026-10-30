@@ -1,15 +1,15 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-30**, versi kerja **0.21.0**. Status ini cepat
+> Snapshot terakhir: **2026-10-30**, versi kerja **0.21.4**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Branch kerja saat snapshot**: `main`, sudah memuat port Windows 10
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15).
-- **Rilis terakhir di jalur `main`**: 0.19.12 (pemecahan `src/net/http.cpp` dan
+- **Rilis terakhir di jalur `main`**: 0.21.4 (pemecahan `src/net/http.cpp` dan
   `src/ui/main_window.cpp` menjadi beberapa unit).
-- **Versi kerja**: 0.19.19. Port Windows 10 eksperimental ada di `main` dan
+- **Versi kerja**: 0.21.4. Port Windows 10 eksperimental ada di `main` dan
   sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
