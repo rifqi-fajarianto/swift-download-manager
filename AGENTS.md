@@ -8,18 +8,19 @@ di `docs/spec/`, `README.md`, dan `CHANGELOG.md`.
 
 Setiap sesi baru lakukan pemeriksaan berikut sebelum bekerja:
 
-1. Jalankan `git status --short`, `git branch --show-current`, dan
+1. AI Agent tidak boleh memodifikasi, meng-edit, mengubah file ini tanpa izin dari user. AI Agent hanya boleh mengubah isi file ini jika di minta oleh user
+2. Jalankan `git status --short`, `git branch --show-current`, dan
    `git log --oneline -5`.
-2. Baca `README.md`, `docs/spec/06-parity-checklist.md`, dan entri teratas
+3. Baca `README.md`, `docs/spec/06-parity-checklist.md`, dan entri teratas
    `CHANGELOG.md`.
-3. Cocokkan versi kerja dengan `project(... VERSION ...)` di `CMakeLists.txt`.
-4. Baca bagian 2 (status pengembangan). Jangan menimpa perubahan yang belum
+4. Cocokkan versi kerja dengan `project(... VERSION ...)` di `CMakeLists.txt`.
+5. Baca bagian 2 (status pengembangan). Jangan menimpa perubahan yang belum
    di-commit; perlakukan itu sebagai pekerjaan user.
-5. Tentukan modul yang tersentuh, lalu baca spec terkait sebelum mengubah
+6. Tentukan modul yang tersentuh, lalu baca spec terkait sebelum mengubah
    perilaku aplikasi.
-6. Build dan jalankan test sebelum menyimpulkan pekerjaan sudah selesai.
-7. Sarankan refactor ke user untuk file yang berisi lebih dari 2000 line of code, 
-8. setiap refactor jangan sampai ada fitur dan UI yang berubah atau tidak berfungsi.
+7. Build dan jalankan test sebelum menyimpulkan pekerjaan sudah selesai.
+8. Sarankan refactor ke user untuk file yang berisi lebih dari 2000 line of code, 
+9. setiap refactor jangan sampai ada fitur dan UI yang berubah atau tidak berfungsi.
 
 ## 1. Ringkasan proyek & tujuan
 
