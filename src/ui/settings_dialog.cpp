@@ -168,8 +168,22 @@ QWidget* SettingsDialog::build_general_tab() {
     layout->setSpacing(kSectionSpacing);
 
     auto* downloads = add_section(layout, page, tr("Downloads"));
+    // Options that only matter while the parent dialog is shown sit indented
+    // right below it. A wrapper keeps the indentation independent of the style.
+    auto indent = [page](QWidget* child) {
+        auto* row = new QWidget(page);
+        auto* row_layout = new QHBoxLayout(row);
+        row_layout->setContentsMargins(20, 0, 0, 0);
+        row_layout->addWidget(child);
+        return row;
+    };
+
     show_download_confirmation_ =
         new QCheckBox(tr("Show download confirmation dialog"), page);
+    confirm_on_top_ =
+        new QCheckBox(tr("Always show the confirmation dialog on top"), page);
+    confirm_on_top_->setToolTip(
+        tr("Keeps the confirmation above other application windows."));
     // The note explains what happens without the confirmation, so it is only
     // shown while the option is off.
     confirmation_note_ = new QLabel(
@@ -179,16 +193,32 @@ QWidget* SettingsDialog::build_general_tab() {
     confirmation_note_->setWordWrap(true);
     confirmation_note_->setStyleSheet(QStringLiteral("color:#8a8a8a;"));
     confirmation_note_->setVisible(false);
-    connect(show_download_confirmation_, &QCheckBox::toggled, this,
-            [this](bool checked) { confirmation_note_->setVisible(!checked); });
 
     completion_dialog_ =
         new QCheckBox(tr("Show download completion dialog"), page);
+    completion_on_top_ =
+        new QCheckBox(tr("Always show the completion dialog on top"), page);
+    completion_on_top_->setToolTip(
+        tr("Keeps the completion notification above other application windows."));
     open_folder_after_completion_ =
         new QCheckBox(tr("Open the download folder when a download completes"), page);
+
+    auto sync_sub_options = [this] {
+        const bool confirm = show_download_confirmation_->isChecked();
+        confirmation_note_->setVisible(!confirm);
+        confirm_on_top_->setEnabled(confirm);
+        completion_on_top_->setEnabled(completion_dialog_->isChecked());
+    };
+    connect(show_download_confirmation_, &QCheckBox::toggled, this,
+            [sync_sub_options](bool) { sync_sub_options(); });
+    connect(completion_dialog_, &QCheckBox::toggled, this,
+            [sync_sub_options](bool) { sync_sub_options(); });
+
     downloads->addWidget(show_download_confirmation_);
+    downloads->addWidget(indent(confirm_on_top_));
     downloads->addWidget(confirmation_note_);
     downloads->addWidget(completion_dialog_);
+    downloads->addWidget(indent(completion_on_top_));
     downloads->addWidget(open_folder_after_completion_);
 
     auto* startup = add_section(layout, page, tr("Startup"));
@@ -404,7 +434,11 @@ void SettingsDialog::load_from_settings() {
     // setChecked() only emits toggled() when the state changes, so the note is
     // updated explicitly for the stored value.
     confirmation_note_->setVisible(!settings_.show_download_confirmation);
+    confirm_on_top_->setChecked(settings_.confirm_dialog_on_top);
+    confirm_on_top_->setEnabled(settings_.show_download_confirmation);
     completion_dialog_->setChecked(settings_.completion_dialog);
+    completion_on_top_->setChecked(settings_.completion_dialog_on_top);
+    completion_on_top_->setEnabled(settings_.completion_dialog);
     autostart_->setChecked(settings_.autostart);
     show_tray_icon_->setChecked(settings_.show_tray_icon);
     close_to_tray_->setChecked(settings_.close_to_tray);
@@ -456,7 +490,9 @@ void SettingsDialog::load_from_settings() {
 
 void SettingsDialog::store_to_settings() {
     settings_.show_download_confirmation = show_download_confirmation_->isChecked();
+    settings_.confirm_dialog_on_top = confirm_on_top_->isChecked();
     settings_.completion_dialog = completion_dialog_->isChecked();
+    settings_.completion_dialog_on_top = completion_on_top_->isChecked();
     settings_.autostart = autostart_->isChecked();
     settings_.show_tray_icon = show_tray_icon_->isChecked();
     settings_.close_to_tray = close_to_tray_->isChecked();

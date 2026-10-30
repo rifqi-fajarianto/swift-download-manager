@@ -29,6 +29,9 @@ struct Settings {
     // Ask before every transfer starts. When it is off the download starts
     // right away with the default category and folder.
     bool show_download_confirmation = true;  // ShowDownloadConfirmationDialog
+    // Keep dialog on top of every other window (0.21.4).
+    bool confirm_dialog_on_top = false;     // ConfirmationDialogOnTop
+    bool completion_dialog_on_top = false;  // CompletionDialogOnTop
 
     // [download] — download defaults.
     int max_connections = 8;        // MaxConnections, default 8 ("8 recommended")

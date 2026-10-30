@@ -15,6 +15,9 @@ AppAutoStart = 0
 ShowTrayIcon = 1
 CloseToTray = 1
 OpenFolderAfterCompletion = 0
+ShowDownloadConfirmationDialog = 1
+ConfirmationDialogOnTop = 0    ; keep the confirmation window above others
+CompletionDialogOnTop = 0      ; keep the completion window above others
 
 [download]
 MaxConnections = 8
@@ -80,6 +83,8 @@ Each INI section matches one tab of the settings window: `general` (General),
 | `CloseToTray` | general | BOOL | 1 (SwiftDM) | hide to the tray when the main window is closed |
 | `OpenFolderAfterCompletion` | general | BOOL | 0 (SwiftDM) | open the target folder after a download completes (main Downloads list only; queue items skip it, 0.19.3) |
 | `ShowDownloadConfirmationDialog` | general | BOOL | 1 (SwiftDM) | ask for confirmation before every transfer starts; off starts the download right away |
+| `ConfirmationDialogOnTop` | general | BOOL | 0 (SwiftDM) | keep the download confirmation window above all other windows (0.21.4) |
+| `CompletionDialogOnTop` | general | BOOL | 0 (SwiftDM) | keep the download completion window above all other windows (0.21.4) |
 | `Theme` | interface | STRING | dark (SwiftDM) | app theme: `system`, `light`, `dark` |
 | `ToolbarSize` | interface | STRING | normal (SwiftDM) | toolbar size: `normal`, `small` |
 | `ShowToolbarText` | interface | BOOL | 1 (SwiftDM) | show the text under the toolbar icons |
@@ -191,6 +196,9 @@ global open-folder option; those belong to the main Downloads list (0.19.3).
   from the file extension and the default folder: the download root, plus the
   category folder when the category folders are enabled. The progress window
   still opens. A configuration file without the key keeps the confirmation on.
+- `ConfirmationDialogOnTop` / `CompletionDialogOnTop`: when on, the respective
+  window carries `Qt::WindowStaysOnTopHint`, so it stays above other
+  application windows until it is closed. Default off.
 
 ## Changing the settings at runtime
 

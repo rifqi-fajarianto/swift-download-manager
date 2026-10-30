@@ -105,6 +105,11 @@ void apply_section(Settings& s, const std::string& section,
             } else if (k == "showdownloadconfirmationdialog") {
                 s.show_download_confirmation =
                     parse_bool(value, s.show_download_confirmation);
+            } else if (k == "confirmationdialogontop") {
+                s.confirm_dialog_on_top = parse_bool(value, s.confirm_dialog_on_top);
+            } else if (k == "completiondialogontop") {
+                s.completion_dialog_on_top =
+                    parse_bool(value, s.completion_dialog_on_top);
             }
             // Legacy location of the download options. Configs written before
             // the [download] section existed keep working; the dedicated
@@ -416,6 +421,10 @@ bool save_settings(const Settings& settings, std::string* error) {
         << (settings.open_folder_after_completion ? 1 : 0) << "\n"
         << "ShowDownloadConfirmationDialog = "
         << (settings.show_download_confirmation ? 1 : 0) << "\n"
+        << "ConfirmationDialogOnTop = " << (settings.confirm_dialog_on_top ? 1 : 0)
+        << "\n"
+        << "CompletionDialogOnTop = " << (settings.completion_dialog_on_top ? 1 : 0)
+        << "\n"
         << "\n[download]\n"
         << "MaxConnections = " << settings.max_connections << "\n"
         << "ConnectionsAtOnce = " << settings.connections_at_once << "\n"

@@ -222,6 +222,9 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             QString::fromStdString(settings_.download_dir), settings_.category_dirs,
             settings_.category_folders);
         dialog->set_queue_choices(queue_choices(), flow->item.queue_id);
+        // Requested by the user in Settings: keep the confirmation above every
+        // other window. The flag must be set before the first show.
+        dialog->setWindowFlag(Qt::WindowStaysOnTopHint, settings_.confirm_dialog_on_top);
         dialog->set_probe_pending();
         flow->dialog = dialog;
         connect(dialog, &QDialog::finished, this, [flow](int result) {

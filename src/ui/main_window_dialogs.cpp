@@ -148,6 +148,9 @@ void MainWindow::show_completion_dialog(const QString& name, const QString& path
     });
     box->adjustSize();
     box->move(frameGeometry().center() - box->rect().center());
+    // Same Setting as the confirmation dialog: keep the notification above
+    // every other window when the user asked for it.
+    box->setWindowFlag(Qt::WindowStaysOnTopHint, settings_.completion_dialog_on_top);
     box->show();
     box->raise();
     box->activateWindow();

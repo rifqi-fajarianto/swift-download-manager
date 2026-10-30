@@ -26,6 +26,8 @@ void test_defaults() {
     CHECK(s.close_to_tray);
     CHECK(!s.open_folder_after_completion);
     CHECK(s.show_download_confirmation);
+    CHECK(!s.confirm_dialog_on_top);
+    CHECK(!s.completion_dialog_on_top);
     CHECK_EQ(s.theme, std::string("dark"));
     CHECK_EQ(s.toolbar_size, std::string("normal"));
     CHECK(s.show_toolbar_text);
@@ -59,6 +61,8 @@ void test_roundtrip(const std::string& dir) {
     s.close_to_tray = false;
     s.open_folder_after_completion = true;
     s.show_download_confirmation = false;
+    s.confirm_dialog_on_top = true;
+    s.completion_dialog_on_top = true;
     s.theme = "light";
     s.toolbar_size = "small";
     s.show_toolbar_text = false;
@@ -91,6 +95,8 @@ void test_roundtrip(const std::string& dir) {
     CHECK(!loaded.close_to_tray);
     CHECK(loaded.open_folder_after_completion);
     CHECK(!loaded.show_download_confirmation);
+    CHECK(loaded.confirm_dialog_on_top);
+    CHECK(loaded.completion_dialog_on_top);
     CHECK_EQ(loaded.theme, std::string("light"));
     CHECK_EQ(loaded.toolbar_size, std::string("small"));
     CHECK(!loaded.show_toolbar_text);

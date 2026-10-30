@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -52,8 +53,8 @@ const QSpinBox* spin_box_with_maximum(const QWidget* root, int maximum) {
     return nullptr;
 }
 
-const QCheckBox* check_box_with_text(const QWidget* root, const QString& text) {
-    for (const QCheckBox* box : root->findChildren<QCheckBox*>()) {
+QCheckBox* check_box_with_text(const QWidget* root, const QString& text) {
+    for (QCheckBox* box : root->findChildren<QCheckBox*>()) {
         if (box->text() == text) return box;
     }
     return nullptr;
@@ -222,7 +223,7 @@ int main(int argc, char** argv) {
     // behavior options.
     const QCheckBox* confirmation = check_box_with_text(
         &dialog, QStringLiteral("Show download confirmation dialog"));
-    const QCheckBox* completion =
+    QCheckBox* completion =
         check_box_with_text(&dialog, QStringLiteral("Show download completion dialog"));
     const QCheckBox* autostart =
         check_box_with_text(&dialog, QStringLiteral("Start application on system startup"));
@@ -297,6 +298,33 @@ int main(int argc, char** argv) {
             box->setChecked(false);
             check(!note->isHidden(), "the note is shown again while the option is off");
         }
+    }
+    if (autostart) check(autostart->isChecked(), "the autostart value is loaded");
+    // The two "on top" options are sub-options of their parent dialogs: indented
+    // and disabled while the parent dialog is off.
+    const QCheckBox* confirm_top = check_box_with_text(
+        &dialog, QStringLiteral("Always show the confirmation dialog on top"));
+    const QCheckBox* completion_top = check_box_with_text(
+        &dialog, QStringLiteral("Always show the completion dialog on top"));
+    check(confirm_top != nullptr && completion_top != nullptr,
+          "the general tab offers both on-top options");
+    if (confirm_top && completion_top) {
+        for (const QCheckBox* sub : {confirm_top, completion_top}) {
+            const auto* row_layout =
+                qobject_cast<QHBoxLayout*>(sub->parentWidget()->layout());
+            check(row_layout && row_layout->contentsMargins().left() >= 20,
+                  "the on-top option is indented below its parent");
+        }
+        check(!confirm_top->isEnabled() && !completion_top->isEnabled(),
+              "the on-top options are disabled while their dialogs are off");
+        if (completion) {
+            completion->setChecked(true);
+            check(completion_top->isEnabled(),
+                  "enabling the completion dialog enables its on-top option");
+            completion->setChecked(false);
+        }
+        check(!completion_top->isChecked() && !confirm_top->isChecked(),
+              "the on-top options default to off");
     }
     if (autostart) check(autostart->isChecked(), "the autostart value is loaded");
     if (tray_icon) check(!tray_icon->isChecked(), "the tray icon value is loaded");

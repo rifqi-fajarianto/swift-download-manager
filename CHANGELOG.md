@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.21.4 — 2026-10-30
+
+Keep download dialogs above other windows when asked.
+
+- Settings -> General -> Downloads has two new sub-options, indented under their
+  parent: `Always show the confirmation dialog on top` and `Always show the
+  completion dialog on top`. Both default off and are disabled while the parent
+  dialog is off.
+- New settings keys `ConfirmationDialogOnTop` and `CompletionDialogOnTop` in
+  `[general]`; the confirmation window and the completion notification apply
+  `Qt::WindowStaysOnTopHint` when enabled.
+
 ## 0.21.3 — 2026-10-30
 
 Smaller default download windows.

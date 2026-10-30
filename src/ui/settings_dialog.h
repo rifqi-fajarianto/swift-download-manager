@@ -47,8 +47,10 @@ class SettingsDialog : public QDialog {
 
     // General tab
     QCheckBox* show_download_confirmation_ = nullptr;
+    QCheckBox* confirm_on_top_ = nullptr;
     QLabel* confirmation_note_ = nullptr;
     QCheckBox* completion_dialog_ = nullptr;
+    QCheckBox* completion_on_top_ = nullptr;
     QCheckBox* autostart_ = nullptr;
     QCheckBox* show_tray_icon_ = nullptr;
     QCheckBox* close_to_tray_ = nullptr;
