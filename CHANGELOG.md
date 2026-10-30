@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.21.1 — 2026-10-30
+
+Small Settings and speed-limit layout tweaks.
+
+- Settings → Download → Connections: the policy label now reads
+  `Create additional connections:` with `All at once` and `One by one` radios.
+- Settings → Download → Category folders: the empty-folder note moved below the
+  folder field, shown as hint text.
+- The shared speed-limit editor (Settings → Bandwidth, Download window →
+  Transfer, Queue dialog → Bandwidth) puts the enable toggle, the KB/s value and
+  the preset combo on one row.
+
 ## 0.21.0 — 2026-10-30
 
 Each category can download to its own folder.

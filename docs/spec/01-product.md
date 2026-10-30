@@ -190,7 +190,8 @@ Layout (from `main-window.png`):
      Icon Style (`Simple` / `Colorful`). The changes apply immediately after
      the dialog is confirmed (0.18.12).
    - *Download*: Max Connections per Download (default 8, "8 Connections
-     Recommended"); when-start policy (all at once / one by one); Bandwidth
+     Recommended"); `Create additional connections:` policy (`All at once` /
+     `One by one`); Bandwidth
      Limit per Download with an enable toggle and presets (500 KB/s, 1 MB/s,
      5 MB/s, 10 MB/s, 20 MB/s, 50 MB/s, or custom KB/s; value editable while
      the toggle is off — 0.18.1); Default User-Agent (+Reset,

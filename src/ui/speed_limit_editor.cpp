@@ -32,18 +32,23 @@ QString format_speed_limit(int kbps) {
 }
 
 SpeedLimitEditor::SpeedLimitEditor(QWidget* parent) : QWidget(parent) {
-    // Two rows so the toggle and the preset stay readable in the narrower
-    // field column of the per-download options: toggle + preset on top, the
-    // numeric value below it.
+    // One row: toggle, numeric value, preset. A single row keeps the editor
+    // readable inside form field columns while matching the surrounding forms.
     auto* layout = new QGridLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setHorizontalSpacing(6);
-    layout->setVerticalSpacing(6);
 
     enabled_ = new QCheckBox(tr("Enable speed limiter"), this);
     enabled_->setToolTip(tr("When off, downloads are unlimited. The value is kept "
                             "and can still be changed for later."));
     layout->addWidget(enabled_, 0, 0);
+
+    kbps_ = new QSpinBox(this);
+    kbps_->setRange(1, kMaxLimitKbps);
+    kbps_->setSuffix(tr(" KB/s"));
+    kbps_->setValue(kDefaultLimitKbps);
+    kbps_->setToolTip(tr("Speed limit in KB/s"));
+    layout->addWidget(kbps_, 0, 1);
 
     preset_ = new QComboBox(this);
     preset_->setToolTip(tr("Predefined speed limit"));
@@ -51,15 +56,8 @@ SpeedLimitEditor::SpeedLimitEditor(QWidget* parent) : QWidget(parent) {
     for (const int kbps : kPresetKbps) {
         preset_->addItem(format_speed_limit(kbps));
     }
-    layout->addWidget(preset_, 0, 2, Qt::AlignRight);
-
-    kbps_ = new QSpinBox(this);
-    kbps_->setRange(1, kMaxLimitKbps);
-    kbps_->setSuffix(tr(" KB/s"));
-    kbps_->setValue(kDefaultLimitKbps);
-    kbps_->setToolTip(tr("Speed limit in KB/s"));
-    layout->addWidget(kbps_, 1, 0, Qt::AlignLeft);
-    layout->setColumnStretch(1, 1);
+    layout->addWidget(preset_, 0, 2);
+    layout->setColumnStretch(3, 1);
 
     // Picking a preset writes the value; it never toggles the limiter itself.
     connect(preset_, &QComboBox::activated, this, [this](int index) {

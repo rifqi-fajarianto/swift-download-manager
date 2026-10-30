@@ -350,10 +350,10 @@ int main(int argc, char** argv) {
 
         // Auto-exclusive radio buttons only work as siblings, so both halves of
         // the connection policy must share one parent inside the section.
-        const QRadioButton* all_at_once = radio_with_text(
-            download_page, QStringLiteral("Create additional connections all at once"));
-        const QRadioButton* one_by_one = radio_with_text(
-            download_page, QStringLiteral("Create additional connections one by one"));
+        const QRadioButton* all_at_once =
+            radio_with_text(download_page, QStringLiteral("All at once"));
+        const QRadioButton* one_by_one =
+            radio_with_text(download_page, QStringLiteral("One by one"));
         check(all_at_once && one_by_one &&
                   all_at_once->parentWidget() == one_by_one->parentWidget(),
               "the connection policy radio buttons share a parent");

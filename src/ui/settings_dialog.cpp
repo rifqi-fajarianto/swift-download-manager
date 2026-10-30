@@ -259,17 +259,15 @@ QWidget* SettingsDialog::build_download_tab() {
     connections_container->setLayout(connections_row);
     connections->addRow(tr("Max connections per download:"), connections_container);
 
-    all_at_once_ =
-        new QRadioButton(tr("Create additional connections all at once"), page);
-    one_by_one_ =
-        new QRadioButton(tr("Create additional connections one by one"), page);
+    all_at_once_ = new QRadioButton(tr("All at once"), page);
+    one_by_one_ = new QRadioButton(tr("One by one"), page);
     auto* policy = new QWidget(page);
     auto* policy_layout = new QVBoxLayout(policy);
     policy_layout->setContentsMargins(0, 0, 0, 0);
     policy_layout->setSpacing(4);
     policy_layout->addWidget(all_at_once_);
     policy_layout->addWidget(one_by_one_);
-    connections->addRow(tr("When first connection starts downloading:"), policy);
+    connections->addRow(tr("Create additional connections:"), policy);
 
     auto* bandwidth = add_form_section(layout, page, tr("Bandwidth"));
     limit_editor_ = new SpeedLimitEditor(page);
@@ -309,11 +307,6 @@ QWidget* SettingsDialog::build_download_tab() {
            "(HTTP Creation-Date/Last-Modified, FTP MDTM)."));
     files->addRow(QString(), server_creation_date_);
     auto* category_dirs = add_form_section(layout, page, tr("Category folders"));
-    category_dirs->addRow(QString(), new QLabel(
-                                         tr("Leave the folder empty to use the default location. A "
-                                            "custom folder replaces the category subfolder and is "
-                                            "used even when category folders are off."),
-                                         page));
     category_picker_ = new QComboBox(page);
     for (const std::string& category : category_names()) {
         category_picker_->addItem(QString::fromStdString(category),
@@ -322,6 +315,16 @@ QWidget* SettingsDialog::build_download_tab() {
     category_dirs->addRow(tr("Category:"), category_picker_);
     category_dir_edit_ = add_directory_row(category_dirs, page, tr("Folder:"),
                                            tr("Category Folder"));
+    auto* category_note = new QLabel(
+        tr("Leave the folder empty to use the default location. A "
+           "custom folder replaces the category subfolder and is "
+           "used even when category folders are off."),
+        page);
+    category_note->setWordWrap(true);
+    QPalette note_palette = category_note->palette();
+    note_palette.setColor(QPalette::WindowText, note_palette.color(QPalette::Link));
+    category_note->setPalette(note_palette);
+    category_dirs->addRow(QString(), category_note);
     auto* reset = new QPushButton(tr("Reset"), category_dir_edit_->parentWidget());
     static_cast<QHBoxLayout*>(category_dir_edit_->parentWidget()->layout())
         ->addWidget(reset);

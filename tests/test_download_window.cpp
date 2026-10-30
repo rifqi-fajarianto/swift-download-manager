@@ -203,6 +203,12 @@ int main(int argc, char** argv) {
     auto* limit_editor =
         qobject_cast<swiftdm::ui::SpeedLimitEditor*>(named_widget(&window, "download_bandwidth_limit"));
     check(limit_editor != nullptr, "the Transfer section has the speed limit editor");
+    if (limit_editor) {
+        const auto parts = limit_editor->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+        bool one_row = !parts.isEmpty();
+        for (QWidget* part : parts) one_row = one_row && part->y() == parts.first()->y();
+        check(one_row, "the speed limit editor toggle, value and preset share one row");
+    }
     auto* referer = qobject_cast<QLineEdit*>(named_widget(&window, "download_referer"));
     check(referer != nullptr, "the Transfer section has a referer field");
     auto* note = qobject_cast<QLabel*>(named_widget(&window, "download_transfer_note"));
