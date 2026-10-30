@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.3 — 2026-10-30
+
+Smaller default download windows.
+
+- The download progress window opens at 600x460 (minimum 500x400) instead of
+  650x500.
+- The download confirmation dialog opens at 600x310 (minimum 520x300) instead
+  of 650x330.
+
 ## 0.21.2 — 2026-10-30
 
 Fix the category folder note being clipped.

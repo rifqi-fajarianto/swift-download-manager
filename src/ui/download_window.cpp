@@ -36,10 +36,10 @@ namespace {
 
 // Fixed default size for the progress window: independent of the URL length,
 // the file name, or the current tab (docs/spec/01-product.md §3.2).
-constexpr int kDefaultWindowWidth = 650;
-constexpr int kDefaultWindowHeight = 500;
-constexpr int kMinWindowWidth = 520;
-constexpr int kMinWindowHeight = 420;
+constexpr int kDefaultWindowWidth = 600;
+constexpr int kDefaultWindowHeight = 460;
+constexpr int kMinWindowWidth = 500;
+constexpr int kMinWindowHeight = 400;
 constexpr int kMinUrlLabelWidth = 120;
 // Dialog chrome around the link row (window/tab margins, icon, spacings).
 constexpr int kUrlLabelChrome = 80;

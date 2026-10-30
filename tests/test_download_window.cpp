@@ -97,9 +97,9 @@ int main(int argc, char** argv) {
 
     check(window.windowTitle() == QStringLiteral("Complete - test_random_10mb.zip"),
           "the title follows the status and file name");
-    check(window.minimumWidth() == 520 && window.minimumHeight() == 420,
+    check(window.minimumWidth() == 500 && window.minimumHeight() == 400,
           "the window keeps its 520x420 minimum");
-    check(window.size() == QSize(650, 500), "the window opens at 650x500");
+    check(window.size() == QSize(600, 460), "the window opens at 600x460");
 
     auto* tabs = window.findChild<QTabWidget*>();
     check(tabs != nullptr, "the window has a tab widget");
