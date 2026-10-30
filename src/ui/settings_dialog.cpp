@@ -324,7 +324,7 @@ QWidget* SettingsDialog::build_download_tab() {
     QPalette note_palette = category_note->palette();
     note_palette.setColor(QPalette::WindowText, note_palette.color(QPalette::Link));
     category_note->setPalette(note_palette);
-    category_dirs->addRow(QString(), category_note);
+    category_dirs->addRow(category_note);
     auto* reset = new QPushButton(tr("Reset"), category_dir_edit_->parentWidget());
     static_cast<QHBoxLayout*>(category_dir_edit_->parentWidget()->layout())
         ->addWidget(reset);

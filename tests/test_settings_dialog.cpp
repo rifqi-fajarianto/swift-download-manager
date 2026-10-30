@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -187,6 +188,26 @@ int main(int argc, char** argv) {
               "Files and folders and Category folders sections");
         check(all_controls_are_in_sections(download_page),
               "the download tab has no control outside a section");
+        // The default-location note spans the form so wrapping never clips it
+        // into the narrow field column.
+        const auto labels = dialog.findChildren<QLabel*>();
+        QLabel* folder_note = nullptr;
+        for (QLabel* label : labels) {
+            if (label->text().startsWith(QStringLiteral("Leave the folder empty"))) {
+                folder_note = label;
+                break;
+            }
+        }
+        bool spans = false;
+        if (folder_note) {
+            if (auto* form = qobject_cast<QFormLayout*>(folder_note->parentWidget()->layout())) {
+                int row = -1;
+                QFormLayout::ItemRole role = QFormLayout::LabelRole;
+                form->getWidgetPosition(folder_note, &row, &role);
+                spans = row >= 0 && role == QFormLayout::SpanningRole;
+            }
+        }
+        check(spans, "the category folder note spans the whole form row");
     }
     if (proxy_page) {
         check(section_titles(proxy_page) ==

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.2 — 2026-10-30
+
+Fix the category folder note being clipped.
+
+- The note under the `Folder:` field now spans the whole row, so it wraps at the
+  section width instead of being squeezed into the narrow field column.
+
 ## 0.21.1 — 2026-10-30
 
 Small Settings and speed-limit layout tweaks.
