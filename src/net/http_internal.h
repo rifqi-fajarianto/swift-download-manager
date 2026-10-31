@@ -14,7 +14,7 @@
 namespace swiftdm::detail {
 
 constexpr int kIoTimeoutMs = 100;           // curl multi poll timeout
-constexpr int64_t kReportIntervalMs = 100;  // progress callbacks per second: 10
+constexpr int64_t kReportIntervalMs = 50;   // progress callbacks per second: 20
 constexpr int64_t kSpeedSampleMs = 200;     // window for the reported speed
 constexpr int kMaxRetries = 5;
 constexpr int kMaxRedirects = 15;

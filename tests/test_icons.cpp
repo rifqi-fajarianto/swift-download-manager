@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include "ui/icons.h"
+#include "ui/theme.h"
 
 namespace {
 
@@ -80,6 +81,7 @@ int main(int argc, char** argv) {
         QStringLiteral(":/icons/queue.svg"),        QStringLiteral(":/icons/queue-add.svg"),
         QStringLiteral(":/icons/queue-delete.svg"), QStringLiteral(":/icons/queue-settings.svg"),
         QStringLiteral(":/icons/resume-start.svg"), QStringLiteral(":/icons/settings.svg"),
+        QStringLiteral(":/icons/refresh-download.svg"),
         QStringLiteral(":/icons/stop.svg"),         QStringLiteral(":/icons/video.svg"),
         QStringLiteral(":/icons/browsers.svg"),     QStringLiteral(":/icons/about.svg"),
         QStringLiteral(":/icons/quit.svg"),
@@ -130,6 +132,20 @@ int main(int argc, char** argv) {
             std::printf("ok   dialog icon (%d px)\n", opaque);
         }
     }
+
+    // The danger tint is now public (the refresh prompt paints its mismatch
+    // warning with it), so it must stay a readable, non-gray red in both themes.
+    for (const bool dark : {true, false}) {
+        swiftdm::ui::dark_theme_state() = dark;
+        const QColor danger = swiftdm::ui::colors::danger_tint();
+        if (!danger.isValid() || danger.red() <= danger.green() || danger.red() <= danger.blue()) {
+            std::printf("FAIL danger tint is not red (dark=%d)\n", dark ? 1 : 0);
+            ++failures;
+        } else {
+            std::printf("ok   danger tint %s\n", qPrintable(danger.name()));
+        }
+    }
+    swiftdm::ui::dark_theme_state() = true;
 
     const QIcon app_icon = swiftdm::ui::application_icon();
     if (app_icon.isNull() || opaque_pixels(app_icon.pixmap(48, 48).toImage()) == 0) {

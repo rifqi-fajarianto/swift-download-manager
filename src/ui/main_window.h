@@ -38,6 +38,7 @@ class QTreeWidgetItem;
 namespace swiftdm::ui {
 
 class DownloadFilterProxy;
+class RefreshWaitingDialog;
 class DownloadModel;
 class DownloadWindow;
 class BrowserIntegration;
@@ -182,6 +183,27 @@ class MainWindow : public QMainWindow {
     void start_autostart_queues();
     bool queue_features_available() const { return history_.is_open(); }
 
+    // Refresh download address: allows the user to replace an expired URL with
+    // a new one captured from the browser, then resume from the existing bytes.
+    void on_refresh_address(int row);
+    void cancel_refresh();
+    void apply_refresh_address(int row, const QJsonObject& capture);
+    // Shows the small always-on-top "waiting" window; null-safe no-op when the
+    // row no longer exists.
+    void show_refresh_waiting_dialog(qint64 history_id, const QString& file_name,
+                                     quint64 file_size);
+    void hide_refresh_waiting_dialog();
+    // Warning shown when a new download is requested while a refresh waits.
+    // Returns true when the user chose to cancel the wait and continue.
+    bool warn_refresh_blocks_new_download();
+    // history_id of the item waiting for a refreshed URL (0 = none).  At most
+    // one item can wait at a time (mutual exclusivity, same as IDM).
+    qint64 pending_refresh_id_ = 0;
+    // Address applied by the last refresh, plus when. Captures repeating it are
+    // dropped as echoes instead of opening a new download confirmation.
+    QString refresh_applied_url_;
+    qint64 refresh_applied_at_ms_ = 0;
+
     swiftdm::Settings settings_;
     swiftdm::HistoryStore history_;
     DownloadModel* model_ = nullptr;
@@ -241,6 +263,8 @@ class MainWindow : public QMainWindow {
     bool shutting_down_ = false;
 
     QHash<int, QPointer<DownloadWindow>> windows_;
+    // Small always-on-top window shown while a refresh waits for a new address.
+    QPointer<RefreshWaitingDialog> refresh_dialog_;
     // Kept so a second Settings request raises the open window instead of
     // stacking another one.
     QPointer<QDialog> settings_dialog_;

@@ -44,6 +44,13 @@ Neat Download Manager.
 - Split HTTP/HTTPS downloads across multiple connections; configure the
   connection count.
 - Pause, resume, and restore downloads after restarting the application.
+- Refresh an expired download address: right-click a paused or failed download,
+  let SwiftDM reopen the page it came from, start the file again in the browser,
+  and confirm the new link in the prompt. The new URL, cookies, and headers are
+  moved onto the existing download, which then continues from the bytes already
+  on disk instead of starting over. A small always-on-top window shows what is
+  waiting and cancels the refresh; only one download can wait for a new address
+  at a time, and no other download can be added until the wait ends.
 - Organize downloads by category and destination folder, with an optional custom
   folder per category (Video, Audio, Compressed, Document, Application, Misc);
   view progress, speed, estimated time remaining, and active connections/segments.
@@ -112,7 +119,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.21.4_amd64.deb
+sudo apt install ./swiftdm_0.22.4_amd64.deb
 ```
 
 ```sh
@@ -212,8 +219,8 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.21.4 is the port tracking `main` (per-category custom
-folders, window geometry,
+full list. Version 0.22.4 is the port tracking `main` (refresh download address,
+a 50 ms progress refresh, per-category custom folders, window geometry,
 per-download logs, the server file date, named queues, audit hardening, the
 module split, the Windows file I/O fixes, and cross-origin redirect handling);
 GUI checks on Windows 10 are still manual.

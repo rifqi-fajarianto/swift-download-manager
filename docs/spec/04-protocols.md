@@ -128,7 +128,18 @@ its target origin, and later automatic handoffs reuse the grant. Scoped cookie
 attributes are passed to libcurl so cookies follow domain/path/secure rules
 across redirects. `addDownload` does not start a transfer directly: the app
 immediately shows the independent Download Confirmation window while probing
-the URL in the background. The fallback name and `Checking…` are shown until
+the URL in the background. One exception exists since 0.22.0: while a download
+waits for a refreshed address (`Refresh Download URL` in the item context
+menu), an incoming `addDownload` is never shown as a new download. The app
+instead asks whether the capture is the new address for the expired download
+(a mismatching `filename` adds a warning and defaults to No); confirming updates
+that row in place (URL, cookies, referer, user agent, headers) and resumes it,
+and no confirmation window opens. A rejected capture leaves the wait in place
+and creates nothing, and the manual `New URL` action is refused with a warning
+while the wait lasts (0.22.1). The signal carrying the capture is queued rather
+than emitted inline, so this reply is written before any modal window opens; a
+capture repeating the address just applied by a refresh is ignored for 15 s so
+the extension's command retry cannot deliver the same handoff twice (0.22.2). The fallback name and `Checking…` are shown until
 metadata arrives; Download Now is disabled in that interval. After acceptance,
 the successful probe is reused for the initial transfer (no duplicate preflight
 requests), while Resume still re-probes. The main window stays hidden or

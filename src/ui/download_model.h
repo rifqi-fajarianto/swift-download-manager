@@ -46,6 +46,10 @@ struct DownloadItem {
     int bandwidth_limit_kbps = 0;
     // Complete download whose file is no longer at dest_path (deleted/moved).
     bool file_missing = false;
+    // Transient flag: this item is waiting for a refreshed URL from the browser.
+    // Only one item at a time may have this set (mutual exclusivity enforced by
+    // MainWindow::pending_refresh_id_).
+    bool waiting_refresh = false;
     DownloadTask* task = nullptr;
 
     bool is_complete() const { return state == State::Complete; }

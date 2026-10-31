@@ -1,15 +1,43 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-30**, versi kerja **0.21.4**. Status ini cepat
+> Snapshot terakhir: **2026-10-31**, versi kerja **0.22.4**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Branch kerja saat snapshot**: `main`, sudah memuat port Windows 10
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15).
-- **Rilis terakhir di jalur `main`**: 0.21.4 (pemecahan `src/net/http.cpp` dan
-  `src/ui/main_window.cpp` menjadi beberapa unit).
-- **Versi kerja**: 0.21.4. Port Windows 10 eksperimental ada di `main` dan
+- **Rilis terakhir di jalur `main`**: 0.22.4 (progress dan kecepatan dikirim ke
+  UI tiap 50 ms). Sebelumnya 0.22.3 menyesuaikan UI/UX jendela *Refresh download
+  URL*: teks, ukuran compact, nama field, dan tombol yang lebih jelas.
+- **Versi kerja**: 0.22.4. Progress download dilaporkan ke UI tiap 50 ms
+  (kecepatan tetap dihaluskan per jendela 200 ms), jadi tabel dan window
+  progress menyegar maksimal 20 Hz. Refresh download URL (0.22.0, diperketat
+  0.22.1–0.22.3):
+  item menu klik kanan `Refresh Download URL` pada baris Paused/Error yang punya
+  history menandai unduhan itu sebagai menunggu URL baru, membuka `page_url` di
+  browser (atau meminta user memulai unduhan sendiri bila tidak ada page URL),
+  lalu menampilkan jendela compact always-on-top `Refresh Download URL` berisi
+  `File Name:`, `File Size:`, dan tombol `Cancel` (menutup jendela juga
+  membatalkan). Jendela itu disembunyikan selama dialog konfirmasi tampil dan
+  muncul lagi bila user memilih `Cancel`. Selama menunggu, **setiap** capture
+  dari ekstensi browser diarahkan ke dialog `Confirm New Download URL` berisi
+  `File Name:` dan `New URL:` dengan tombol `Use New URL` / `Cancel` — nama
+  berkas yang tidak cocok menampilkan peringatan berwarna merah dan default ke
+  `Cancel` — dan capture yang ditolak tidak pernah menjadi unduhan baru;
+  `New URL` diblokir dengan peringatan yang menawarkan `Cancel Refresh`.
+  `Use New URL` memindahkan URL, cookie, referer, user agent, dan header baru ke
+  baris yang sama, mengganti nama folder workspace ke key URL baru, dan menulis
+  ulang `segments.json` (URL baru, validator etag/last-modified dikosongkan)
+  sehingga engine melanjutkan dari byte yang sudah ada selama ukuran berkas masih
+  cocok. Signal capture di-queue agar balasan WebSocket terkirim sebelum jendela
+  modal dibuka, dan capture yang mengulang URL yang baru diterapkan diabaikan
+  selama 15 detik, sehingga retry perintah dari ekstensi tidak memunculkan
+  konfirmasi ganda (0.22.2). Hanya satu unduhan yang boleh menunggu pada satu
+  waktu dan status baris tampil `Waiting for new URL…` (amber). Aturan routing
+  capture, guard `New URL`, dan guard echo adalah fungsi murni yang diuji test
+  headless `refresh_logic`.
+- **Port Windows 10** eksperimental ada di `main` dan
   sudah berhasil dibangun serta lulus seluruh `ctest` (termasuk
   server uji HTTP/FTP/HLS versi Winsock) dengan MSYS2 UCRT64 (GCC 16.2,
   Qt 6.12, curl 8.23, SQLite 3.54). Lapisan file I/O lintas platform (`core/file_io.*`),
@@ -24,8 +52,8 @@
   `SetEndOfFile()` sehingga prealokasi tidak lagi menulis nol fisik
   (`_chsize_s()` sebelumnya memblokir unduhan besar sebelum byte pertama tiba).
   Sejak 0.19.15 progress dilaporkan tiap 100 ms dan kecepatan disampel per
-  jendela 200 ms, jadi tabel serta window progress menyegar maksimal 10 Hz
-  tanpa timer UI tersendiri.
+  jendela 200 ms; sejak 0.22.4 interval report dipangkas ke 50 ms, jadi tabel
+  serta window progress menyegar maksimal 20 Hz tanpa timer UI tersendiri.
   Sejak 0.19.18 `swiftdm.exe` membawa resource ikon aplikasi (7 ukuran,
   16–256 px, dari `ui-assets/app-icon/main.ico`) dan installer Inno Setup
   memakai berkas `.ico` yang sama lewat `SetupIconFile`, sehingga shortcut,

@@ -496,7 +496,14 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
             ok = false;
             error = QStringLiteral("invalid download request");
         } else {
-            emit downloadRequested(data);
+            // The app shows a modal confirmation window while handling this
+            // signal, which blocks the event loop. Emitting directly would delay
+            // the reply past the extension's 5 s command timeout, and its retry
+            // would then deliver the same capture again (duplicate download
+            // prompts). Queue the delivery so the reply is written first.
+            QMetaObject::invokeMethod(
+                this, [this, data] { emit downloadRequested(data); },
+                Qt::QueuedConnection);
         }
     } else {
         ok = false;

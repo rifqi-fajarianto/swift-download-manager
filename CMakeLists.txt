@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.21.4
+    VERSION 0.22.4
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -116,6 +116,7 @@ if(SWIFTSDM_BUILD_UI)
         "${CMAKE_SOURCE_DIR}/ui-assets/queue-settings.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/queue.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/quit.svg"
+        "${CMAKE_SOURCE_DIR}/ui-assets/refresh-download.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/resume-start.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/settings.svg"
         "${CMAKE_SOURCE_DIR}/ui-assets/stop.svg"
@@ -211,10 +212,12 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/confirm_download_dialog.cpp
         src/ui/queue_picker_dialog.cpp
         src/ui/properties_dialog.cpp
+        src/ui/refresh_waiting_dialog.cpp
         src/ui/settings_dialog.cpp
         src/ui/speed_limit_editor.cpp
         src/ui/download_window.cpp
         src/ui/queue_logic.cpp
+        src/ui/refresh_logic.cpp
         src/ui/queue_dialog.cpp
         src/ui/browser_integration.cpp
         src/ui/main_window.cpp

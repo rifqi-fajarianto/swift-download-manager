@@ -54,6 +54,8 @@
 #include "ui/icons.h"
 #include "ui/properties_dialog.h"
 #include "ui/queue_dialog.h"
+#include "ui/refresh_logic.h"
+#include "ui/refresh_waiting_dialog.h"
 #include "ui/settings_dialog.h"
 #include "ui/theme.h"
 
@@ -61,7 +63,38 @@
 
 namespace swiftdm::ui {
 
+namespace {
+
+// Rewrites the saved transfer state after a URL change: keeps segment progress
+// and file size, drops the old validators (the new address is a new server
+// resource identity) and records the new URL.
+void rewrite_resume_state(const QString& workspace, const QString& new_url) {
+    const QString state_path = workspace + QStringLiteral("/segments.json");
+    if (!QFile::exists(state_path)) return;
+    swiftdm::TransferState state;
+    if (!swiftdm::load_transfer_state(state_path.toStdString(), state, nullptr)) {
+        qWarning() << "refresh address: cannot read" << state_path;
+        return;
+    }
+    state.url = new_url.toStdString();
+    state.etag.clear();
+    state.last_modified.clear();
+    std::string error;
+    if (!swiftdm::save_transfer_state(state_path.toStdString(), state, &error)) {
+        qWarning() << "refresh address: cannot rewrite" << state_path
+                   << QString::fromStdString(error);
+    }
+}
+
+}  // namespace
+
 void MainWindow::on_new_url() {
+    // A waiting refresh owns the next capture; adding a manual download now
+    // would steal it. Warn instead of opening the New URL dialog.
+    if (refresh_blocks_new_download(pending_refresh_id_ > 0)) {
+        warn_refresh_blocks_new_download();
+        return;
+    }
     AddDownloadDialog dialog(this);
     if (dialog.exec() != QDialog::Accepted) return;
     const QString url = dialog.url();
@@ -114,6 +147,93 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
         return;
     }
 
+    // Refresh interception: while a download waits for a new address, no other
+    // download may be created. Every capture goes to the confirmation prompt; a
+    // rejected one leaves the wait in place instead of becoming a new download.
+    if (should_ignore_refresh_echo(
+            url.toString(QUrl::FullyEncoded).toStdString(),
+            refresh_applied_url_.toStdString(),
+            QDateTime::currentMSecsSinceEpoch() - refresh_applied_at_ms_)) {
+        // The extension retried the handoff that was just applied. Creating a
+        // download here is exactly the duplicate-prompt bug this guards against.
+        qInfo() << "refresh address: ignoring repeated capture for the applied URL";
+        return;
+    }
+
+    if (pending_refresh_id_ > 0) {
+        int waiting_row = -1;
+        for (int r = 0; r < model_->rowCount(); ++r) {
+            const DownloadItem* it = model_->item_at(r);
+            if (it && it->history_id == pending_refresh_id_) {
+                waiting_row = r;
+                break;
+            }
+        }
+        if (waiting_row < 0) {
+            // The waiting row disappeared (deleted behind our back).
+            pending_refresh_id_ = 0;
+            hide_refresh_waiting_dialog();
+        } else {
+            DownloadItem* waiting_item = model_->item_at(waiting_row);
+            const std::string raw_hint = swiftdm::sanitize_filename(
+                data.value(QStringLiteral("filename")).toString().toStdString());
+            const QString incoming_filename = raw_hint.empty()
+                ? QString::fromStdString(swiftdm::file_name_from_url(url.toString().toStdString()))
+                : QString::fromStdString(raw_hint);
+            const bool name_match = incoming_filename.compare(
+                waiting_item->file_name, Qt::CaseInsensitive) == 0;
+            const RefreshCaptureDecision decision = decide_refresh_capture(true, name_match);
+
+            // Hide the waiting window while the prompt is up: only one of the
+            // two may be visible. It comes back when the user cancels.
+            hide_refresh_waiting_dialog();
+
+            QMessageBox box(this);
+            box.setWindowTitle(tr("Confirm New Download URL"));
+            box.setIconPixmap(decision == RefreshCaptureDecision::PromptNameMismatch
+                                  ? dialog_warning_pixmap()
+                                  : dialog_question_pixmap());
+            box.setTextFormat(Qt::RichText);
+            QString html =
+                tr("<p>Is this the new URL for your expired download?</p>"
+                   "<table cellspacing='0' cellpadding='2'>"
+                   "<tr><td style='color:#9aa0a6;'>File Name:</td>"
+                   "<td>%1</td></tr>"
+                   "<tr><td style='color:#9aa0a6;'>New URL:</td>"
+                   "<td>%2</td></tr>"
+                   "</table>")
+                    .arg(waiting_item->file_name.toHtmlEscaped(),
+                         url.toString(QUrl::FullyEncoded).toHtmlEscaped());
+            if (decision == RefreshCaptureDecision::PromptNameMismatch) {
+                // The captured file is not the one being refreshed: make this
+                // impossible to miss with the theme's danger red.
+                html += tr("<p style='color:%1;'><b>The file name does not match the "
+                           "waiting download.</b><br/>"
+                           "Use this URL only if it really is the same file.</p>")
+                            .arg(colors::danger_tint().name());
+            }
+            box.setText(html);
+
+            QPushButton* use_button = box.addButton(tr("Use New URL"),
+                                                    QMessageBox::AcceptRole);
+            QPushButton* cancel_button = box.addButton(tr("Cancel"),
+                                                       QMessageBox::RejectRole);
+            box.setDefaultButton(decision == RefreshCaptureDecision::Prompt
+                                     ? use_button
+                                     : cancel_button);
+            box.setEscapeButton(cancel_button);
+            box.exec();
+            if (box.clickedButton() == use_button) {
+                apply_refresh_address(waiting_row, data);
+            }
+            // Rejected (or applied): never fall through to a new download. On a
+            // rejection the waiting window is shown again so the user can retry.
+            if (pending_refresh_id_ > 0) show_refresh_waiting_dialog(
+                pending_refresh_id_, waiting_item->file_name, waiting_item->size);
+            return;
+        }
+    }
+
     DownloadTask::Options options;
     options.url = url.toString(QUrl::FullyEncoded);
     options.output_dir = QString::fromStdString(settings_.download_dir);
@@ -132,35 +252,9 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     }
     options.user_agent = data.value(QStringLiteral("userAgent")).toString();
     if (settings_.use_ua_for_browser) options.user_agent.clear();
-    const QJsonArray header_entries = data.value(QStringLiteral("headers")).toArray();
-    for (const QJsonValue& entry : header_entries) {
-        const QJsonObject header = entry.toObject();
-        swiftdm::HttpHeader value;
-        value.name = header.value(QStringLiteral("name")).toString().toStdString();
-        value.value = header.value(QStringLiteral("value")).toString().toStdString();
-        if (!value.name.empty()) options.headers.push_back(std::move(value));
-    }
-    const QString post_data = data.value(QStringLiteral("postData")).toString();
-    if (!post_data.isEmpty()) {
-        if (data.value(QStringLiteral("postDataEncoding")).toString() == QStringLiteral("base64")) {
-            options.post_data = QByteArray::fromBase64(post_data.toLatin1());
-        } else {
-            options.post_data = post_data.toUtf8();
-        }
-    }
-    const QJsonArray cookie_entries = data.value(QStringLiteral("cookies")).toArray();
-    for (const QJsonValue& entry : cookie_entries) {
-        const QJsonObject cookie = entry.toObject();
-        swiftdm::HttpCookie value;
-        value.domain = cookie.value(QStringLiteral("domain")).toString().toStdString();
-        value.path = cookie.value(QStringLiteral("path")).toString().toStdString();
-        value.name = cookie.value(QStringLiteral("name")).toString().toStdString();
-        value.value = cookie.value(QStringLiteral("value")).toString().toStdString();
-        value.secure = cookie.value(QStringLiteral("secure")).toBool();
-        value.expires = static_cast<int64_t>(
-            cookie.value(QStringLiteral("expires")).toDouble());
-        options.cookies.push_back(std::move(value));
-    }
+    options.headers = headers_from_json(data.value(QStringLiteral("headers")));
+    options.post_data = decode_post_data(data);
+    options.cookies = cookies_from_json(data.value(QStringLiteral("cookies")));
 
     qInfo() << "browser integration: confirming download" << options.url;
     DownloadItem item;
@@ -607,5 +701,119 @@ void MainWindow::on_task_finished(DownloadTask* task, int status, const QString&
     }
     update_status_bar();
 }
+
+void MainWindow::apply_refresh_address(int row, const QJsonObject& capture) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+
+    const QString new_url = capture.value(QStringLiteral("url")).toString();
+    if (new_url.isEmpty()) return;
+
+    // ------------------------------------------------------------------
+    // 1. Capture the old workspace before anything changes: the engine keys the
+    //    workspace on `url + "\n" + filename`, so a new URL points at a new
+    //    (empty) folder and the saved bytes would be lost.
+    // ------------------------------------------------------------------
+    const QString old_workspace = item->task ? item->task->workspace_dir() : QString();
+    const QString old_workspace_temp = item->temp_path;
+
+    // ------------------------------------------------------------------
+    // 2. Build the new options: URL, cookies, referer, UA and headers all come
+    //    from the fresh capture (the old ones are expired).
+    // ------------------------------------------------------------------
+    DownloadTask::Options options =
+        item->task ? item->task->options() : DownloadTask::Options{};
+    options.url = new_url;
+    options.cookies = cookies_from_json(capture.value(QStringLiteral("cookies")));
+    options.referer = capture.value(QStringLiteral("referer")).toString();
+    const QString ua = capture.value(QStringLiteral("userAgent")).toString();
+    if (!ua.isEmpty()) options.user_agent = ua;
+    options.post_data = decode_post_data(capture);
+    const auto new_headers = headers_from_json(capture.value(QStringLiteral("headers")));
+    if (!new_headers.empty()) options.headers = new_headers;
+    if (options.output_dir.isEmpty()) options.output_dir = item->output_dir;
+    if (options.category.isEmpty()) options.category = item->category;
+
+    // ------------------------------------------------------------------
+    // 3. Move the workspace so the engine finds segments.json and the .part
+    //    file under the new key.
+    // ------------------------------------------------------------------
+    QString moved_workspace;    // Compute the destination directory the engine will use for the new URL.
+    // The engine keys on the *effective* URL, unknown until it probes, so the
+    // safest move is a rename performed by matching the filename below. We
+    // instead rewrite the state file URL and rename to the predictable key.
+    const auto workspace_parent_of = [this](const QString& workspace) -> QString {
+        if (workspace.isEmpty()) return QString();
+        const int slash = workspace.lastIndexOf(QLatin1Char('/'));
+        if (slash <= 0) return QString();
+        return workspace.left(slash);
+    };
+
+    if (!old_workspace.isEmpty() && QDir(old_workspace).exists()) {
+        const QString parent = workspace_parent_of(old_workspace);
+        const QString new_key =
+            new_url + QLatin1Char('\n') + item->file_name;
+        const QString new_name = QStringLiteral("download-") +
+            QString::fromStdString(swiftdm::hex_hash64(
+                swiftdm::fnv1a_hash(new_key.toStdString())));
+        const QString target = parent + QLatin1Char('/') + new_name;
+        if (QDir().exists(old_workspace) && target != old_workspace) {
+            if (QDir(target).exists()) swiftdm::remove_tree(target.toStdString());
+            if (QDir().rename(old_workspace, target)) {
+                moved_workspace = target;
+                // Neutralise the saved validators: the new URL is the same file
+                // but a different server resource identity. The engine already
+                // tolerates a mismatch when the size matches, and the size is
+                // the real guard here.
+                rewrite_resume_state(target, new_url);
+            } else {
+                qWarning() << "refresh address: could not move workspace"
+                           << old_workspace << "->" << target;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 4. Update the model row and the history record in place.
+    // ------------------------------------------------------------------
+    item->url = new_url;
+    item->waiting_refresh = false;
+    if (!moved_workspace.isEmpty()) item->temp_path = moved_workspace;
+    else if (!old_workspace_temp.isEmpty()) item->temp_path = old_workspace_temp;
+    const QString new_page = capture.value(QStringLiteral("pageUrl")).toString();
+    if (!new_page.isEmpty()) item->page_url = new_page;
+    const QString new_title = capture.value(QStringLiteral("pageTitle")).toString();
+    if (!new_title.isEmpty()) item->page_title = new_title;
+
+    pending_refresh_id_ = 0;
+    hide_refresh_waiting_dialog();
+    // Remember the applied address so the extension's retry of this same handoff
+    // is dropped instead of opening another confirmation window.
+    refresh_applied_url_ = new_url;
+    refresh_applied_at_ms_ = QDateTime::currentMSecsSinceEpoch();
+
+    if (item->history_id > 0 && history_.is_open()) {
+        history_.update(item->history_id, history_record_for(*item, &options));
+    }
+
+    // The old task holds the expired URL; drop it so start_task_at_row builds a
+    // fresh one from `options`.
+    if (item->task) {
+        DownloadTask* old = item->task;
+        item->task = nullptr;
+        old->deleteLater();
+    }
+
+    model_->touch_row(row);
+    qInfo() << "refresh address: resuming" << item->file_name << "with" << new_url;
+
+    // ------------------------------------------------------------------
+    // 5. Restart the transfer: it resumes from the existing bytes because the
+    //    segments.json moved with the workspace.
+    // ------------------------------------------------------------------
+    start_task_at_row(row, &options);
+    open_download_window(item->id);
+}
+
 
 }  // namespace swiftdm::ui

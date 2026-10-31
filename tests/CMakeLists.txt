@@ -58,6 +58,7 @@ if(SWIFTSDM_BUILD_UI)
     add_executable(test_icons
         test_icons.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/theme.cpp"
     )
     target_link_libraries(test_icons PRIVATE swiftdm_core Qt6::Widgets)
     target_compile_definitions(test_icons PRIVATE
@@ -211,6 +212,16 @@ if(SWIFTSDM_BUILD_UI)
     target_include_directories(test_action_state PRIVATE "${CMAKE_SOURCE_DIR}/src")
     target_link_libraries(test_action_state PRIVATE swiftdm_core Qt6::Widgets)
     add_test(NAME action_state COMMAND test_action_state)
+
+    # Headless check of the refresh-download-address routing: a pending refresh
+    # never turns a browser capture into a new download, and New URL is blocked.
+    add_executable(test_refresh_logic
+        test_refresh_logic.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/refresh_logic.cpp"
+    )
+    target_include_directories(test_refresh_logic PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(test_refresh_logic PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME refresh_logic COMMAND test_refresh_logic)
 
     # Headless (offscreen) check of the theme module: the setting value, the
     # two palettes and the "follow system" resolution. No window is shown.

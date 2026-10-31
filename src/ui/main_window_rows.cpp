@@ -151,6 +151,23 @@ void MainWindow::on_context_menu(const QPoint& pos) {
 
     QAction* properties = menu.addAction(
         tinted_icon(QStringLiteral(":/icons/properties.svg"), colors::kNeutral), tr("Properties"));
+
+    // Refresh download URL: only for non-complete items that have a history
+    // row (i.e. have been downloaded at least once).
+    QAction* act_refresh = nullptr;
+    QAction* act_cancel_refresh = nullptr;
+    if (!complete_row && item->history_id > 0 && !item_active) {
+        if (item->waiting_refresh) {
+            act_cancel_refresh = menu.addAction(
+                tinted_icon(QStringLiteral(":/icons/refresh-download.svg"), colors::kNeutral),
+                tr("Cancel Refresh"));
+        } else {
+            act_refresh = menu.addAction(
+                tinted_icon(QStringLiteral(":/icons/refresh-download.svg"), colors::kNeutral),
+                tr("Refresh Download URL"));
+            act_refresh->setEnabled(pending_refresh_id_ == 0);
+        }
+    }
     // A completed row stays actionable even when the file is gone: the action
     // then explains that the file was deleted or moved.
     open_file->setEnabled(complete_row && !item->dest_path.isEmpty());
@@ -177,6 +194,10 @@ void MainWindow::on_context_menu(const QPoint& pos) {
         move_item_to_downloads(row);
     } else if (move_targets.contains(chosen)) {
         move_item_to_queue(row, move_targets.value(chosen));
+    } else if (chosen == act_refresh) {
+        on_refresh_address(row);
+    } else if (chosen == act_cancel_refresh) {
+        cancel_refresh();
     }
 }
 
@@ -195,6 +216,9 @@ void MainWindow::remove_row_with_cleanup(int row, bool check_queue) {
     const int id = item->id;
     const qint64 queue_id = item->queue_id;
     limit_paused_items_.remove(id);
+    if (item->history_id > 0 && item->history_id == pending_refresh_id_) {
+        cancel_refresh();
+    }
     if (item->history_id > 0 && history_.is_open()) {
         history_.remove(item->history_id);
         last_progress_save_ms_.remove(item->history_id);

@@ -12,6 +12,8 @@
 namespace swiftdm::ui {
 
 QColor download_status_color(const DownloadItem& item) {
+    if (item.waiting_refresh)
+        return QColor(0xe0, 0xa8, 0x5a);  // amber — same as file_missing
     switch (item.state) {
         case DownloadItem::State::Downloading:
         case DownloadItem::State::Paused:
@@ -38,6 +40,8 @@ QString format_size(quint64 bytes) {
 }  // namespace
 
 QString download_status_text(const DownloadItem& item) {
+    if (item.waiting_refresh)
+        return QObject::tr("Waiting for new URL\u2026");
     switch (item.state) {
         case DownloadItem::State::Queued:
             return QObject::tr("Queued");

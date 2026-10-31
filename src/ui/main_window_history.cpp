@@ -65,6 +65,48 @@ QString now_stamp() {
     return QDateTime::currentDateTime().toString(QStringLiteral("MMM d HH:mm:ss"));
 }
 
+std::vector<swiftdm::HttpCookie> cookies_from_json(const QJsonValue& value) {
+    std::vector<swiftdm::HttpCookie> cookies;
+    const QJsonArray entries = value.toArray();
+    for (const QJsonValue& entry : entries) {
+        const QJsonObject cookie = entry.toObject();
+        swiftdm::HttpCookie out;
+        out.domain = cookie.value(QStringLiteral("domain")).toString().toStdString();
+        out.path = cookie.value(QStringLiteral("path")).toString().toStdString();
+        out.name = cookie.value(QStringLiteral("name")).toString().toStdString();
+        out.value = cookie.value(QStringLiteral("value")).toString().toStdString();
+        out.secure = cookie.value(QStringLiteral("secure")).toBool();
+        out.expires =
+            static_cast<int64_t>(cookie.value(QStringLiteral("expires")).toDouble());
+        cookies.push_back(std::move(out));
+    }
+    return cookies;
+}
+
+std::vector<swiftdm::HttpHeader> headers_from_json(const QJsonValue& value) {
+    std::vector<swiftdm::HttpHeader> headers;
+    const QJsonArray entries = value.toArray();
+    for (const QJsonValue& entry : entries) {
+        const QJsonObject header = entry.toObject();
+        swiftdm::HttpHeader out;
+        out.name = header.value(QStringLiteral("name")).toString().toStdString();
+        out.value = header.value(QStringLiteral("value")).toString().toStdString();
+        if (!out.name.empty()) headers.push_back(std::move(out));
+    }
+    return headers;
+}
+
+QByteArray decode_post_data(const QJsonObject& capture) {
+    const QString post_data = capture.value(QStringLiteral("postData")).toString();
+    if (post_data.isEmpty()) return {};
+    if (capture.value(QStringLiteral("postDataEncoding")).toString() ==
+        QStringLiteral("base64")) {
+        return QByteArray::fromBase64(post_data.toLatin1());
+    }
+    return post_data.toUtf8();
+}
+
+
 QString stamp_from_unix(int64_t seconds) {
     if (seconds <= 0) return {};
     return QDateTime::fromSecsSinceEpoch(seconds).toString(QStringLiteral("MMM d HH:mm:ss"));

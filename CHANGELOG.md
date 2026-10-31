@@ -1,5 +1,102 @@
 # Changelog
 
+## 0.22.4 — 2026-10-31
+
+Snappier progress updates in the download table and progress window.
+
+- The engine now hands progress to the UI every 50 ms instead of 100 ms
+  (`kReportIntervalMs` in `src/net/http_internal.h`), so the table and the
+  progress window repaint up to 20 times per second without a UI timer.
+- The speed value is still sampled and smoothed over the existing 200 ms
+  window, so the displayed speed stays readable while the progress and
+  remaining-time figures move sooner.
+
+## 0.22.3 — 2026-10-31
+
+Clearer wording and a more compact layout for the refresh-download-URL windows.
+
+- The waiting window is now `Refresh Download URL` and reads
+  `Waiting for a new download URL…`. It shows the file name and size as a
+  compact two-row form (`File Name:`, `File Size:`), keeps the whole window at a
+  fixed 340 px width, and its button is just `Cancel`.
+- The confirmation prompt is now `Confirm New Download URL` and lists
+  `File Name:` and `New URL:`. Its buttons are `Use New URL` and `Cancel`
+  instead of Yes/No.
+- When the captured file name does not match the waiting download, the warning
+  is painted in the theme's danger red and the window uses the warning glyph, so
+  a wrong file is impossible to miss. `Cancel` stays the default button in that
+  case.
+- The context-menu entry is renamed to `Refresh Download URL` and the row status
+  reads `Waiting for new URL…`, matching the new wording.
+
+## 0.22.2 — 2026-10-31
+
+Fix the two remaining refresh-download-address bugs.
+
+- The always-on-top waiting window now hides as soon as the new address is
+  captured and the confirmation prompt appears, so the two never sit on screen
+  together. Answering No brings the waiting window back for another attempt;
+  answering Yes leaves it closed because the wait is over.
+- The duplicate download confirmations after a successful refresh are gone. The
+  browser integration used to emit the capture signal while still handling the
+  WebSocket command, so the reply only went out once the modal confirmation
+  closed. The extension's 5 s command timeout then expired and its retry
+  delivered the same capture again, and again. The signal is now queued, so the
+  reply is written before any window opens.
+- As a second layer, a capture repeating the address just applied by a refresh
+  is dropped for 15 s instead of opening a new confirmation. That covers the
+  extension's retry and duplicate captures during the transfer restart.
+- Both new rules are pure functions covered by the headless `refresh_logic`
+  test, alongside the existing "no new download while refreshing" checks.
+
+## 0.22.1 — 2026-10-31
+
+Fix the refresh-download-address flow: a small waiting window, and no stray
+downloads while a refresh is pending.
+
+- A small always-on-top `Waiting for a new download address…` window now appears
+  when a refresh starts. It names the file being refreshed, explains that the
+  download must be started again in the browser, and offers `Cancel Refresh`.
+  Closing it with the title-bar button cancels the wait as well.
+- While a refresh waits, **every** browser capture is routed to the
+  `Is this new address for your expired download?` prompt, including captures
+  whose file name does not match (they get a mismatch warning and default to
+  No). A rejected capture no longer falls through to the normal handoff, so no
+  second download row is created during the wait; the waiting window reappears
+  so the user can try again.
+- `New URL` is blocked with a warning while a refresh waits, because a manual
+  download would take the capture meant for the refresh. The warning offers
+  `Cancel Refresh` to release the wait immediately.
+- The waiting window closes on its own when the new address is applied or the
+  waiting row is deleted.
+- The capture routing decision and the New URL guard are pure functions covered
+  by a new headless test (`refresh_logic`), so the "no new download while
+  refreshing" guarantee stays enforced.
+
+## 0.22.0 — 2026-10-31
+
+Refresh the address of an expired download without starting over.
+
+- The item context menu has a new `Refresh Download Address` entry for paused
+  and failed downloads that have a history row. It marks that download as
+  waiting, opens the page the file came from (when a page URL was captured), and
+  tells the user to start the same file again in the browser.
+- When the browser extension hands over a new capture while a download is
+  waiting, SwiftDM asks `Is this new address for your expired download?` once the
+  file names match, showing the file name and the new URL. Answering yes applies
+  the new URL, cookies, referer, user agent, and headers to the existing row.
+- The download resumes from the bytes already on disk: the workspace folder is
+  moved to the key of the new address and `segments.json` is rewritten with the
+  new URL and without the old validators, so the engine keeps the partial file
+  when the size still matches.
+- The Properties/history row keeps its identity (same history id, page URL, and
+  file name), so the progress window, log file, and queue assignment carry over.
+- Only one download may wait for a new address at a time; a second attempt shows
+  a notice, matching the original feature's mutual exclusivity.
+- A waiting item shows `Waiting for new address…` in amber. The same context menu
+  offers `Cancel Refresh` to drop the wait, and deleting the waiting row clears
+  it automatically.
+
 ## 0.21.4 — 2026-10-30
 
 Keep download dialogs above other windows when asked.

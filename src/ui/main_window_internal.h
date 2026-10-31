@@ -24,4 +24,9 @@ DownloadItem::State state_from_record(const swiftdm::HistoryStore::Record& recor
 QString find_existing_workspace(const swiftdm::Settings& settings,
                                 const swiftdm::HistoryStore::Record& record);
 
+// Parses the browser capture fields shared by addDownload and the refresh flow.
+std::vector<swiftdm::HttpCookie> cookies_from_json(const QJsonValue& value);
+std::vector<swiftdm::HttpHeader> headers_from_json(const QJsonValue& value);
+QByteArray decode_post_data(const QJsonObject& capture);
+
 }  // namespace swiftdm::ui

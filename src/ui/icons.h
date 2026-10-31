@@ -20,6 +20,10 @@ extern const QColor kOkGreen;
 // background, so the tint is darker there.
 QColor neutral_tint();
 
+// Readable danger red for text and glyphs on the dialog background (darker in
+// the light theme so the warning stays legible).
+QColor danger_tint();
+
 }  // namespace colors
 
 // Style of the system tray icon.

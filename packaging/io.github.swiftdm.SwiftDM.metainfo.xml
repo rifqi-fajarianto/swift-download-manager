@@ -34,6 +34,31 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.4" date="2026-10-31">
+      <description>
+        <p>Progress updates reach the download table and the progress window every 50 ms instead of 100 ms, so the percentage, speed, and remaining-time figures move sooner without a UI timer. The speed is still smoothed over a 200 ms window so the number stays readable.</p>
+      </description>
+    </release>
+    <release version="0.22.3" date="2026-10-31">
+      <description>
+        <p>The refresh windows now read Refresh Download URL and Confirm New Download URL. The waiting window is compact, lists the file name and size, and offers Cancel; the confirmation offers Use New URL and Cancel, and paints the file-name mismatch warning in red so a wrong file is obvious.</p>
+      </description>
+    </release>
+    <release version="0.22.2" date="2026-10-31">
+      <description>
+        <p>The waiting window now disappears while the new-address confirmation is shown, and returns if the address is rejected. Duplicate download confirmations after a successful refresh are fixed: the browser handoff reply is sent before the confirmation window opens, so the extension no longer times out and retries the same capture, and a capture repeating the just-applied address is ignored for 15 seconds.</p>
+      </description>
+    </release>
+    <release version="0.22.1" date="2026-10-31">
+      <description>
+        <p>A small always-on-top window now shows which download is waiting for a refreshed address and offers Cancel Refresh. While the wait lasts, every capture from the browser is routed to the confirmation prompt and the manual New URL action is blocked with a warning, so no second download can be created before the refresh finishes.</p>
+      </description>
+    </release>
+    <release version="0.22.0" date="2026-10-31">
+      <description>
+        <p>An expired download address can be refreshed from the item context menu: SwiftDM opens the page the file came from, and the next capture of the same file from the browser replaces the dead URL, cookies and headers so the transfer resumes from the bytes already on disk instead of starting over. Only one download waits for a new address at a time.</p>
+      </description>
+    </release>
     <release version="0.21.4" date="2026-10-30">
       <description>
         <p>Each category can download to its own folder, and both download dialogs can optionally stay above other windows. Download windows open at a smaller default size, the speed-limit editor fits on one row, and the category folder note no longer gets clipped.</p>

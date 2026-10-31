@@ -19,6 +19,12 @@ QColor neutral_tint() {
     // The light gray of the dark theme is unreadable on a light background.
     return is_dark_theme() ? kNeutral : QColor(0x4a, 0x4a, 0x4a);
 }
+
+QColor danger_tint() {
+    // The message-box glyphs are large and sit on the plain dialog background,
+    // so the light theme uses a darker red to keep them readable.
+    return is_dark_theme() ? kDanger : QColor(0xc0, 0x30, 0x30);
+}
 }  // namespace colors
 
 namespace {
@@ -75,10 +81,6 @@ QColor info_tint() {
     return is_dark_theme() ? colors::kActionBlue : QColor(0x1a, 0x6f, 0xb5);
 }
 
-QColor danger_tint() {
-    return is_dark_theme() ? colors::kDanger : QColor(0xc0, 0x30, 0x30);
-}
-
 QColor ok_tint() {
     return is_dark_theme() ? colors::kOkGreen : QColor(0x2e, 0x7d, 0x32);
 }
@@ -123,7 +125,8 @@ QPixmap dialog_info_pixmap() {
 }
 
 QPixmap dialog_warning_pixmap() {
-    return tinted_icon(QStringLiteral(":/icons/allert-filled.svg"), danger_tint()).pixmap(32, 32);
+    return tinted_icon(QStringLiteral(":/icons/allert-filled.svg"), colors::danger_tint())
+        .pixmap(32, 32);
 }
 
 QPixmap dialog_question_pixmap() {

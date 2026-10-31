@@ -1,4 +1,5 @@
 #include "ui/main_window.h"
+#include "ui/refresh_waiting_dialog.h"
 
 #include <QAbstractButton>
 #include <QAction>
@@ -309,6 +310,117 @@ void MainWindow::on_quit() {
     if (!confirm_quit()) return;
     quitting_ = true;
     QApplication::quit();
+}
+
+// ---------------------------------------------------------------------------
+// Refresh download address
+// ---------------------------------------------------------------------------
+
+void MainWindow::on_refresh_address(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item || item->is_complete() || item->history_id <= 0) return;
+
+    // Mutual exclusivity: only one download may wait at a time.
+    if (pending_refresh_id_ > 0) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Refresh Download URL"));
+        box.setIconPixmap(dialog_info_pixmap());
+        box.setText(tr("Another download is already waiting for a new URL. "
+                       "Only one download can use this feature at a time."));
+        box.addButton(QMessageBox::Ok);
+        box.exec();
+        return;
+    }
+
+    // Build the prompt.
+    const bool has_page = !item->page_url.isEmpty();
+    const QString message =
+        has_page
+            ? tr("SwiftDM will open the web page where this file was obtained "
+                 "from in your browser.\n\n"
+                 "Please start the download of the same file again so that "
+                 "SwiftDM can receive the new URL.\n\n"
+                 "File: %1")
+                  .arg(item->file_name)
+            : tr("Please start the download of this file again from your "
+                 "browser so that SwiftDM can receive the new URL.\n\n"
+                 "File: %1")
+                  .arg(item->file_name);
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Refresh Download URL"));
+    box.setIconPixmap(dialog_question_pixmap());
+    box.setText(message);
+    box.addButton(QMessageBox::Ok);
+    QPushButton* cancel_button = box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(cancel_button);
+    box.exec();
+    if (box.clickedButton() == cancel_button) return;
+
+    // Mark item as waiting.
+    pending_refresh_id_ = item->history_id;
+    item->waiting_refresh = true;
+    model_->touch_row(row);
+    update_status_bar();
+    show_refresh_waiting_dialog(item->history_id, item->file_name, item->size);
+
+    // Open the owner page in the browser if available.
+    if (has_page) {
+        qInfo() << "refresh address: opening page" << item->page_url;
+        QDesktopServices::openUrl(QUrl(item->page_url));
+    }
+}
+
+void MainWindow::show_refresh_waiting_dialog(qint64 history_id, const QString& file_name,
+                                            quint64 file_size) {
+    Q_UNUSED(history_id);
+    if (!refresh_dialog_) {
+        refresh_dialog_ = new RefreshWaitingDialog(this);
+        connect(refresh_dialog_, &RefreshWaitingDialog::cancelRequested, this,
+                [this] { cancel_refresh(); });
+    }
+    refresh_dialog_->set_file_info(file_name, file_size);
+    refresh_dialog_->show();
+    refresh_dialog_->raise();
+    refresh_dialog_->activateWindow();
+}
+
+void MainWindow::hide_refresh_waiting_dialog() {
+    if (refresh_dialog_) refresh_dialog_->dismiss();
+}
+
+bool MainWindow::warn_refresh_blocks_new_download() {
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Refresh Download URL"));
+    box.setIconPixmap(dialog_warning_pixmap());
+    box.setText(tr("A download is waiting for a new URL.\n\n"
+                   "Finish or cancel that refresh before adding another "
+                   "download."));
+    QPushButton* cancel_wait = box.addButton(tr("Cancel Refresh"), QMessageBox::DestructiveRole);
+    box.addButton(QMessageBox::Ok);
+    box.setDefaultButton(QMessageBox::Ok);
+    box.exec();
+    if (box.clickedButton() == cancel_wait) {
+        cancel_refresh();
+        return true;
+    }
+    return false;
+}
+
+void MainWindow::cancel_refresh() {
+    if (pending_refresh_id_ <= 0) return;
+    // Find the item and clear the flag.
+    for (int r = 0; r < model_->rowCount(); ++r) {
+        DownloadItem* item = model_->item_at(r);
+        if (item && item->history_id == pending_refresh_id_) {
+            item->waiting_refresh = false;
+            model_->touch_row(r);
+            break;
+        }
+    }
+    pending_refresh_id_ = 0;
+    hide_refresh_waiting_dialog();
+    update_status_bar();
 }
 
 }  // namespace swiftdm::ui

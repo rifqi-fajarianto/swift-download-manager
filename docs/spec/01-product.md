@@ -46,6 +46,20 @@ Layout (from `main-window.png`):
   original's version of this menu also carries `Resume`, `Stop`, `Redownload`,
   `Show Window` and `Delete` (E25) — here those stay on the toolbar and in the
   per-download window.
+- **Refresh download URL** (0.22.0): paused and failed rows that have a
+  history id also show `Refresh Download URL`. Choosing it marks that single
+  download as waiting, opens the page it came from in the browser (or, when no
+  page URL was captured, asks the user to start the file again), and returns.
+  A compact always-on-top `Refresh Download URL` window lists `File Name:` and
+  `File Size:` and offers `Cancel` (closing it cancels too). It hides while the
+  confirmation prompt is up and returns if the URL is rejected. While the wait
+  lasts, **every** browser capture is routed to the `Confirm New Download URL`
+  prompt with `File Name:` and `New URL:` — a mismatching file name paints the
+  warning in red and defaults to `Cancel` — and a rejected capture never becomes
+  a new download; the manual `New URL` action is blocked with a warning that
+  offers `Cancel Refresh`. `Use New URL` moves the new URL, cookies, referer,
+  user agent, and headers onto the same row and resumes from the bytes already
+  on disk. One download waits at a time.
 - **History restore**: at startup the table is rebuilt from SQLite with every
   row (Complete, Paused, Error). Rows left `Downloading`/`Queued` in the main
   list are shown as `Paused` and never resume by themselves; the user presses
