@@ -1,16 +1,18 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-31**, versi kerja **0.22.4**. Status ini cepat
+> Snapshot terakhir: **2026-10-31**, versi kerja **0.22.5**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
 - **Branch kerja saat snapshot**: `main`, sudah memuat port Windows 10
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15).
-- **Rilis terakhir di jalur `main`**: 0.22.4 (progress dan kecepatan dikirim ke
-  UI tiap 50 ms). Sebelumnya 0.22.3 menyesuaikan UI/UX jendela *Refresh download
-  URL*: teks, ukuran compact, nama field, dan tombol yang lebih jelas.
-- **Versi kerja**: 0.22.4. Progress download dilaporkan ke UI tiap 50 ms
+- **Rilis terakhir di jalur `main`**: 0.22.5 (perbaikan build Windows pada
+  workflow rilis; perilaku aplikasi sama dengan 0.22.4). Sebelumnya 0.22.4
+  mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
+  UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
+  tombol yang lebih jelas.
+- **Versi kerja**: 0.22.5. Progress download dilaporkan ke UI tiap 50 ms
   (kecepatan tetap dihaluskan per jendela 200 ms), jadi tabel dan window
   progress menyegar maksimal 20 Hz. Refresh download URL (0.22.0, diperketat
   0.22.1–0.22.3):

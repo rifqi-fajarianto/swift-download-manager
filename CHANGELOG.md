@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.22.5 — 2026-10-31
+
+Fix the Windows build of the release workflow.
+
+- `src/ui/refresh_logic.h` used `int64_t` without including `<cstdint>`. The
+  libstdc++ that ships with Debian pulls `<cstdint>` in transitively through
+  `<string>`, so the Debian 13 job compiled, but MSYS2 UCRT64 does not, and the
+  `windows-package` job failed with `'int64_t' does not name a type`. The header
+  now includes `<cstdint>` directly. No behaviour change.
+- Because `windows-package` failed, the `release` job never ran and 0.22.4 was
+  never published; 0.22.5 carries the same changes plus this build fix.
+
 ## 0.22.4 — 2026-10-31
 
 Snappier progress updates in the download table and progress window.
