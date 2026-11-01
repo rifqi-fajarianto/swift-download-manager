@@ -12,4 +12,5 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <winioctl.h>
 #endif

@@ -46,14 +46,23 @@ int main() {
         CHECK(static_cast<std::uint64_t>(after.WriteTransferCount - before.WriteTransferCount) <
               size / 4);
         CHECK(::_filelengthi64(sparse_fd) == static_cast<__int64>(size));
+
+        // Non-contiguous write at the tail must succeed without zero-filling the gap.
+        CHECK(write_file_at(sparse_fd, "z", 1, size - 1) == 1);
         CHECK(close_file(sparse_fd) == 0);
+
+        const std::wstring wide_sparse = path_from_utf8(sparse_path).native();
+        const DWORD attrs = ::GetFileAttributesW(wide_sparse.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES) {
+            CHECK((attrs & FILE_ATTRIBUTE_SPARSE_FILE) != 0);
+        }
 
         std::ifstream tail(path_from_utf8(sparse_path), std::ios::binary);
         tail.seekg(static_cast<std::streamoff>(size) - 1);
         char last = 'x';
         tail.get(last);
         CHECK(tail.good());
-        CHECK_EQ(static_cast<int>(last), 0);
+        CHECK_EQ(last, 'z');
     }
 #endif
 

@@ -12,7 +12,10 @@
   mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
   UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
   tombol yang lebih jelas.
-- **Versi kerja**: 0.22.5. Progress download dilaporkan ke UI tiap 50 ms
+- **Versi kerja**: 0.22.6. Windows `resize_file()` mengaktifkan `FSCTL_SET_SPARSE`
+  sebelum `SetEndOfFile()` (0.22.6) sehingga alokasi awal dan penulisan multi-segmen
+  ke offset acak tidak memicu kernel zero-fill synchronous pada NTFS. Unduhan besar
+  langsung berjalan instan seperti Linux. Progress download dilaporkan ke UI tiap 50 ms
   (kecepatan tetap dihaluskan per jendela 200 ms), jadi tabel dan window
   progress menyegar maksimal 20 Hz. Refresh download URL (0.22.0, diperketat
   0.22.1–0.22.3):

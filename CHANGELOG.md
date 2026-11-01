@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.22.6 — 2026-11-01
+
+Windows only; Linux behavior unchanged.
+
+- Mark part files as sparse via `FSCTL_SET_SPARSE` in `resize_file()` on
+  Windows. `SetEndOfFile()` extends the file size, but on NTFS without the
+  sparse attribute, writing to non-contiguous segment offsets beyond
+  `ValidDataLength` triggered synchronous kernel zero-filling of preceding
+  disk space. For downloads over 1 GB, this stalled the download while Windows
+  wrote physical zeroes before network transfer began. Flagging the file as
+  sparse leaves unwritten ranges unallocated, matching Linux instant sizing.
+- `tests/test_file_io.cpp` verifies that writing at the tail of a resized file
+  preserves the `FILE_ATTRIBUTE_SPARSE_FILE` attribute on Windows.
+
 ## 0.22.5 — 2026-10-31
 
 Fix the Windows build of the release workflow.

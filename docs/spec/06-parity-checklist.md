@@ -37,11 +37,12 @@ Windows notes:
   the `.ico` from `main-icon.svg`.
 - The tray icon, autostart and pause/resume behaviour still need a manual pass
   on a Windows 10 machine.
-- Extending a part file does not zero-fill it: `resize_file()` seeks to the new
-  length and calls `SetEndOfFile()`, so the preallocated range stays
-  unallocated until the transfer writes into it (0.19.14). `_chsize_s()`, used
-  before, wrote every byte and stalled large downloads before the first
-  network byte arrived.
+- Extending a part file does not zero-fill it: `resize_file()` enables
+  `FSCTL_SET_SPARSE` and calls `SetEndOfFile()`, so the preallocated range stays
+  unallocated until the transfer writes into it (0.19.14, 0.22.6). Non-contiguous
+  segment writes into the file no longer cause NTFS to synchronously zero-fill
+  preceding gaps. `_chsize_s()`, used before 0.19.14, wrote every byte and
+  stalled large downloads before the first network byte arrived.
 
 
 ## v1 — core engine + GUI

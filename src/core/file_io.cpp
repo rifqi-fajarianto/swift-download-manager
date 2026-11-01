@@ -104,12 +104,17 @@ int resize_file(int fd, uint64_t size) {
 #ifdef _WIN32
     // _chsize_s zero-fills the extension, so preallocating a multi-gigabyte
     // part file would stall the transfer behind gigabytes of physical writes.
-    // Moving the end of file leaves the new range unallocated (sparse).
+    // Moving the end of file leaves the new range unallocated, but on NTFS
+    // writing beyond ValidDataLength still triggers synchronous zero-filling
+    // unless the file is explicitly flagged as sparse via FSCTL_SET_SPARSE.
     const intptr_t handle = ::_get_osfhandle(fd);
     if (handle == -1) {
         errno = EBADF;
         return -1;
     }
+    DWORD returned = 0;
+    (void)::DeviceIoControl(reinterpret_cast<HANDLE>(handle), FSCTL_SET_SPARSE,
+                            nullptr, 0, nullptr, 0, &returned, nullptr);
     LARGE_INTEGER target{};
     target.QuadPart = static_cast<LONGLONG>(size);
     if (!::SetFilePointerEx(reinterpret_cast<HANDLE>(handle), target, nullptr, FILE_BEGIN) ||
