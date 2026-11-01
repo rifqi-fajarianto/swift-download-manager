@@ -89,6 +89,23 @@ int main() {
     check(!complete_only.resume && !complete_only.stop,
           "complete rows disable both actions");
 
+    // Redownload: offered for a finished row whose worker is not running, never
+    // for a row that is still transferring or that has not completed.
+    check(swiftdm::ui::item_can_redownload(DownloadItem::State::Complete, false),
+          "a complete idle row can be redownloaded");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Complete, true),
+          "a complete row with a running worker is not redownloadable");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Paused, false),
+          "a paused row is resumed, not redownloaded");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Error, false),
+          "a failed row is resumed, not redownloaded");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Queued, false),
+          "a queued row is started, not redownloaded");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Downloading, true),
+          "a downloading row cannot be redownloaded");
+    check(!swiftdm::ui::item_can_redownload(DownloadItem::State::Probing, true),
+          "a probing row cannot be redownloaded");
+
     if (failures == 0) std::printf("action_state: all checks passed\n");
     return failures == 0 ? 0 : 1;
 }

@@ -75,6 +75,12 @@ inline bool item_can_stop(DownloadItem::State state, bool has_task, bool task_ac
     return has_task && task_active && state == DownloadItem::State::Downloading;
 }
 
+// Redownload is offered for a completed row whose worker is not running: the
+// file is on disk (or was deleted) and the transfer starts over from zero.
+inline bool item_can_redownload(DownloadItem::State state, bool task_active) {
+    return state == DownloadItem::State::Complete && !task_active;
+}
+
 inline void merge_toolbar_action_state(ToolbarActionState& actions,
                                        DownloadItem::State state, bool has_task,
                                        bool task_active) {

@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-10-31**, versi kerja **0.22.5**. Status ini cepat
+> Snapshot terakhir: **2026-11-02**, versi kerja **0.22.8**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -12,7 +12,16 @@
   mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
   UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
   tombol yang lebih jelas.
-- **Versi kerja**: 0.22.6. Windows `resize_file()` mengaktifkan `FSCTL_SET_SPARSE`
+- **Versi kerja**: 0.22.8. `Redownload` (0.22.8) tersedia lewat klik kanan pada
+  baris Complete di daftar Downloads maupun di dalam queue: bila file masih ada
+  di disk, dialog peringatan menanyakan konfirmasi overwrite (`Overwrite` /
+  `Cancel`, default `Cancel`); bila file sudah dihapus atau dipindah, unduhan
+  langsung dimulai tanpa dialog. Transfer dimulai dari nol, dan file lama baru
+  diganti setelah transfer selesai (satu `rename`), sehingga redownload yang
+  gagal/di-pause/dibatalkan tidak merusak file lama. 0.22.7 memperbaiki menu klik
+  kanan yang menjalankan aksi sendiri saat ditutup tanpa pilihan (`nullptr` dari
+  `QMenu::exec` dibandingkan dengan aksi opsional yang juga `nullptr`). Windows
+  `resize_file()` mengaktifkan `FSCTL_SET_SPARSE`
   sebelum `SetEndOfFile()` (0.22.6) sehingga alokasi awal dan penulisan multi-segmen
   ke offset acak tidak memicu kernel zero-fill synchronous pada NTFS. Unduhan besar
   langsung berjalan instan seperti Linux. Progress download dilaporkan ke UI tiap 50 ms

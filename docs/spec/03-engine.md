@@ -75,6 +75,15 @@ are our own choices where the original is UNKNOWN (E23).
   path component on Linux and Windows) before they are written: a long URL
   path or a long `Content-Disposition` header no longer fails the transfer
   with "File name too long". The rules are in `02-data-model.md` §2.
+- **[design: 0.22.8]** A finished transfer never replaces an existing file: the
+  part file is moved to the first free name (`name (1).ext`, `name (2).ext`, …)
+  with an atomic claim, so two concurrent downloads of the same name cannot
+  overwrite each other. `DownloadRequest::overwrite` (set only by the GUI's
+  `Redownload`, after the user confirmed) moves the part file onto the existing
+  name with a single rename instead — `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
+  on Windows, `rename()` elsewhere, truncate-and-copy across filesystems. Both
+  happen only after the transfer completed, so an interrupted redownload leaves
+  the previous file untouched.
 
 ## 4. Rate limiting
 

@@ -34,6 +34,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.8" date="2026-11-02">
+      <description>
+        <p>A completed download can be started again from its context menu with Redownload, in the main list and inside a queue. When the file is still on disk a warning first asks to overwrite it; when it was deleted or moved the transfer starts immediately. The new file replaces the old one only after the transfer completes, so a failed redownload never destroys the previous file.</p>
+      </description>
+    </release>
+    <release version="0.22.7" date="2026-11-02">
+      <description>
+        <p>Closing the download context menu without choosing an item no longer resumes a paused row or downloads a completed one again. The menu compared its empty result with actions that only exist for some rows, so dismissing it looked like choosing Start.</p>
+      </description>
+    </release>
     <release version="0.22.5" date="2026-10-31">
       <description>
         <p>Fix the Windows build of the release workflow: a header used a fixed-width integer type without including the header that declares it, which the Debian toolchain accepted but the Windows toolchain rejected. No behaviour change.</p>
