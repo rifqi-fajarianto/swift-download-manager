@@ -213,6 +213,15 @@ if(SWIFTSDM_BUILD_UI)
     target_link_libraries(test_action_state PRIVATE swiftdm_core Qt6::Widgets)
     add_test(NAME action_state COMMAND test_action_state)
 
+    # Headless check of the context-menu dispatch guard: a dismissed menu
+    # (nullptr from QMenu::exec) must never match an optional action that the
+    # row did not create.
+    add_executable(test_menu_action test_menu_action.cpp)
+    target_include_directories(test_menu_action PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    target_link_libraries(test_menu_action PRIVATE swiftdm_core Qt6::Widgets)
+    add_test(NAME menu_action COMMAND test_menu_action)
+    set_tests_properties(menu_action PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # Headless check of the refresh-download-address routing: a pending refresh
     # never turns a browser capture into a new download, and New URL is blocked.
     add_executable(test_refresh_logic

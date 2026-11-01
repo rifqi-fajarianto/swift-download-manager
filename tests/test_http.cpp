@@ -964,6 +964,57 @@ void test_unique_path(const std::string& dir) {
     CHECK_EQ(slashed(unique_path(base)), slashed(dir + "/unique (2).bin"));
 }
 
+// Redownload must replace the file on disk instead of claiming a " (1)" name,
+// and a normal run must keep the old no-overwrite behavior.
+void test_overwrite_replaces_existing_file(const std::string& dir,
+                                           testutil::TestHttpServer& server) {
+    const std::string url = server.base_url() + "/file/65536";
+    const std::string name = "sample-65536.bin";
+
+    {
+        Settings settings = test_settings(dir + "/redownload");
+        DownloadEngine engine(settings);
+        DownloadRequest request;
+        request.url = url;
+        request.output_dir = settings.download_dir;
+        request.apply_category_folder = false;
+        const auto first = engine.run(request);
+        CHECK(first.status == DownloadResult::Status::Completed);
+        CHECK(file_matches(first.path, 65536));
+
+        // Replace the downloaded bytes so a non-overwriting run would leave the
+        // stale content behind under a new name.
+        {
+            std::ofstream out(first.path, std::ios::binary | std::ios::trunc);
+            out << "STALE";
+        }
+        const std::string expected = first.path;
+
+        DownloadRequest again;
+        again.url = url;
+        again.filename = name;
+        again.output_dir = settings.download_dir;
+        again.apply_category_folder = false;
+        again.overwrite = true;
+        const auto second = engine.run(again);
+        CHECK(second.status == DownloadResult::Status::Completed);
+        CHECK_EQ(slashed(second.path), slashed(expected));
+        CHECK(file_matches(second.path, 65536));
+
+        // Without the flag the same name is taken, so the engine claims the
+        // " (1)" variant and the existing file stays untouched.
+        DownloadRequest third;
+        third.url = url;
+        third.filename = name;
+        third.output_dir = settings.download_dir;
+        third.apply_category_folder = false;
+        const auto plain = engine.run(third);
+        CHECK(plain.status == DownloadResult::Status::Completed);
+        CHECK(slashed(plain.path) != slashed(expected));
+        CHECK(plain.path.find(" (1).bin") != std::string::npos);
+    }
+}
+
 void test_server_creation_date(const std::string& dir, testutil::TestHttpServer& server) {
     // The test server sends Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT.
     constexpr int64_t kServerTime = 1445412480;
@@ -1082,6 +1133,7 @@ int main() {
     test_categories();
     test_download_url_scheme_allowlist(dir + "/scheme");
     test_unique_path(dir);
+    test_overwrite_replaces_existing_file(dir + "/overwrite", server);
 
     server.stop();
     testutil::cleanup_dir(dir);

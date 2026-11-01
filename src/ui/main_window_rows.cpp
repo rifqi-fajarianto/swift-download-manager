@@ -54,6 +54,7 @@
 #include "ui/download_model.h"
 #include "ui/download_window.h"
 #include "ui/icons.h"
+#include "ui/menu_action.h"
 #include "ui/properties_dialog.h"
 #include "ui/queue_dialog.h"
 #include "ui/settings_dialog.h"
@@ -114,6 +115,17 @@ void MainWindow::on_context_menu(const QPoint& pos) {
     menu.addSeparator();
 
     const bool item_active = item->task && item->task->active();
+    // A completed row can be downloaded again from scratch. The action asks
+    // before replacing a file that is still on disk.
+    QAction* redownload = nullptr;
+    if (item_can_redownload(item->state, item_active)) {
+        redownload = menu.addAction(
+            tinted_icon(QStringLiteral(":/icons/refresh-download.svg"), colors::kActionBlue),
+            tr("Redownload"));
+        redownload->setToolTip(
+            tr("Download this file again, overwriting it if it is still on disk"));
+        menu.addSeparator();
+    }
     QAction* start_item = nullptr;
     QAction* pause_item = nullptr;
     QAction* move_to_downloads = nullptr;
@@ -177,26 +189,32 @@ void MainWindow::on_context_menu(const QPoint& pos) {
     }
 
     QAction* chosen = menu.exec(table_->viewport()->mapToGlobal(pos));
-    if (chosen == open_file) {
+    // Dismissing the menu (Esc, click outside) returns nullptr. Optional
+    // actions such as start_item are nullptr when the row does not offer them,
+    // so a bare `chosen == start_item` would fire them on dismissal.
+    if (!chosen) return;
+    if (menu_action_matches(chosen, open_file)) {
         open_file_for_row(row);
-    } else if (chosen == open_folder) {
+    } else if (menu_action_matches(chosen, open_folder)) {
         open_folder_for_row(row);
-    } else if (chosen == properties) {
+    } else if (menu_action_matches(chosen, properties)) {
         show_properties_for_row(row);
-    } else if (chosen == start_item) {
+    } else if (menu_action_matches(chosen, redownload)) {
+        redownload_row(row);
+    } else if (menu_action_matches(chosen, start_item)) {
         if (item->queue_id <= 0 || allow_queue_item_start(item->queue_id)) {
             start_task_at_row(row);
         }
-    } else if (chosen == pause_item) {
+    } else if (menu_action_matches(chosen, pause_item)) {
         limit_paused_items_.remove(item->id);
         if (item->task) item->task->pause();
-    } else if (chosen == move_to_downloads) {
+    } else if (menu_action_matches(chosen, move_to_downloads)) {
         move_item_to_downloads(row);
     } else if (move_targets.contains(chosen)) {
         move_item_to_queue(row, move_targets.value(chosen));
-    } else if (chosen == act_refresh) {
+    } else if (menu_action_matches(chosen, act_refresh)) {
         on_refresh_address(row);
-    } else if (chosen == act_cancel_refresh) {
+    } else if (menu_action_matches(chosen, act_cancel_refresh)) {
         cancel_refresh();
     }
 }
@@ -208,6 +226,103 @@ void MainWindow::refresh_missing_state(int row) {
     if (missing == item->file_missing) return;
     item->file_missing = missing;
     model_->touch_row(row);
+}
+
+void MainWindow::redownload_row(int row) {
+    DownloadItem* item = model_->item_at(row);
+    if (!item) return;
+    const bool item_active = item->task && item->task->active();
+    if (!item_can_redownload(item->state, item_active)) return;
+    if (item->queue_id > 0 && !allow_queue_item_start(item->queue_id)) return;
+
+    // A file that disappeared between the menu and the click must not open a
+    // stale "file exists" question.
+    refresh_missing_state(row);
+    item = model_->item_at(row);
+    if (!item) return;
+
+    const QString target = item->dest_path;
+    const bool file_on_disk = !target.isEmpty() && QFileInfo::exists(target);
+    if (file_on_disk) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Redownload"));
+        box.setIconPixmap(dialog_warning_pixmap());
+        box.setText(tr("\"%1\" is already on disk.").arg(QFileInfo(target).fileName()));
+        box.setInformativeText(
+            tr("%1\n\nRedownloading overwrites this file and starts over from the "
+               "beginning. This cannot be undone.")
+                .arg(target));
+        QPushButton* overwrite_button = box.addButton(tr("Overwrite"), QMessageBox::DestructiveRole);
+        QPushButton* cancel_button = box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(cancel_button);
+        box.exec();
+        if (box.clickedButton() != overwrite_button) return;
+    }
+
+    // Rebuild the request: a row restored from history has no task, so its
+    // cookies, headers, POST body and user agent live only in the history row.
+    DownloadTask::Options options;
+    bool have_options = false;
+    if (item->task) {
+        options = item->task->options();
+        have_options = true;
+    } else if (item->history_id > 0 && history_.is_open()) {
+        swiftdm::HistoryStore::Record record;
+        if (history_.fetch(item->history_id, &record)) {
+            options = options_from_record(record);
+            have_options = true;
+        }
+    }
+    if (!have_options) {
+        options.url = item->url;
+        options.output_dir = item->output_dir;
+        options.category = item->category;
+    }
+    if (options.url.isEmpty()) options.url = item->url;
+    if (options.filename.isEmpty()) options.filename = item->file_name;
+    if (options.output_dir.isEmpty()) {
+        options.output_dir = item->dest_path.isEmpty()
+                                 ? item->output_dir
+                                 : QFileInfo(item->dest_path).absolutePath();
+    }
+    if (options.category.isEmpty()) options.category = item->category;
+    options.apply_category_folder = false;
+    options.history_id = item->history_id;
+    options.overwrite = true;
+    if (item->queue_id > 0) {
+        // Queue items share the queue budget; the per-item limiter is unused.
+        const swiftdm::HistoryStore::QueueRecord* queue = queue_for(item->queue_id);
+        options.limit_enabled = false;
+        options.limit_kbps = 0;
+        options.connections = queue ? queue->connections : 0;
+    } else {
+        options.limit_enabled = item->bandwidth_limit_enabled;
+        options.limit_kbps = item->bandwidth_limit_kbps;
+        options.connections = item->connections;
+    }
+
+    // Start over: the old progress and the old destination no longer describe
+    // this transfer, so a running row shows 0% until the first progress event.
+    item->dest_path.clear();
+    item->done = 0;
+    item->percent = 0;
+    item->error.clear();
+    item->file_missing = false;
+    item->temp_path.clear();
+    const qint64 queue_id = item->queue_id;
+    if (queue_id > 0) {
+        // The queue is no longer complete: drop the pending shutdown countdown
+        // and the "all complete" latch, then let the scheduler pick it up.
+        cancel_queue_shutdown(queue_id);
+        complete_notified_.remove(queue_id);
+        rebuild_queue_tree();
+    }
+
+    const int id = item->id;
+    start_task_at_row(row, &options);
+    model_->touch_row(row);
+    update_status_bar();
+    open_download_window(id);
 }
 
 void MainWindow::remove_row_with_cleanup(int row, bool check_queue) {

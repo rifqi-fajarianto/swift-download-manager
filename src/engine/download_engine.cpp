@@ -33,7 +33,20 @@ bool move_file_unique(const std::string& from, const std::string& dir,
                       const std::string& filename, std::string* final_path,
                       std::string* error);
 
+bool move_file_replace(const std::string& from, const std::string& dir,
+                       const std::string& filename, std::string* final_path,
+                       std::string* error);
+
 namespace {
+
+// Moves a finished part file onto its final name. Redownload replaces the
+// existing file; every other run claims a free name so nothing is overwritten.
+bool finalize_part_file(const std::string& from, const std::string& dir,
+                        const std::string& filename, bool overwrite,
+                        std::string* final_path, std::string* error) {
+    if (overwrite) return move_file_replace(from, dir, filename, final_path, error);
+    return move_file_unique(from, dir, filename, final_path, error);
+}
 
 int64_t now_ms() {
     using namespace std::chrono;
@@ -170,7 +183,7 @@ std::string hls_output_filename(const std::string& filename) {
 // ---------------------------------------------------------------------------
 DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
                        const std::string& filename, const std::string& out_dir,
-                       const DownloadWorkspace& ws, bool allow_resume,
+                       const DownloadWorkspace& ws, bool allow_resume, bool overwrite,
                        const std::shared_ptr<BandwidthLimit>& bandwidth_limit,
                        const std::function<bool(const ProgressInfo&)>& on_progress) {
     DownloadResult result;
@@ -218,7 +231,8 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
         }
         std::string final_path;
         std::string move_error;
-        if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
+        if (!finalize_part_file(ws.part_path, out_dir, filename, overwrite, &final_path,
+                                &move_error)) {
             result.status = DownloadResult::Status::Failed;
             result.error = move_error;
             return result;
@@ -247,7 +261,7 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
 // ---------------------------------------------------------------------------
 DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe,
                        const std::string& filename, const std::string& out_dir,
-                       const DownloadWorkspace& ws, bool allow_resume,
+                       const DownloadWorkspace& ws, bool allow_resume, bool overwrite,
                        const std::shared_ptr<BandwidthLimit>& bandwidth_limit,
                        const std::function<bool(const ProgressInfo&)>& on_progress) {
     (void)probe;
@@ -433,7 +447,8 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
 
     std::string final_path;
     std::string move_error;
-    if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
+    if (!finalize_part_file(ws.part_path, out_dir, filename, overwrite, &final_path,
+                            &move_error)) {
         result.status = DownloadResult::Status::Failed;
         result.error = move_error;
         result.path = ws.part_path;
@@ -521,6 +536,90 @@ bool move_file_unique(const std::string& from, const std::string& dir,
     }
     if (error) *error = "no free file name for '" + filename + "' in '" + dir + "'";
     return false;
+}
+
+// Redownload path: the user already agreed to replace the existing file. A
+// rename replaces the destination atomically on both platforms, so a failed
+// transfer never leaves a half-written file where the old one was (the part
+// file only gets here after the transfer completed).
+bool move_file_replace(const std::string& from, const std::string& dir,
+                       const std::string& filename, std::string* final_path,
+                       std::string* error) {
+    const std::filesystem::path destination =
+        path_from_utf8(dir) / path_from_utf8(filename);
+    const std::string to = path_to_utf8(destination);
+
+#ifdef _WIN32
+    if (MoveFileExW(path_from_utf8(from).c_str(), destination.c_str(),
+                    MOVEFILE_REPLACE_EXISTING)) {
+        if (final_path) *final_path = to;
+        return true;
+    }
+    const DWORD move_error = GetLastError();
+    if (move_error != ERROR_NOT_SAME_DEVICE) {
+        if (error) {
+            *error = "cannot replace '" + to + "': " +
+                     std::system_category().message(static_cast<int>(move_error));
+        }
+        return false;
+    }
+#else
+    if (::rename(from.c_str(), to.c_str()) == 0) {
+        if (final_path) *final_path = to;
+        return true;
+    }
+    const int rename_errno = errno;
+    if (rename_errno != EXDEV) {
+        if (error) *error = "cannot replace '" + to + "': " + std::strerror(rename_errno);
+        return false;
+    }
+#endif
+
+    // Different filesystem: truncate the destination and copy the part file
+    // into it. The destination is only touched here, after a completed
+    // transfer, so a failure leaves the old content at worst partially written
+    // rather than silently keeping a stale file.
+    const int out_fd = open_file(to, FileWrite | FileCreate | FileTruncate);
+    if (out_fd < 0) {
+        if (error) *error = "cannot create '" + to + "': " + std::strerror(errno);
+        return false;
+    }
+    const int in_fd = open_file(from, FileRead);
+    if (in_fd < 0) {
+        if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+        close_file(out_fd);
+        return false;
+    }
+    bool ok = true;
+    std::vector<char> buffer(64 * 1024);
+    while (true) {
+        const std::ptrdiff_t got = read_file(in_fd, buffer.data(), buffer.size());
+        if (got < 0) {
+            if (error) *error = "cannot read '" + from + "': " + std::strerror(errno);
+            ok = false;
+            break;
+        }
+        if (got == 0) break;
+        if (write_file(out_fd, buffer.data(), static_cast<size_t>(got)) < 0) {
+            if (error) *error = "cannot write '" + to + "': " + std::strerror(errno);
+            ok = false;
+            break;
+        }
+    }
+    close_file(in_fd);
+    if (ok && sync_file(out_fd) != 0) {
+        if (error) *error = "cannot sync '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (close_file(out_fd) != 0 && ok) {
+        if (error) *error = "cannot close '" + to + "': " + std::strerror(errno);
+        ok = false;
+    }
+    if (!ok) return false;
+    std::error_code ignored;
+    std::filesystem::remove(path_from_utf8(from), ignored);
+    if (final_path) *final_path = to;
+    return true;
 }
 
 DownloadEngine::DownloadEngine(Settings settings) : settings_(std::move(settings)) {}
@@ -715,14 +814,15 @@ DownloadResult DownloadEngine::run(
     // FTP and HLS take dedicated paths (04-protocols.md §2, HLS spec note).
     // ------------------------------------------------------------------
     if (is_ftp_url(workspace_key)) {
-        result = run_ftp(options, probe, filename, out_dir, ws, request.resume, bandwidth_limit,
-                         on_progress);
+        result = run_ftp(options, probe, filename, out_dir, ws, request.resume,
+                         request.overwrite, bandwidth_limit, on_progress);
         return result;
     }
     if (is_hls_url(workspace_key, probe.mime_type)) {
         result = run_hls(options, probe,
                          limit_filename_length(hls_output_filename(filename), kMaxFileNameBytes),
-                         out_dir, ws, request.resume, bandwidth_limit, on_progress);
+                         out_dir, ws, request.resume, request.overwrite, bandwidth_limit,
+                         on_progress);
         return result;
     }
 
@@ -756,7 +856,8 @@ DownloadResult DownloadEngine::run(
         if (outcome == TransferOutcome::Completed) {
             std::string move_error;
             std::string final_path;
-            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
+            if (!finalize_part_file(ws.part_path, out_dir, filename, request.overwrite,
+                                    &final_path, &move_error)) {
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;
                 return result;
@@ -876,7 +977,8 @@ DownloadResult DownloadEngine::run(
             }
             std::string final_path;
             std::string move_error;
-            if (!move_file_unique(ws.part_path, out_dir, filename, &final_path, &move_error)) {
+            if (!finalize_part_file(ws.part_path, out_dir, filename, request.overwrite,
+                                    &final_path, &move_error)) {
                 save_transfer_state(ws.state_path, state, nullptr);
                 result.status = DownloadResult::Status::Failed;
                 result.error = move_error;

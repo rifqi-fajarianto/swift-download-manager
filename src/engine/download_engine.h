@@ -40,6 +40,12 @@ struct DownloadRequest {
     std::optional<ProbeResult> probe;
     // History row that owns the per-download log. 0 means no log (CLI runs).
     int64_t history_id = 0;
+    // Replace an existing file of the same name instead of claiming a free
+    // "name (N)" variant. Used by the GUI's Redownload action, which warns the
+    // user before overwriting. The part file is only moved onto the final name
+    // once the transfer completed, so a failed redownload leaves the old file
+    // untouched.
+    bool overwrite = false;
 };
 
 struct ProgressInfo {
@@ -85,6 +91,15 @@ std::string unique_path(const std::string& path);
 bool move_file_unique(const std::string& from, const std::string& dir,
                       const std::string& filename, std::string* final_path,
                       std::string* error);
+
+// Moves `from` onto `dir/filename`, replacing a file that is already there.
+// Used by Redownload (the user confirmed the overwrite). The replace is a
+// single rename when the workspace and the destination share a filesystem; a
+// cross-device move falls back to truncating and copying. `final_path` receives
+// the destination path.
+bool move_file_replace(const std::string& from, const std::string& dir,
+                       const std::string& filename, std::string* final_path,
+                       std::string* error);
 
 // Runs one download to completion (blocking). The optional progress callback
 // returns false to pause; state is persisted so a later run() resumes.

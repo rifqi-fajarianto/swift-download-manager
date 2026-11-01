@@ -45,7 +45,15 @@ Layout (from `main-window.png`):
   Location`, `Properties`; it selects the row under the cursor first. The
   original's version of this menu also carries `Resume`, `Stop`, `Redownload`,
   `Show Window` and `Delete` (E25) — here those stay on the toolbar and in the
-  per-download window.
+  per-download window, except `Redownload` (0.22.8).
+- **Redownload** (0.22.8): a completed row (main list or queue) offers
+  `Redownload`, which starts the transfer over from zero. When the file is
+  still on disk a warning first asks to overwrite it (`Overwrite` / `Cancel`,
+  Cancel is the default); when it was deleted or moved the download starts
+  immediately. The finished part file replaces the old one with a single
+  rename, so a failed redownload never destroys the previous file. A queue item
+  that is redownloaded clears the queue's "all complete" latch and any pending
+  shutdown countdown.
 - **Refresh download URL** (0.22.0): paused and failed rows that have a
   history id also show `Refresh Download URL`. Choosing it marks that single
   download as waiting, opens the page it came from in the browser (or, when no

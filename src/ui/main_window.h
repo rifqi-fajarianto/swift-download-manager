@@ -139,6 +139,9 @@ class MainWindow : public QMainWindow {
     void open_file_for_row(int row);
     void open_folder_for_row(int row);
     void show_properties_for_row(int row);
+    // Starts a completed row again from zero. Asks before replacing a file that
+    // is still on disk; starts at once when it was deleted or moved.
+    void redownload_row(int row);
     void remove_row_with_cleanup(int row, bool check_queue = true);
     void remove_download_log(const DownloadItem* item);
     void update_action_states();

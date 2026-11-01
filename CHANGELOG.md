@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.22.8 — 2026-11-02
+
+Redownload a completed item from its context menu.
+
+- Right-clicking a completed row now offers `Redownload` (main Downloads list
+  and inside a queue). It starts the transfer over from zero: the old progress
+  and workspace are dropped and the row shows 0% until the first progress
+  event.
+- When the file is still on disk the action first warns that the existing file
+  will be overwritten (`Overwrite` / `Cancel`, Cancel is the default). When the
+  file was deleted or moved the download starts immediately, without a dialog.
+- The overwrite itself is safe: `DownloadRequest::overwrite` makes the engine
+  move the finished part file onto the existing name with a single rename
+  (`MoveFileExW(MOVEFILE_REPLACE_EXISTING)` on Windows, `rename()` elsewhere,
+  truncate-and-copy across filesystems). The old file is only touched after the
+  transfer completed, so a failed, paused or canceled redownload leaves the
+  previous file intact. Without the flag the engine keeps its no-overwrite rule
+  and claims `name (1).ext`.
+- A queue item that is redownloaded clears the "all complete" latch and any
+  pending shutdown countdown, then the scheduler picks the row up again under
+  the queue's own limits.
+- The options come from the row's task when it still exists, otherwise from the
+  history record, so a row restored at startup keeps its cookies, headers, POST
+  body and user agent.
+- `tests/test_action_state.cpp` covers the new availability rule and
+  `tests/test_http.cpp` checks that `overwrite` replaces the file while a plain
+  run still produces the ` (1)` variant.
+
+## 0.22.7 — 2026-11-02
+
+Fix the item context menu acting on its own when dismissed.
+
+- `QMenu::exec` returns `nullptr` when the menu is closed without a choice
+  (Esc, click outside, window focus loss). `MainWindow::on_context_menu`
+  compared that result with `start_item`, which is only created for queue rows
+  and is therefore `nullptr` in the Downloads list. `nullptr == nullptr` was
+  true, so dismissing the menu ran `start_task_at_row()`: paused rows resumed
+  and completed rows were downloaded again without the user pressing Start.
+- All context-menu dispatch now goes through `menu_action_matches()`
+  (`src/ui/menu_action.h`), which requires both pointers to be non-null and
+  equal. The sidebar/queue menu uses the same helper instead of its own null
+  check.
+- `tests/test_menu_action.cpp` covers the dismissed-menu case plus the
+  normal match and mismatch paths.
+
 ## 0.22.6 — 2026-11-01
 
 Windows only; Linux behavior unchanged.

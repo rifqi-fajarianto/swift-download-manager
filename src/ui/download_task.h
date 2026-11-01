@@ -42,6 +42,10 @@ class DownloadTask : public QObject {
         int limit_kbps = 0;    // KB/s; ignored while `limit_enabled` is false
         // History row that owns the per-download log; 0 = no log file.
         qint64 history_id = 0;
+        // Replace the existing file of the same name instead of claiming a free
+        // "name (N)" variant. Only the Redownload action sets this, after the
+        // user confirmed the overwrite.
+        bool overwrite = false;
     };
 
     struct Snapshot {

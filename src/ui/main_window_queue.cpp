@@ -52,6 +52,7 @@
 #include "ui/download_model.h"
 #include "ui/download_window.h"
 #include "ui/icons.h"
+#include "ui/menu_action.h"
 #include "ui/properties_dialog.h"
 #include "ui/queue_dialog.h"
 #include "ui/settings_dialog.h"
@@ -657,20 +658,20 @@ void MainWindow::on_tree_context_menu(const QPoint& pos) {
 
     QAction* chosen = menu.exec(tree_->viewport()->mapToGlobal(pos));
     if (!chosen) return;
-    if (chosen == new_queue) {
+    if (menu_action_matches(chosen, new_queue)) {
         on_new_queue();
-    } else if (chosen == start) {
+    } else if (menu_action_matches(chosen, start)) {
         start_queue(queue_id);
-    } else if (chosen == pause) {
+    } else if (menu_action_matches(chosen, pause)) {
         pause_queue(queue_id);
-    } else if (chosen == add_url) {
+    } else if (menu_action_matches(chosen, add_url)) {
         tree_->setCurrentItem(tree_item);
         on_new_url();
-    } else if (chosen == rename) {
+    } else if (menu_action_matches(chosen, rename)) {
         rename_queue(queue_id);
-    } else if (chosen == properties) {
+    } else if (menu_action_matches(chosen, properties)) {
         open_queue_properties(queue_id);
-    } else if (chosen == delete_action) {
+    } else if (menu_action_matches(chosen, delete_action)) {
         delete_queue(queue_id);
     }
 }

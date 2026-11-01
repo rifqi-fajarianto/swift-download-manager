@@ -249,6 +249,7 @@ void DownloadTask::run() {
     // run. In both cases DownloadEngine must use it instead of probing again.
     request.probe = probe;
     request.history_id = options_.history_id;
+    request.overwrite = options_.overwrite;
 
     swiftdm::DownloadEngine engine(settings_);
     QElapsedTimer transfer_timer;
