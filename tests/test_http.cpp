@@ -18,6 +18,7 @@
 #include "http_test_server.h"
 #include "net/http.h"
 #include "net/interstitial.h"
+#include "net/retry_policy.h"
 #include "test_util.h"
 
 using namespace swiftdm;
@@ -555,6 +556,113 @@ void test_single_connection_fallback(const std::string& dir,
     CHECK(file_matches(result.path, kFallbackSize));
     CHECK(server.limited_refusals() > 0);  // the parallel attempt really was refused
     CHECK(dir_empty(settings.temp_dir));
+}
+
+// ---------------------------------------------------------------------------
+// Connection-limit refusals (docs/spec/03-engine.md §5)
+// ---------------------------------------------------------------------------
+
+// The wording a host uses when it refuses one more parallel connection, and the
+// Retry-After header, are classified without touching the network.
+void test_retry_policy() {
+    const std::string uploadhaven =
+        "<html><head><title>Download In Progress - UploadHaven</title></head><body>"
+        "You've reached the free download limit. Please wait for an active download to "
+        "finish, or upgrade to Pro for parallel downloads.</body></html>";
+    const std::string pixeldrain =
+        "{\"success\":false,\"value\":\"max_concurrent_downloads\",\"message\":\"You have "
+        "reached the maximum number of open download connections for free accounts\"}";
+    CHECK(is_concurrency_refusal(503, uploadhaven, "text/html"));
+    CHECK(is_concurrency_refusal(403, pixeldrain, "application/json"));
+
+    // A rate limit and a plain server hiccup keep the normal retry path: they
+    // name no connection limit, so narrowing the plan would not help.
+    CHECK(!is_concurrency_refusal(429, "", ""));
+    CHECK(!is_concurrency_refusal(503, "<html><body>maintenance</body></html>", "text/html"));
+    CHECK(!is_concurrency_refusal(500, uploadhaven, "text/html"));
+    CHECK(!is_concurrency_refusal(404, uploadhaven, "text/html"));
+    CHECK(!is_concurrency_refusal(503, "", ""));
+
+    // The finished message keeps the host's wording after " - ".
+    CHECK(error_is_concurrency_refusal(
+        "HTTP/1.1 503 Service Unavailable - Download In Progress — UploadHaven"));
+    CHECK(!error_is_concurrency_refusal("HTTP/1.1 503 Service Unavailable"));
+    CHECK(!error_is_concurrency_refusal("transfer stalled"));
+
+    CHECK_EQ(parse_retry_after_seconds("120"), int64_t{120});
+    CHECK_EQ(parse_retry_after_seconds(" 5 "), int64_t{5});
+    CHECK_EQ(parse_retry_after_seconds("Wed, 21 Oct 2015 07:28:00 GMT"), int64_t{0});
+    CHECK_EQ(parse_retry_after_seconds(""), int64_t{0});
+
+    AdaptiveConcurrency limit(8);
+    CHECK_EQ(limit.limit(), 8);
+    limit.on_refusal();
+    CHECK_EQ(limit.limit(), 7);
+    limit.on_refusal();
+    CHECK_EQ(limit.limit(), 6);
+    for (int i = 0; i < 10; ++i) limit.on_refusal();
+    CHECK_EQ(limit.limit(), 1);  // never below one connection
+
+    CHECK_EQ(AdaptiveConcurrency::defer_backoff_ms(1), int64_t{2000});
+    CHECK_EQ(AdaptiveConcurrency::defer_backoff_ms(2), int64_t{4000});
+    CHECK_EQ(AdaptiveConcurrency::defer_backoff_ms(3), int64_t{8000});
+    CHECK_EQ(AdaptiveConcurrency::defer_backoff_ms(9), int64_t{8000});
+
+    AdaptiveConcurrency capped(2);
+    for (int i = 0; i < AdaptiveConcurrency::kMaxDeferrals; ++i) {
+        CHECK(!capped.exhausted());
+        capped.on_deferral();
+    }
+    CHECK(capped.exhausted());
+    capped.on_success();
+    CHECK(!capped.exhausted());  // a completed range restarts the streak
+}
+
+// UploadHaven answers 503 "Download In Progress" instead of 403 when a third
+// range arrives. The downloader narrows its own parallel plan and finishes
+// without the user having to resume, and never exceeds the host's limit.
+void test_connection_limit_refusal_503(const std::string& dir,
+                                       testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    server.reset_limited_503();
+
+    // 8 MiB with 8 connections produces eight 1 MiB ranges.
+    constexpr uint64_t kSize = 8u << 20;
+    DownloadRequest req;
+    req.url = server.base_url() + "/limit-connections-503/" + std::to_string(kSize) + "?max=2";
+    req.connections = 8;
+
+    const auto result = engine.run(req);
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(result.size, kSize);
+    CHECK(file_matches(result.path, kSize));
+    // The host really refused: the download only finished because the plan
+    // narrowed instead of retrying the same eight ranges.
+    CHECK(server.limited_503_refusals() > 0);
+    CHECK(server.limited_503_peak() <= 2);
+    CHECK(dir_empty(settings.temp_dir));
+}
+
+// A 503 that names its own delay is a normal retry, not a concurrency refusal,
+// and the wait comes from Retry-After.
+void test_retry_after_503(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    server.reset_limited_503();
+
+    DownloadRequest req;
+    req.url = server.base_url() + "/retry-after-503/" + std::to_string(k5MB);
+    req.connections = 1;
+
+    const auto started = std::chrono::steady_clock::now();
+    const auto result = engine.run(req);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(file_matches(result.path, k5MB));
+    // Retry-After: 1 must be waited out instead of the 1 s backoff happening to
+    // match; the bound stays loose so a loaded CI machine cannot fail it.
+    CHECK(elapsed >= std::chrono::milliseconds(900));
 }
 
 // HTML error pages (Cloudflare style) are summarized without their markup.
@@ -1115,6 +1223,9 @@ int main() {
     test_transfer_error_detail(dir + "/transfer-error", server);
     test_stream_error_detail(dir + "/stream-error", server);
     test_single_connection_fallback(dir + "/fallback", server);
+    test_retry_policy();
+    test_connection_limit_refusal_503(dir + "/limit-503", server);
+    test_retry_after_503(dir + "/retry-after", server);
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
     test_bandwidth_limit_toggle(dir + "/bandwidth-limit", server);

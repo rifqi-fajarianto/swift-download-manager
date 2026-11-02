@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.22.8
+    VERSION 0.22.9
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -150,6 +150,7 @@ add_library(swiftdm_core STATIC
     src/net/http_segment.cpp
     src/net/http_stream.cpp
     src/net/interstitial.cpp
+    src/net/retry_policy.cpp
     src/store/history.cpp
     src/store/settings.cpp
 )

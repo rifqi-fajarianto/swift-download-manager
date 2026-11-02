@@ -147,7 +147,7 @@ does not circumvent that gate:
 |---|---|
 | Show the host's reason | Implemented | 4xx/5xx bodies are summarized into the error text (`value: message`, HTML title/text) |
 | Refused bodies in the partial file | Fixed | 3xx/4xx/5xx bodies are never written at the segment offset |
-| Parallel `403` handling | Implemented | one retry of the remaining ranges on a single connection (1 s pause) before failing |
+| Parallel `403`/`503` handling | Implemented | adaptive since 0.22.9: a connection-limit refusal gives up one parallel slot (8 → … → 1) and defers that range without spending a retry; `403` still falls back to one connection, `Retry-After` honoured |
 | `Open Page in Browser` in the error dialog | Implemented | offered when the download came from a browser page, so the user can clear the host's CAPTCHA and retry |
 | CAPTCHA solving / hotlink circumvention | Dropped | out of scope: the host asks for a human step, the app points at the page |
 
