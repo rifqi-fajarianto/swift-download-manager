@@ -54,6 +54,10 @@ class MainWindow : public QMainWindow {
     // True when a tray icon exists, i.e. the window can stay hidden at login.
     bool has_tray_icon() const { return tray_ != nullptr; }
 
+    // Brings the window back from the tray. Used when a second start of the
+    // application asks the running instance to come to the front.
+    void raise_main_window();
+
   protected:
     void closeEvent(QCloseEvent* event) override;
     void moveEvent(QMoveEvent* event) override;

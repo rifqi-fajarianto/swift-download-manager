@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.22.10 — 2026-11-02
+
+SwiftDM is now a single-instance application.
+
+- Starting the application while it already runs (double-clicking the shortcut,
+  `swiftdm` from a terminal, `swiftdm --gui`, or a second login entry) no longer
+  opens a second process with its own window, tray icon and browser endpoint
+  over the same database. The new start hands over and exits: the running window
+  is restored from the tray and brought to the front.
+- A repeated `--autostart` start stays silent instead of forcing the window
+  forward, so logging in twice never pops a window the user hid.
+- `swiftdm get` refuses to start while the application or another command-line
+  download is running, with a message naming the run in the way and exit code 1
+  (`src/core/instance_lock.*`). Two processes writing the same SQLite database
+  and temp workspaces is what the lock prevents.
+- The guard is an advisory file lock (`flock` on POSIX, `LockFileEx` on Windows)
+  in `$XDG_RUNTIME_DIR` (falling back to an owner-only `/tmp/swiftdm-<uid>`), or
+  `%LOCALAPPDATA%\SwiftDM` on Windows. The kernel drops it with the process, so a
+  crashed run never blocks the next start; a leftover lock file or socket is
+  taken over. The lock name is derived from the config path, so separate
+  configurations and the test suite stay independent.
+- The lock file records the owner's role and pid, which is how a refused start
+  knows whether to show the window (GUI owner) or explain that a command-line
+  download is in progress (CLI owner). The local socket only carries the "show
+  the main window" request, because a `swiftdm get` download runs without an
+  event loop and can never answer a query.
+- `tests/test_single_instance.cpp` covers the exclusive lock, the owner record,
+  stale-lock takeover, socket cleanup and the show request (with and without the
+  autostart start).
+
 ## 0.22.9 — 2026-11-02
 
 Hosts that limit parallel connections no longer fail the download with `503`.

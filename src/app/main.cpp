@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "core/instance_lock.h"
 #include "core/log.h"
 #include "core/util.h"
 #include "engine/download_engine.h"
@@ -17,10 +18,12 @@
 
 #ifdef SWIFTSDM_WITH_GUI
 #include <QApplication>
+#include <QMessageBox>
 #include <QString>
 
 #include "ui/icons.h"
 #include "ui/main_window.h"
+#include "ui/single_instance.h"
 #include "ui/theme.h"
 #endif
 
@@ -72,7 +75,12 @@ void print_usage(std::FILE* out) {
         "  --quiet             Do not print progress lines\n"
         "  --log-level LEVEL   trace|debug|info|warn|error (default: warn)\n"
         "\n"
-        "Exit codes: 0 completed, 1 failed, 2 usage error, 3 paused.\n",
+        "Exit codes: 0 completed, 1 failed, 2 usage error, 3 paused.\n"
+        "\n"
+        "Only one SwiftDM runs at a time: a second GUI start (shortcut, terminal\n"
+        "or the login entry) brings the running window forward and exits, and\n"
+        "'get' refuses to start while the application or another command-line\n"
+        "download is running (exit code 1).\n",
         swiftdm::kVersionString);
 }
 
@@ -88,6 +96,30 @@ int run_gui(int argc, char** argv, bool start_hidden) {
     QApplication::setApplicationVersion(QString::fromLatin1(swiftdm::kVersionString));
     QApplication::setOrganizationName(QStringLiteral("SwiftDM"));
     QApplication::setWindowIcon(swiftdm::ui::application_icon());
+
+    // Only one SwiftDM may run: a shortcut, a terminal start and the login entry
+    // must all end up in the window that is already open instead of adding a
+    // second tray icon over the same database and browser port. The guard is
+    // taken before the settings and the database are touched, so a second start
+    // exits without writing anything. The login entry never asks for the window
+    // (a repeated autostart must not pop a window the user hid), while a
+    // shortcut or a plain start brings the running instance forward.
+    swiftdm::ui::SingleInstanceGuard guard(!start_hidden);
+    std::string instance_error;
+    if (!guard.acquire(&instance_error)) {
+        if (!instance_error.empty()) {
+            std::fprintf(stderr, "error: cannot start SwiftDM: %s\n", instance_error.c_str());
+            return 1;
+        }
+        if (guard.has_owner() && guard.owner() == swiftdm::InstanceRole::Cli) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("SwiftDM"),
+                QObject::tr("SwiftDM is already downloading from the command line.\n"
+                            "Wait for that download to finish before starting the "
+                            "application."));
+        }
+        return 0;
+    }
 
     swiftdm::Settings settings;
     std::string error;
@@ -112,6 +144,10 @@ int run_gui(int argc, char** argv, bool start_hidden) {
     }
 
     swiftdm::ui::MainWindow window(std::move(settings));
+    // A later shortcut or terminal start asks the running instance to show the
+    // window it may have hidden in the tray.
+    QObject::connect(&guard, &swiftdm::ui::SingleInstanceGuard::showRequested, &window,
+                     &swiftdm::ui::MainWindow::raise_main_window);
     // At login the app stays in the tray. Without a tray icon the window is the
     // only way to reach the app, so keep it visible as a fallback.
     if (!start_hidden || !window.has_tray_icon()) window.show();
@@ -164,6 +200,30 @@ int run_get(int argc, char** argv) {
         return 2;
     }
     const std::string url = argv[0];
+
+    // A headless download shares the database, the temp workspaces and the
+    // browser endpoint with the GUI, so only one SwiftDM may run at a time. The
+    // lock is taken before any file is touched and held until the transfer
+    // ends; a refusal is a normal, reportable condition rather than a crash.
+    swiftdm::InstanceLock instance_lock;
+    std::string instance_error;
+    if (!instance_lock.acquire(swiftdm::InstanceRole::Cli,
+                               swiftdm::InstanceLock::name_for_config(
+                                   swiftdm::default_config_path()),
+                               &instance_error)) {
+        if (!instance_error.empty()) {
+            std::fprintf(stderr, "error: %s\n", instance_error.c_str());
+            return 1;
+        }
+        const swiftdm::InstanceOwner owner = instance_lock.owner_wait(300);
+        std::fprintf(stderr,
+                     "error: SwiftDM is already running (%s);\n"
+                     "       close it before starting a command-line download.\n",
+                     owner.known && owner.role == swiftdm::InstanceRole::Cli
+                         ? "a command-line download is in progress"
+                         : "the application window is open");
+        return 1;
+    }
 
     swiftdm::DownloadRequest request;
     request.url = url;

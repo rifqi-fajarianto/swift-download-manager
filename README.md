@@ -75,6 +75,9 @@ Neat Download Manager.
   The message boxes use the app's own icons instead of the platform ones.
 - Remember the main window size and position between runs; a window that would
   open outside the available screen is clamped back into view.
+- Run a single instance: starting SwiftDM again from the shortcut, a terminal
+  or the login entry brings the running window forward instead of opening a
+  second one, and `swiftdm get` refuses while the app is running.
 - Download from the command line without opening the GUI.
 - Preview integration with the Chromium extension: send links or pages,
   intercept HTTP(S) downloads, and detect playlists/media pairs.

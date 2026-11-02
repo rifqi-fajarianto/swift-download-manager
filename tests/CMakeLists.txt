@@ -244,6 +244,18 @@ if(SWIFTSDM_BUILD_UI)
     add_test(NAME theme COMMAND test_theme)
     set_tests_properties(theme PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Headless check of the single-instance guard: exclusive lock, owner record,
+    # stale-lock takeover and the "show the main window" request over the local
+    # socket. No window is shown.
+    add_executable(test_single_instance
+        test_single_instance.cpp
+        "${CMAKE_SOURCE_DIR}/src/ui/single_instance.cpp"
+    )
+    target_include_directories(test_single_instance PRIVATE "${CMAKE_SOURCE_DIR}/src")
+    set_target_properties(test_single_instance PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_single_instance PRIVATE swiftdm_core Qt6::Network)
+    add_test(NAME single_instance COMMAND test_single_instance)
+
     add_executable(test_browser_protocol
         test_browser_protocol.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/browser_integration.cpp"
