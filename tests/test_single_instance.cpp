@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "core/file_io.h"
 #include "core/instance_lock.h"
 #include "ui/single_instance.h"
 
@@ -74,6 +75,20 @@ int main(int argc, char** argv) {
     check(owner.role == swiftdm::InstanceRole::Gui, "the owner record stores the GUI role");
     check(owner.pid > 0, "the owner record stores a process id");
 
+    // The owner must be able to read its own record. On Windows the record and
+    // the byte-range lock used to share byte 0, so this is the regression guard
+    // for that layout.
+    {
+        swiftdm::InstanceLock self;
+        check(self.acquire(swiftdm::InstanceRole::Cli, name + "-self", &error),
+              "a second name can be locked at the same time");
+        const swiftdm::InstanceOwner self_owner = self.owner();
+        check(self_owner.known, "the lock owner can read its own record");
+        check(self_owner.role == swiftdm::InstanceRole::Cli,
+              "the owner reads back the role it recorded");
+        self.release();
+    }
+
     // 2. A second process is refused and sees which run holds the lock.
     swiftdm::InstanceLock second;
     check(!second.acquire(swiftdm::InstanceRole::Cli, name, &error),
@@ -102,11 +117,16 @@ int main(int argc, char** argv) {
         crashed.release();
         // release() removes the file, so write a leftover record to model the
         // file a killed process leaves behind.
-        std::FILE* stale = std::fopen(swiftdm::InstanceLock::lock_path(name).c_str(), "wb");
-        check(stale != nullptr, "a stale lock file can be created");
-        if (stale) {
-            std::fputs("gui 999999\n", stale);
-            std::fclose(stale);
+        const std::string stale_path = swiftdm::InstanceLock::lock_path(name);
+        const int stale_fd = swiftdm::open_file(
+            stale_path, swiftdm::FileWrite | swiftdm::FileCreate | swiftdm::FileTruncate);
+        check(stale_fd >= 0, "a stale lock file can be created");
+        if (stale_fd >= 0) {
+            const std::string record = "gui 999999\n";
+            check(swiftdm::write_file(stale_fd, record.data(), record.size()) ==
+                      static_cast<std::ptrdiff_t>(record.size()),
+                  "the stale record can be written");
+            swiftdm::close_file(stale_fd);
         }
         swiftdm::InstanceLock restarted;
         check(restarted.acquire(swiftdm::InstanceRole::Gui, name, &error),

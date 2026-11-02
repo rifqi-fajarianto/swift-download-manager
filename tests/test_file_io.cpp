@@ -3,6 +3,10 @@
 #include <iterator>
 #include <string>
 
+#ifdef _WIN32
+#include <io.h>
+#endif
+
 #include "core/file_io.h"
 #include "core/util.h"
 #include "core/win_headers.h"

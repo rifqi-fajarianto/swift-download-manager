@@ -1,6 +1,7 @@
 #include "ui/single_instance.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QElapsedTimer>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -175,10 +176,12 @@ bool SingleInstanceGuard::send_show_request() const {
     if (!socket.waitForConnected(kRequestTimeoutMs)) return false;
     socket.write(kShowRequest);
     socket.flush();
-    if (!socket.waitForBytesWritten(kRequestTimeoutMs)) {
-        socket.abort();
-        return false;
-    }
+    // The return value is deliberately ignored: a Windows named pipe reports
+    // false here even though the request was delivered (bytesToWrite() stays
+    // non-zero until the peer reads), and aborting on that would drop the
+    // request. The acknowledgement below is the real delivery proof.
+    socket.waitForBytesWritten(kRequestTimeoutMs);
+
     // Wait for the acknowledgement so the owner has handled the request before
     // this process exits.
     QElapsedTimer elapsed;

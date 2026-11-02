@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "core/file_io.h"
 #include "core/util.h"
 
 namespace swiftdm {
@@ -27,6 +28,11 @@ namespace {
 
 constexpr char kRoleGui[] = "gui";
 constexpr char kRoleCli[] = "cli";
+
+// The owner record lives at byte 0; the exclusive byte-range lock is taken far
+// past it so the record is never inside the locked region.
+constexpr unsigned long kLockOffsetLow = 4096;
+constexpr unsigned long kLockOffsetHigh = 0;
 
 const char* role_token(InstanceRole role) {
     return role == InstanceRole::Gui ? kRoleGui : kRoleCli;
@@ -110,6 +116,12 @@ bool InstanceLock::acquire(InstanceRole role, const std::string& name,
         return false;
     }
     OVERLAPPED overlapped = {};
+    // The lock sits at a fixed offset past the owner record. Both are in the
+    // same file, so one handle is enough, and keeping the record outside the
+    // locked byte means the record stays readable no matter how strictly the
+    // platform enforces byte-range locks.
+    overlapped.Offset = kLockOffsetLow;
+    overlapped.OffsetHigh = kLockOffsetHigh;
     if (!::LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0,
                       &overlapped)) {
         ::CloseHandle(handle);
@@ -209,14 +221,17 @@ bool InstanceLock::write_owner() const {
 
 InstanceOwner InstanceLock::owner() const {
     InstanceOwner info;
-    std::FILE* file = std::fopen(path_.c_str(), "rb");
-    if (!file) return info;
+    // Read through the project's file layer: std::fopen() takes an ANSI path on
+    // Windows, so a profile directory outside the ANSI code page would make the
+    // record unreadable and the refusal message would guess the wrong role.
+    const int fd = open_file(path_, FileRead);
+    if (fd < 0) return info;
     char buffer[64] = {};
-    const size_t read = std::fread(buffer, 1, sizeof(buffer) - 1, file);
-    std::fclose(file);
-    if (read == 0) return info;
+    const std::ptrdiff_t read = read_file(fd, buffer, sizeof(buffer) - 1);
+    close_file(fd);
+    if (read <= 0) return info;
 
-    std::string text(buffer, read);
+    std::string text(buffer, static_cast<size_t>(read));
     const size_t end = text.find_first_of("\r\n");
     if (end != std::string::npos) text.resize(end);
     const size_t space = text.find(' ');

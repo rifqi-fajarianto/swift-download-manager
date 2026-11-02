@@ -21,14 +21,21 @@ SwiftDM is now a single-instance application.
   crashed run never blocks the next start; a leftover lock file or socket is
   taken over. The lock name is derived from the config path, so separate
   configurations and the test suite stay independent.
+- On Windows the byte-range lock sits at offset 4096 while the owner record
+  stays at byte 0, so the record is never inside the locked region and remains
+  readable; the record is read through the project's wide-path file layer, so a
+  profile directory outside the ANSI code page still works. The "show the main
+  window" request no longer treats `waitForBytesWritten()` returning false as a
+  failure: a named pipe reports false even though the request was delivered, and
+  the acknowledgement is what proves delivery.
 - The lock file records the owner's role and pid, which is how a refused start
   knows whether to show the window (GUI owner) or explain that a command-line
   download is in progress (CLI owner). The local socket only carries the "show
   the main window" request, because a `swiftdm get` download runs without an
   event loop and can never answer a query.
-- `tests/test_single_instance.cpp` covers the exclusive lock, the owner record,
-  stale-lock takeover, socket cleanup and the show request (with and without the
-  autostart start).
+- `tests/test_single_instance.cpp` covers the exclusive lock, the owner record
+  (including reading it back from the owner itself), stale-lock takeover, socket
+  cleanup and the show request (with and without the autostart start).
 
 ## 0.22.9 — 2026-11-02
 
