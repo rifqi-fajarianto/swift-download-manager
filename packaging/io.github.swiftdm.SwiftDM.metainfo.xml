@@ -34,6 +34,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.10" date="2026-11-03">
+      <description>
+        <p>SwiftDM is now a single-instance application. Starting it again from the shortcut, a terminal or the login entry brings the running window forward instead of opening a second process over the same database, and a repeated autostart stays silent so it never pops a window the user hid. A command-line download refuses to start while the application or another command-line download is running. The guard is a lock file that the kernel releases with the process, so a crash never blocks the next start.</p>
+      </description>
+    </release>
+    <release version="0.22.9" date="2026-11-02">
+      <description>
+        <p>Downloads from hosts that limit parallel connections (UploadHaven, pixeldrain and others) no longer fail with 503 after half a minute. A connection-limit refusal now costs one parallel slot instead of a retry, so the transfer settles on the number of connections the host allows and finishes; Retry-After is honoured and the documented 60 s backoff cap is applied.</p>
+      </description>
+    </release>
     <release version="0.22.8" date="2026-11-02">
       <description>
         <p>A completed download can be started again from its context menu with Redownload, in the main list and inside a queue. When the file is still on disk a warning first asks to overwrite it; when it was deleted or moved the transfer starts immediately. The new file replaces the old one only after the transfer completes, so a failed redownload never destroys the previous file.</p>

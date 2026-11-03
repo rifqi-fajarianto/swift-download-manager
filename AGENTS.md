@@ -57,14 +57,14 @@ Cek status terbaru di file ini:
 
 | Path | Tanggung jawab |
 |---|---|
-| `src/app/main.cpp` | Entry point: GUI default, `--gui`, `--version`, `--help`, dan CLI `get`. |
-| `src/core/` | Logging (`log.*`), file I/O lintas platform (`file_io.*`), include Windows terpusat (`win_headers.h`), dan utilitas umum: format byte/speed/durasi, path platform, sanitasi nama file, pencarian file hasil unduhan, penghapusan direktori aman path panjang. |
+| `src/app/main.cpp` | Entry point: GUI default, `--gui`, `--version`, `--help`, dan CLI `get`. Kedua jalur mengambil lock single-instance sebelum menyentuh settings/DB. |
+| `src/core/` | Logging (`log.*`), file I/O lintas platform (`file_io.*`), lock single-instance (`instance_lock.*`), include Windows terpusat (`win_headers.h`), dan utilitas umum: format byte/speed/durasi, path platform, sanitasi nama file, pencarian file hasil unduhan, penghapusan direktori aman path panjang. |
 | `src/engine/` | `DownloadEngine::run`, request/result/progress, workspace, segment plan + state `segments.json`, kategori, HLS. |
 | `src/net/` | Lapisan libcurl: `probe_url`, `fetch_text`, `stream_download`, `SegmentDownloader`, resolver interstitial Google Drive. |
 | `src/store/` | `Settings` (INI) dan `HistoryStore` (SQLite: `downloads`, `headers`, `auths`, `queues`). |
-| `src/ui/` | Qt6 Widgets: `MainWindow`, model/filter, `DownloadTask` (worker thread), dialog-dialog, `queue_logic`/`queue_dialog`, tema/ikon, dan `BrowserIntegration` (WebSocket loopback). |
+| `src/ui/` | Qt6 Widgets: `MainWindow`, model/filter, `DownloadTask` (worker thread), dialog-dialog, `queue_logic`/`queue_dialog`, tema/ikon, `BrowserIntegration` (WebSocket loopback), dan `SingleInstanceGuard` (socket permintaan "tampilkan window" di atas `InstanceLock`). |
 | `ext/chromium/` | Ekstensi Chromium Manifest V3 (popup, service worker, cookie permission, ikon). |
-| `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, dan test protokol browser. |
+| `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, test protokol browser, dan test single-instance (lock + permintaan tampilkan window). |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
 | `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, skrip installer Inno Setup (`packaging/windows/swiftdm.iss`), dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
 | `tools/` | Rasterizer ikon ekstensi, ikon desktop, dan ikon Windows (`.ico`). |

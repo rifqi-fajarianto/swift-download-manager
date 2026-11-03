@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.22.10 — 2026-11-03
+
+SwiftDM is now a single-instance application.
+
+- Starting the application while it already runs (double-clicking the shortcut,
+  `swiftdm` from a terminal, `swiftdm --gui`, or a second login entry) no longer
+  opens a second process with its own window, tray icon and browser endpoint
+  over the same database. The new start hands over and exits: the running window
+  is restored from the tray and brought to the front.
+- A repeated `--autostart` start stays silent instead of forcing the window
+  forward, so logging in twice never pops a window the user hid.
+- `swiftdm get` refuses to start while the application or another command-line
+  download is running, with a message naming the run in the way and exit code 1
+  (`src/core/instance_lock.*`). Two processes writing the same SQLite database
+  and temp workspaces is what the lock prevents.
+- The guard is an advisory file lock (`flock` on POSIX, `LockFileEx` on Windows)
+  in `$XDG_RUNTIME_DIR` (falling back to an owner-only `/tmp/swiftdm-<uid>`), or
+  `%LOCALAPPDATA%\SwiftDM` on Windows. The kernel drops it with the process, so a
+  crashed run never blocks the next start; a leftover lock file or socket is
+  taken over. The lock name is derived from the config path, so separate
+  configurations and the test suite stay independent.
+- On Windows the byte-range lock sits at offset 4096 while the owner record
+  stays at byte 0, so the record is never inside the locked region and remains
+  readable; the record is read through the project's wide-path file layer, so a
+  profile directory outside the ANSI code page still works. The "show the main
+  window" request no longer treats `waitForBytesWritten()` returning false as a
+  failure: a named pipe reports false even though the request was delivered, and
+  the acknowledgement is what proves delivery.
+- The lock file records the owner's role and pid, which is how a refused start
+  knows whether to show the window (GUI owner) or explain that a command-line
+  download is in progress (CLI owner). The local socket only carries the "show
+  the main window" request, because a `swiftdm get` download runs without an
+  event loop and can never answer a query.
+- `tests/test_single_instance.cpp` covers the exclusive lock, the owner record
+  (including reading it back from the owner itself), stale-lock takeover, socket
+  cleanup and the show request (with and without the autostart start).
+
+## 0.22.9 — 2026-11-02
+
+Hosts that limit parallel connections no longer fail the download with `503`.
+
+- A host with a per-account connection limit answers a third range with
+  `503 Service Unavailable` and a page such as UploadHaven's
+  `Download In Progress`. SwiftDM used to treat that as a transient server error:
+  it retried the refused ranges on the same eight-connection plan, the two
+  accepted ranges kept the slots busy for the whole backoff, and the download
+  failed after exactly 31 seconds (1+2+4+8+16 s) - repeatable on every resume.
+- Connection-limit refusals are now recognised by their own wording
+  (`max_concurrent_downloads`, "maximum number of open download connections",
+  "download in progress", …) in `net/retry_policy.*`. The downloader gives up
+  one parallel slot per refusal (8 → 7 → … → 1) and defers only the refused
+  range, so a host that allows two connections settles there and finishes
+  instead of failing.
+- A deferred range does not spend a retry: it never had a fair chance. Its wait
+  doubles from 2 s to 8 s and restarts when a range completes, capped at 12
+  deferrals per run.
+- `Retry-After` is now honoured for range transfers, and the documented backoff
+  cap of 60 s is actually applied (the code stopped at 16 s).
+- `403` refusals still fail at once so the existing single-connection retry
+  takes over; a bare `429`, a `503` without connection-limit wording and a plan
+  already at one connection keep the normal retry path.
+- `tests/test_http.cpp` covers the classification, an UploadHaven-shaped
+  `503` host that only allows two parallel ranges (the download must complete
+  and never exceed the host's limit) and a `503` with `Retry-After: 1`.
+
 ## 0.22.8 — 2026-11-02
 
 Redownload a completed item from its context menu.

@@ -141,6 +141,22 @@ are our own choices where the original is UNKNOWN (E23).
   `403 max_concurrent_downloads`) therefore still complete instead of failing.
   CAPTCHA-gated refusals are not bypassed: the user must clear them on the
   host's page (the error dialog offers `Open Page in Browser`).
+- **[design: 0.22.9]** connection-limit refusals narrow the parallel plan
+  instead of burning the retry budget. A `403`/`503` whose body names a
+  connection limit (`max_concurrent_downloads`, "maximum number of open download
+  connections", UploadHaven's "Download In Progress" page) is classified by
+  `net/retry_policy.*`: the downloader gives up one parallel slot per refusal
+  (8 → 7 → … → 1) and re-schedules the refused range with its own backoff
+  (2 s, 4 s, 8 s, then 8 s) without consuming a retry. A refused range never
+  counts as a fair attempt, so a host that allows two connections finishes the
+  download on its own instead of failing at the fifth retry. `Retry-After` is
+  honoured on both paths. A bare `429` and a `503` without such wording keep the
+  normal retry path (they name no connection limit). Deferrals are capped at 12
+  per run (a completed range resets the streak), so a host that refuses even a
+  single connection for a whole run is reported with its own wording; a `403`
+  still fails immediately so the engine's single-connection retry takes over.
+- **[design: 0.22.9]** the normal segment backoff now follows the documented
+  cap: 1 s, 2 s, 4 s, 8 s, 16 s, capped at 60 s (it stopped at 16 s before).
 - **[design: 0.13.0]** the probe resolves known download interstitials first
   (04-protocols.md §5): `ProbeResult::download_url` then names the URL the
   transfers must use, while filename, size, validators, segmentation and resume

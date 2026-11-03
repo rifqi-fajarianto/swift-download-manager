@@ -695,6 +695,15 @@ void MainWindow::showEvent(QShowEvent* event) {
     window_shown_ = true;
 }
 
+void MainWindow::raise_main_window() {
+    // A minimized window has to be restored first, otherwise raise() only
+    // focuses the taskbar entry. A window hidden in the tray has no state to
+    // restore, so showNormal() covers both cases.
+    showNormal();
+    raise();
+    activateWindow();
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (!quitting_ && tray_ && settings_.close_to_tray) {
         event->ignore();

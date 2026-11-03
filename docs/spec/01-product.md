@@ -250,6 +250,15 @@ Layout (from `main-window.png`):
     The `General` tab can switch the tray icon off and can turn the
     close-to-tray behavior off, in which case closing the main window ends the
     app after the same confirmation (0.18.13).
+    **Single instance** (0.22.10): only one SwiftDM runs per user. A shortcut,
+    a terminal start and `--gui` hand over to the running instance, which
+    restores its window from the tray and comes to the front; a repeated
+    `--autostart` (a second login) hands over silently so it never pops a
+    window the user hid. `swiftdm get` refuses to start while the application or
+    another command-line download runs (exit code 1, message naming the run in
+    the way) because both would write the same database and workspaces.
+    Ownership is an advisory lock file that the kernel releases with the
+    process, so a crash never blocks the next start.
 12. **About**: version, license tier, support contact, website; update check
     button (we replace this with "no update check").
 13. **Message-box icons**: the message boxes of the app show the app's own

@@ -20,6 +20,7 @@
 #include "engine/categories.h"
 #include "engine/hls.h"
 #include "engine/segment_plan.h"
+#include "net/retry_policy.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -951,14 +952,16 @@ DownloadResult DownloadEngine::run(
     TransferOutcome outcome = downloader.run(progress, &transfer_error);
 
     // Hosts with a per-IP connection limit refuse parallel ranges (pixeldrain's
-    // free tier answers 403 max_concurrent_downloads, others drop the extra
-    // connections). Finish the remaining ranges on a single connection once
-    // before reporting the failure.
+    // free tier answers 403 max_concurrent_downloads, UploadHaven answers 503
+    // "Download In Progress", others drop the extra connections). The downloader
+    // narrows its own plan on every such refusal; this is the last resort when
+    // even a single connection was refused for the whole deferral budget.
     if (outcome == TransferOutcome::Failed && connections > 1 && state.segments.size() > 1 &&
-        http_error_status(transfer_error) == 403) {
-        log_warn("parallel ranges refused with 403; retrying with a single connection");
+        error_is_concurrency_refusal(transfer_error)) {
+        log_warn("parallel ranges refused; retrying with a single connection");
         append_download_log(reporter.log_path,
-                            "parallel ranges refused (403); retrying with one connection");
+                            "parallel ranges refused (" + transfer_error +
+                                "); retrying with one connection");
         std::this_thread::sleep_for(std::chrono::seconds(1));
         downloader.set_one_by_one(true);
         transfer_error.clear();

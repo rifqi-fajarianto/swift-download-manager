@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-02**, versi kerja **0.22.8**. Status ini cepat
+> Snapshot terakhir: **2026-11-03**, versi kerja **0.22.10**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -12,7 +12,22 @@
   mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
   UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
   tombol yang lebih jelas.
-- **Versi kerja**: 0.22.8. `Redownload` (0.22.8) tersedia lewat klik kanan pada
+- **Versi kerja**: 0.22.10. SwiftDM kini single-instance (0.22.10): lock file
+  per-user (`src/core/instance_lock.*`, `flock`/`LockFileEx`, lokasi di
+  `$XDG_RUNTIME_DIR` atau `%LOCALAPPDATA%\SwiftDM`) diambil sebelum settings
+  dan DB disentuh, jadi shortcut/terminal/`--gui` saat aplikasi sudah jalan
+  hanya memunculkan window instance lama lalu keluar, `--autostart` kedua
+  handover tanpa memunculkan window, dan `swiftdm get` menolak dengan exit
+  code 1 selama ada instance lain; lock dilepas kernel saat proses mati
+  sehingga sisa lock/socket dari crash diambil alih.
+- Penolakan batas koneksi (0.22.9) tidak lagi
+  menghabiskan jatah retry: host yang menolak range paralel dengan `403`/`503`
+  berisi kata kunci batas koneksi (UploadHaven "Download In Progress",
+  pixeldrain `max_concurrent_downloads`) membuat downloader melepas satu slot
+  paralel per penolakan (8 → 7 → … → 1) dan menunda range itu tanpa memotong
+  jatah retry, jadi unduhan selesai sendiri dengan jumlah koneksi yang
+  diizinkan host; `Retry-After` dihormati dan cap backoff 60 s diterapkan.
+  `Redownload` (0.22.8) tersedia lewat klik kanan pada
   baris Complete di daftar Downloads maupun di dalam queue: bila file masih ada
   di disk, dialog peringatan menanyakan konfirmasi overwrite (`Overwrite` /
   `Cancel`, default `Cancel`); bila file sudah dihapus atau dipindah, unduhan

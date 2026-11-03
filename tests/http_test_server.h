@@ -13,6 +13,10 @@
 //   GET/HEAD /segments-forbidden/N  200 probe, ranged GETs answer 403 JSON
 //   GET/HEAD /stream-forbidden      200 chunked probe, streamed GET answers 403 JSON
 //   GET/HEAD /limit-connections/N   200 probe, parallel ranges answer 403 JSON
+//   GET/HEAD /limit-connections-503/N?max=M  200 probe, ranges beyond M
+//                                   answer 503 with an UploadHaven-shaped page
+//   GET/HEAD /retry-after-503/N     200 probe, first ranged GET answers 503
+//                                   with Retry-After: 1
 //   GET/HEAD /drive-page/N          Google Drive virus-scan notice; with
 //                                   confirm=t the same route serves /file/N
 //   GET/HEAD /drive-loop/N          virus-scan notice that never resolves
@@ -88,6 +92,10 @@ inline std::atomic<int> g_non_matching_cookie_requests{0};
 inline std::atomic<int> g_head_requests{0};
 inline std::atomic<int> g_limited_active{0};
 inline std::atomic<int> g_limited_refusals{0};
+inline std::atomic<int> g_limited_503_active{0};
+inline std::atomic<int> g_limited_503_peak{0};
+inline std::atomic<int> g_limited_503_refusals{0};
+inline std::atomic<int> g_retry_after_refusals{0};
 inline std::atomic<int> g_confirm_form_requests{0};
 inline std::atomic<int> g_cross_origin_redirect_targets{0};
 inline std::atomic<int> g_forwarded_sensitive_headers{0};
@@ -196,8 +204,16 @@ class TestHttpServer {
     int cookie_requests() const { return g_cookie_requests.load(); }
     int non_matching_cookie_requests() const { return g_non_matching_cookie_requests.load(); }
     int limited_refusals() const { return g_limited_refusals.load(); }
+    int limited_503_refusals() const { return g_limited_503_refusals.load(); }
+    int limited_503_peak() const { return g_limited_503_peak.load(); }
     int head_requests() const { return g_head_requests.load(); }
     void reset_limited_refusals() { g_limited_refusals.store(0); }
+    void reset_limited_503() {
+        g_limited_503_active.store(0);
+        g_limited_503_peak.store(0);
+        g_limited_503_refusals.store(0);
+        g_retry_after_refusals.store(0);
+    }
 
   private:
     void accept_loop(int listen_fd, uint16_t port) {
@@ -410,6 +426,15 @@ class TestHttpServer {
         } else if (path.rfind("/limit-connections/", 0) == 0) {
             serve_limited_connections(fd, method, range,
                                       path.substr(std::string("/limit-connections/").size()));
+        } else if (path.rfind("/limit-connections-503/", 0) == 0) {
+            // <size>?max=<n>: like UploadHaven, only `max` parallel ranges run.
+            const int max_active = query_int(query, "max", 2);
+            serve_limited_connections_503(
+                fd, method, range, path.substr(std::string("/limit-connections-503/").size()),
+                max_active < 1 ? 1 : max_active);
+        } else if (path.rfind("/retry-after-503/", 0) == 0) {
+            serve_retry_after_503(fd, method, range,
+                                  path.substr(std::string("/retry-after-503/").size()));
         } else if (path.rfind("/drive-page/", 0) == 0 || path.rfind("/drive-loop/", 0) == 0) {
             serve_drive_page(fd, method, port, path, query, range);
         } else if (path == "/signin") {
@@ -453,6 +478,29 @@ class TestHttpServer {
         while (b < e && (s[b] == ' ' || s[b] == '\t')) ++b;
         while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r')) --e;
         return s.substr(b, e - b);
+    }
+
+    // Integer value of a query parameter, `fallback` when it is absent or not a
+    // number.
+    static int query_int(const std::string& query, const char* name, int fallback) {
+        const std::string key = std::string(name) + "=";
+        size_t pos = 0;
+        while (pos < query.size()) {
+            const size_t end = query.find('&', pos);
+            const std::string pair =
+                query.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+            if (pair.rfind(key, 0) == 0) {
+                const std::string value = pair.substr(key.size());
+                if (value.empty()) return fallback;
+                for (char c : value) {
+                    if (c < '0' || c > '9') return fallback;
+                }
+                return std::atoi(value.c_str());
+            }
+            if (end == std::string::npos) break;
+            pos = end + 1;
+        }
+        return fallback;
     }
 
     static bool parse_ranges(const std::string& header, uint64_t total, uint64_t& start,
@@ -682,6 +730,74 @@ class TestHttpServer {
         sleep_ms(250);
         send_file_response(fd, method, total, start, end, true, false);
         g_limited_active.fetch_sub(1);
+    }
+
+    // UploadHaven's shape: a host that allows `max_active` parallel ranges and
+    // answers the rest with 503 plus an HTML "Download In Progress" page. The
+    // page carries no Retry-After, exactly like the real host.
+    static void serve_limited_connections_503(socket_t fd, const std::string& method,
+                                              const std::string& range_header,
+                                              const std::string& size_text, int max_active) {
+        const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
+        if (method == "HEAD" || range_header.empty()) {
+            send_file_response(fd, method, total, 0, total == 0 ? 0 : total - 1, false, false);
+            return;
+        }
+        uint64_t start = 0;
+        uint64_t end = total == 0 ? 0 : total - 1;
+        if (!parse_ranges(range_header, total, start, end)) {
+            send_connection_limit_503(fd);
+            return;
+        }
+        const int active = g_limited_503_active.fetch_add(1) + 1;
+        if (active > max_active) {
+            g_limited_503_active.fetch_sub(1);
+            g_limited_503_refusals.fetch_add(1);
+            send_connection_limit_503(fd);
+            return;
+        }
+        int peak = g_limited_503_peak.load();
+        while (active > peak && !g_limited_503_peak.compare_exchange_weak(peak, active)) {
+        }
+        // Hold the range so parallel requests overlap deterministically.
+        sleep_ms(250);
+        send_file_response(fd, method, total, start, end, true, false);
+        g_limited_503_active.fetch_sub(1);
+    }
+
+    static void send_connection_limit_503(socket_t fd) {
+        const std::string body =
+            "<html><head><title>Download In Progress - UploadHaven</title></head>"
+            "<body><h1>Download already in progress</h1>"
+            "<p>You've reached the free download limit. Please wait for an active "
+            "download to finish, or upgrade to Pro for parallel downloads.</p>"
+            "</body></html>";
+        send_str(fd, "HTTP/1.1 503 Service Temporarily Unavailable\r\nContent-Length: " +
+                         std::to_string(body.size()) +
+                         "\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n" + body);
+    }
+
+    // A transient 503 that names its own retry delay (no concurrency wording, so
+    // it must take the normal retry path and honour Retry-After).
+    static void serve_retry_after_503(socket_t fd, const std::string& method,
+                                      const std::string& range_header,
+                                      const std::string& size_text) {
+        const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
+        if (method == "HEAD" || range_header.empty()) {
+            send_file_response(fd, method, total, 0, total == 0 ? 0 : total - 1, false, false);
+            return;
+        }
+        if (g_retry_after_refusals.fetch_add(1) < 1) {
+            const std::string body = "the origin is warming up";
+            send_str(fd, "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 1\r\nContent-Length: " +
+                             std::to_string(body.size()) +
+                             "\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n" + body);
+            return;
+        }
+        uint64_t start = 0;
+        uint64_t end = total == 0 ? 0 : total - 1;
+        parse_ranges(range_header, total, start, end);
+        send_file_response(fd, method, total, start, end, true, false);
     }
 
     static void send_json_error(socket_t fd, const char* status, const std::string& body) {

@@ -75,6 +75,9 @@ Neat Download Manager.
   The message boxes use the app's own icons instead of the platform ones.
 - Remember the main window size and position between runs; a window that would
   open outside the available screen is clamped back into view.
+- Run a single instance: starting SwiftDM again from the shortcut, a terminal
+  or the login entry brings the running window forward instead of opening a
+  second one, and `swiftdm get` refuses while the app is running.
 - Download from the command line without opening the GUI.
 - Preview integration with the Chromium extension: send links or pages,
   intercept HTTP(S) downloads, and detect playlists/media pairs.
@@ -119,7 +122,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.22.8_amd64.deb
+sudo apt install ./swiftdm_0.22.10_amd64.deb
 ```
 
 ```sh
@@ -219,12 +222,13 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.22.8 is the port tracking `main` (redownload from the item
-context menu, the context-menu dismissal fix, refresh download address,
-a 50 ms progress refresh, per-category custom folders, window geometry,
-per-download logs, the server file date, named queues, audit hardening, the
-module split, the Windows file I/O fixes, and cross-origin redirect handling);
-GUI checks on Windows 10 are still manual.
+full list. Version 0.22.10 is the port tracking `main` (single-instance guard for
+the shortcut, terminal start and login entry, connection-limit aware parallel
+plan, redownload from the item context menu, the context-menu dismissal fix,
+refresh download address, a 50 ms progress refresh, per-category custom folders,
+window geometry, per-download logs, the server file date, named queues, audit
+hardening, the module split, the Windows file I/O fixes, and cross-origin
+redirect handling); GUI checks on Windows 10 are still manual.
 
 ### Continuous integration and releases
 

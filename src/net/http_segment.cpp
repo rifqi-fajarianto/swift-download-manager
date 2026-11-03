@@ -18,6 +18,7 @@
 #include "core/log.h"
 #include "core/util.h"
 #include "net/interstitial.h"
+#include "net/retry_policy.h"
 
 #include "net/http_internal.h"
 
@@ -44,6 +45,7 @@ struct SegmentDownloader::Impl {
         uint64_t content_range_total = 0;
         bool validator_changed = false;
         bool interrupted = false;
+        int64_t retry_after = 0;  // seconds advertised by the host, 0 = none
         std::string content_type;
         std::string error_body;  // start of a 4xx/5xx body, for the error message
         RequestOriginGuard origin_guard;
@@ -58,6 +60,9 @@ struct SegmentDownloader::Impl {
     std::shared_ptr<BandwidthLimit> bandwidth_limit;
     bool one_by_one = false;
     int max_retries = kMaxRetries;
+    // Parallel ranges the host currently tolerates. Narrowed whenever it
+    // refuses one more connection (docs/spec/03-engine.md §5).
+    AdaptiveConcurrency concurrency{1};
 
     struct SegRuntime {
         int attempts = 0;
@@ -139,6 +144,11 @@ struct SegmentDownloader::Impl {
         } else if (starts_with_ci(line, "content-type")) {
             const size_t colon = line.find(':');
             if (colon != std::string::npos) ctx->content_type = trim(line.substr(colon + 1));
+        } else if (starts_with_ci(line, "retry-after")) {
+            const size_t colon = line.find(':');
+            if (colon != std::string::npos) {
+                ctx->retry_after = parse_retry_after_seconds(line.substr(colon + 1));
+            }
         } else if (starts_with_ci(line, "content-range")) {
             const size_t colon = line.find(':');
             if (colon != std::string::npos) {
@@ -182,6 +192,7 @@ struct SegmentDownloader::Impl {
         ctx.content_range_total = 0;
         ctx.validator_changed = false;
         ctx.interrupted = false;
+        ctx.retry_after = 0;
         ctx.content_type.clear();
         ctx.error_body.clear();
         ctx.origin_guard = RequestOriginGuard{};
@@ -235,7 +246,8 @@ struct SegmentDownloader::Impl {
         return true;
     }
 
-    // Returns: 0 = retry scheduled, 1 = terminal error, 2 = interrupted.
+    // Returns: 0 = retry scheduled, 1 = terminal error, 2 = interrupted,
+    // 3 = deferred because the host refused one more parallel connection.
     int finalize_segment(size_t i, CURLcode rc, std::string& error) {
         SegRuntime& rt = runtime[i];
         CURL* handle = rt.easy;
@@ -278,6 +290,7 @@ struct SegmentDownloader::Impl {
         }
         if (rc == CURLE_OK && code >= 200 && code < 300 && seg.finished()) {
             rt.done = true;
+            concurrency.on_success();
             return 0;
         }
         if (contexts[i].origin_guard.crossed_origin ||
@@ -288,6 +301,37 @@ struct SegmentDownloader::Impl {
         if (rc == CURLE_WRITE_ERROR && !contexts[i].range_bad) {
             error = "disk write failed";
             return 1;
+        }
+        // The host refused this range because too many connections were open
+        // (UploadHaven's "Download In Progress", pixeldrain's
+        // max_concurrent_downloads). Retrying with the same budget cannot help:
+        // the other ranges keep the slots busy for the whole backoff.
+        if (is_concurrency_refusal(code, contexts[i].error_body, contexts[i].content_type)) {
+            // 403 is the host stating the rule ("max_concurrent_downloads"):
+            // the parallel plan is unusable, so fail at once and let the engine
+            // retry the remaining ranges on a single connection. 503 is
+            // "temporarily unavailable": the slot is busy for a while, so narrow
+            // the plan and wait the range out instead of failing the download.
+            if (code == 403 || concurrency.exhausted()) {
+                error = http_error_with_detail(code, contexts[i].error_body,
+                                               contexts[i].content_type);
+                return 1;
+            }
+            if (concurrency.limit() > 1) concurrency.on_refusal();
+            concurrency.on_deferral();
+            // The refused request never had a fair chance, so it does not spend
+            // a retry. Deferrals have their own (larger) cap.
+            if (rt.attempts > 0) --rt.attempts;
+            const int64_t backoff = contexts[i].retry_after > 0
+                                        ? contexts[i].retry_after * 1000
+                                        : AdaptiveConcurrency::defer_backoff_ms(
+                                              concurrency.deferrals());
+            rt.next_try_ms = now_ms() + backoff;
+            log_warn("segment " + std::to_string(i) +
+                     ": host refused a parallel connection, parallel limit -> " +
+                     std::to_string(concurrency.limit()) + ", retry in " +
+                     std::to_string(backoff) + " ms");
+            return 3;
         }
         bool retryable = false;
         if (code == 408 || code == 429 || code >= 500) {
@@ -326,7 +370,11 @@ struct SegmentDownloader::Impl {
             }
             return 1;
         }
-        const int64_t backoff = std::min<int64_t>(16000, 1000LL << (rt.attempts - 1));
+        // Spec 03-engine.md §5: 1s, 2s, 4s, 8s, 16s, capped at 60 s. A host that
+        // sends Retry-After knows better than our schedule.
+        const int64_t backoff = contexts[i].retry_after > 0
+                                    ? contexts[i].retry_after * 1000
+                                    : std::min<int64_t>(60000, 1000LL << (rt.attempts - 1));
         rt.next_try_ms = now_ms() + backoff;
         log_warn("segment " + std::to_string(i) + " retry " +
                  std::to_string(rt.attempts) + "/" + std::to_string(max_retries) +
@@ -382,6 +430,12 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
     impl.runtime.assign(count, Impl::SegRuntime{});
     impl.contexts.assign(count, Impl::HandleCtx{});
 
+    // The parallel budget starts at the plan size and only narrows from there
+    // (docs/spec/03-engine.md §5). A resumed download therefore re-learns the
+    // host's limit: the refusals cost one deferral round (a few seconds), not a
+    // failed download.
+    impl.concurrency = AdaptiveConcurrency(impl.one_by_one ? 1 : static_cast<int>(count));
+
     TransferOutcome outcome = TransferOutcome::Failed;
     std::string failure;
     double speed = 0.0;
@@ -397,6 +451,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
         for (const auto& rt : impl.runtime) {
             if (rt.active) ++active;
         }
+        const int parallel_limit = std::max(1, impl.concurrency.limit());
         for (size_t i = 0; i < count; ++i) {
             Impl::SegRuntime& rt = impl.runtime[i];
             if (rt.active || rt.done || impl.state.segments[i].finished()) {
@@ -404,7 +459,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                 continue;
             }
             if (rt.next_try_ms > now) continue;
-            if (impl.one_by_one && active >= 1) break;
+            if (active >= parallel_limit) break;
             if (impl.start_segment(i)) ++active;
             else {
                 failure = "cannot start transfer";
@@ -462,6 +517,8 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                     outcome = TransferOutcome::Failed;
                     goto finish;
                 }
+                // finalized == 3: deferred until the narrowed plan has a free
+                // slot; next_try_ms was set by finalize_segment.
             }
             // Do not sleep past the next report, otherwise an idle poll drags
             // the progress cadence below kReportIntervalMs.

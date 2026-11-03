@@ -169,6 +169,11 @@ global open-folder option; those belong to the main Downloads list (0.19.3).
 
 ## Startup behavior
 
+- The single-instance lock is taken before the settings file and the database
+  are touched (0.22.10). A second start exits without writing anything: the
+  shortcut, a terminal start and `--gui` ask the running GUI to show its window,
+  a repeated `--autostart` hands over silently, and `swiftdm get` refuses with a
+  message and exit code 1 while another run holds the lock.
 - Load settings, open DB, restore the history, mark stale "downloading" rows in
   the main list as `Paused` (resume manually) and stale queue rows as `Queued`,
   then start queues whose `autostart` is set, followed by the tray icon and
