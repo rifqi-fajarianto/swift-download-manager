@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.22.10 — 2026-11-02
+## 0.22.10 — 2026-11-03
 
 SwiftDM is now a single-instance application.
 

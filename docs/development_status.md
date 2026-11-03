@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-02**, versi kerja **0.22.10**. Status ini cepat
+> Snapshot terakhir: **2026-11-03**, versi kerja **0.22.10**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
