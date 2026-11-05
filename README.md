@@ -122,7 +122,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.22.10_amd64.deb
+sudo apt install ./swiftdm_0.22.12_amd64.deb
 ```
 
 ```sh
@@ -222,21 +222,30 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.22.10 is the port tracking `main` (single-instance guard for
-the shortcut, terminal start and login entry, connection-limit aware parallel
-plan, redownload from the item context menu, the context-menu dismissal fix,
-refresh download address, a 50 ms progress refresh, per-category custom folders,
-window geometry, per-download logs, the server file date, named queues, audit
-hardening, the module split, the Windows file I/O fixes, and cross-origin
-redirect handling); GUI checks on Windows 10 are still manual.
+full list. Version 0.22.12 is the port tracking `main` (speed for downloads of
+unknown size, FTP and HLS, the Chromium extension as a release asset, the
+single-instance guard for the shortcut, terminal start and
+login entry, connection-limit aware parallel plan, redownload from the item
+context menu, the context-menu dismissal fix, refresh download address, a 50 ms
+progress refresh, per-category custom folders, window geometry, per-download
+logs, the server file date, named queues, audit hardening, the module split, the
+Windows file I/O fixes, and cross-origin redirect handling); GUI checks on
+Windows 10 are still manual.
 
 ### Continuous integration and releases
 
 CI runs the Linux build and test sequence above on Debian 13 for pull requests
 and pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb`
-package, the Windows portable ZIP, and the Windows installer to GitHub Releases;
-a `workflow_dispatch` run with `dry_run` enabled builds and tests both platforms
-without publishing. The release checklist is in [`AGENTS.md`](AGENTS.md).
+package, the Windows portable ZIP, the Windows installer, and the Chromium
+extension as an unpacked ZIP (`swiftdm-chromium-extension-<version>.zip`) to
+GitHub Releases; a `workflow_dispatch` run with `dry_run` enabled builds and
+tests both platforms without publishing. The release checklist is in
+[`AGENTS.md`](AGENTS.md).
+
+The extension ZIP installs without a build: extract it, then use **Load
+unpacked** in `chrome://extensions`. The browser integration section of
+[`ext/chromium/README.md`](ext/chromium/README.md) explains why the release
+ships an unpacked archive instead of a `.crx`.
 
 ## Application data
 

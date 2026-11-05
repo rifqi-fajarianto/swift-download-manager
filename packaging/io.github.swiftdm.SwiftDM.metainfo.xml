@@ -34,6 +34,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.12" date="2026-11-05">
+      <description>
+        <p>Downloads whose size the server does not announce now show their transfer speed. Servers that answer without a Content-Length, FTP transfers and HLS streams all report the current rate in the Bandwidth column and in the download window, sampled over the same 200 ms window the ranged transfer uses. The remaining time stays empty for those downloads, because it needs a total size the server never sent.</p>
+      </description>
+    </release>
+    <release version="0.22.11" date="2026-11-03">
+      <description>
+        <p>The Chromium extension is now published with every release as an unpacked ZIP that installs by extracting it and choosing Load unpacked in the browser's extensions page. The archive is listed in SHA256SUMS and covered by the build provenance attestation, and the release refuses to publish when the extension ID derived from the manifest no longer matches the ID the application accepts. No CRX is published, because current browsers reject self-signed CRX files dragged onto the extensions page and Windows and macOS block local CRX installs.</p>
+      </description>
+    </release>
     <release version="0.22.10" date="2026-11-03">
       <description>
         <p>SwiftDM is now a single-instance application. Starting it again from the shortcut, a terminal or the login entry brings the running window forward instead of opening a second process over the same database, and a repeated autostart stays silent so it never pops a window the user hid. A command-line download refuses to start while the application or another command-line download is running. The guard is a lock file that the kernel releases with the process, so a crash never blocks the next start.</p>

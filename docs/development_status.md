@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-03**, versi kerja **0.22.10**. Status ini cepat
+> Snapshot terakhir: **2026-11-05**, versi kerja **0.22.12**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -12,7 +12,17 @@
   mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
   UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
   tombol yang lebih jelas.
-- **Versi kerja**: 0.22.10. SwiftDM kini single-instance (0.22.10): lock file
+- **Versi kerja**: 0.22.12. Unduhan tanpa ukuran dari server (chunked), FTP,
+  dan HLS kini melaporkan kecepatan: `stream_download` mengambil sample byte
+  per 200 ms dengan smoothing yang sama seperti transfer ranged, HLS menjumlah
+  byte lintas segmen agar angka tidak jatuh ke nol di setiap batas segmen, dan
+  Remaining Time tetap kosong karena membutuhkan total yang tidak dikirim
+  server. Sebelumnya, 0.22.11 menerbitkan ekstensi Chromium sebagai ZIP unpacked
+  di setiap rilis lewat job `extension-package` (`tools/extension_pack.mjs`,
+  dijaga `extension_package` di `ctest`); job itu gagal bila ID turunan `key`
+  manifest tidak sama dengan `kExtensionId` aplikasi, dan tidak ada `.crx`
+  karena Chrome menolak CRX self-signed hasil drag-and-drop. Jauh sebelumnya,
+  0.22.10 menjadikan SwiftDM single-instance: lock file
   per-user (`src/core/instance_lock.*`, `flock`/`LockFileEx`, lokasi di
   `$XDG_RUNTIME_DIR` atau `%LOCALAPPDATA%\SwiftDM`) diambil sebelum settings
   dan DB disentuh, jadi shortcut/terminal/`--gui` saat aplikasi sudah jalan

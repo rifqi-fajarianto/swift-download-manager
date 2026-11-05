@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.22.12 — 2026-11-05
+
+Downloads whose size the server does not announce now show their speed.
+
+- When a server answers without `Content-Length` (chunked streaming), the
+  Bandwidth column and the download window stayed empty: the sequential path
+  reported only the bytes received, and `ProgressInfo::speed_bps` kept its
+  default of 0, which the UI treats as "no speed to show". `stream_download`
+  now samples the written byte count over the same 200 ms window and smoothing
+  as the ranged transfer and hands the rate back to the engine.
+- FTP downloads go through the same sequential transfer, so they report a
+  speed as well.
+- HLS used one request per segment; a per-request rate would fall to zero at
+  every segment boundary. The engine now samples the aggregate byte count
+  across segments and clears the rate once the transfer ends, instead of
+  leaving a stale value until the finished signal arrives.
+- Unknown-size downloads still show no Remaining Time: computing it needs a
+  total the server never sent. Only the speed is now available.
+- New tests cover all three paths (chunked HTTP, FTP, HLS) with a throttled
+  transfer so the sampler actually runs; each one failed before the fix.
+
+## 0.22.11 — 2026-11-03
+
+The Chromium extension is now a published release asset.
+
+- Each `vX.Y.Z` tag also builds `swiftdm-chromium-extension-<ext-version>.zip`
+  and attaches it to the GitHub release next to the `.deb`, the Windows ZIP and
+  the installer. The archive is listed in `SHA256SUMS` and covered by the build
+  provenance attestation, so it can be verified like the other packages.
+- The ZIP holds the extension files at its root, so it installs by extracting it
+  and choosing **Load unpacked** in `chrome://extensions`; no build and no
+  checkout of this repository is needed. A new `extension_package` test builds
+  the archive with the same helper the workflow uses and checks the layout, the
+  files the manifest references, and that a rebuild is byte-identical.
+- The release workflow fails when the ID derived from the manifest's fixed key
+  does not match the ID the app accepts, instead of publishing an extension
+  whose handshakes would all be rejected. `node tools/extension_pack.mjs verify`
+  runs the same check locally.
+- No `.crx` is published. Current Chrome builds reject a self-signed CRX dragged
+  onto `chrome://extensions` (`CRX_REQUIRED_PROOF_MISSING`, the browser wants a
+  Chrome Web Store proof), and Windows and macOS refuse local CRX installs
+  outright, so a CRX would only work on Linux via the external-extension
+  preferences file or through enterprise policy. The extension README documents
+  the ZIP route and that limitation.
+
 ## 0.22.10 — 2026-11-03
 
 SwiftDM is now a single-instance application.

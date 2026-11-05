@@ -51,7 +51,7 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.22.10_amd64.deb
+sudo apt install ./build/swiftdm_0.22.12_amd64.deb
 ```
 
 `apt` resolves only the runtime dependencies (`libqt6*`, `libcurl4t64`,
@@ -64,7 +64,7 @@ Chromium-based browser (Chrome, Chromium, Edge, Brave).
 Confirm that the generated package has no browser or printer recommendations:
 
 ```sh
-dpkg-deb -f build/swiftdm_0.22.10_amd64.deb Depends Recommends Suggests
+dpkg-deb -f build/swiftdm_0.22.12_amd64.deb Depends Recommends Suggests
 ```
 
 `Recommends` and `Suggests` should be empty. Use `--no-install-recommends`
@@ -90,7 +90,12 @@ only picked up from `/usr/share`.
 - The launcher entry appears in the application menu as **SwiftDM**.
 - The browser extension lives in `/usr/share/swiftdm/chromium`. Load it from
   `chrome://extensions` with **Load unpacked**, or keep using the checkout in
-  `ext/chromium` while developing.
+  `ext/chromium` while developing. Release pages carry the same files as
+  `swiftdm-chromium-extension-<version>.zip`, which is the route to use when
+  SwiftDM was installed from the portable ZIP or the installer instead of the
+  `.deb`. Build that archive with `node tools/extension_pack.mjs zip --out
+  extension.zip`; it keeps `manifest.json` at the archive root so the extracted
+  folder loads directly.
 - Closing the main window hides the app in the tray; quit from the tray menu.
 
 ## 6. Windows packages
