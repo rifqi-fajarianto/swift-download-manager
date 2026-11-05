@@ -35,6 +35,13 @@ struct StreamCtx {
     uint64_t base = 0;  // bytes already on disk before this transfer
     const std::function<bool(uint64_t)>* on_progress = nullptr;
     int64_t last_report = 0;
+    // Speed sampling, mirroring SegmentDownloader: a 200 ms window smoothed by
+    // an exponential moving average so a bursty server does not make the value
+    // jump between updates.
+    int64_t last_sample = 0;
+    uint64_t last_done = 0;
+    double speed = 0.0;
+    double* speed_out = nullptr;
     long status = 0;
     std::string content_type;
     std::string error_body;  // start of a 4xx/5xx body, for the error message
@@ -114,9 +121,24 @@ size_t stream_header_cb(char* buffer, size_t size, size_t nitems, void* userdata
 int stream_progress_cb(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
     auto* ctx = static_cast<StreamCtx*>(clientp);
     const int64_t now = now_ms();
+    const uint64_t done = ctx->written + ctx->base;
+
+    // Same window and smoothing as the ranged transfer, so a chunked download
+    // and a segmented one report comparable numbers for the same transfer.
+    if (now - ctx->last_sample >= kSpeedSampleMs) {
+        const double dt = static_cast<double>(now - ctx->last_sample) / 1000.0;
+        if (dt > 0) {
+            const double inst = static_cast<double>(done - ctx->last_done) / dt;
+            ctx->speed = (ctx->speed == 0.0) ? inst : (0.6 * ctx->speed + 0.4 * inst);
+        }
+        ctx->last_done = done;
+        ctx->last_sample = now;
+    }
+    if (ctx->speed_out) *ctx->speed_out = ctx->speed;
+
     if (now - ctx->last_report >= kReportIntervalMs) {
         ctx->last_report = now;
-        if (ctx->on_progress && !(*ctx->on_progress)(ctx->written + ctx->base)) return 1;  // pause
+        if (ctx->on_progress && !(*ctx->on_progress)(done)) return 1;  // pause
     }
     return 0;
 }
@@ -133,7 +155,8 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
                                 uint64_t resume_from,
-                                std::shared_ptr<BandwidthLimit> bandwidth_limit) {
+                                std::shared_ptr<BandwidthLimit> bandwidth_limit,
+                                double* speed_bps) {
     ensure_curl_global();
     if (!is_supported_download_url(options.url)) {
         if (error) *error = kInvalidUrlError;
@@ -152,6 +175,9 @@ TransferOutcome stream_download(const HttpOptions& options, int write_fd,
     ctx.base = resume_from;
     ctx.on_progress = &on_progress;
     ctx.last_report = now_ms();
+    ctx.last_sample = ctx.last_report;
+    ctx.last_done = resume_from;
+    ctx.speed_out = speed_bps;
     ctx.bandwidth_limit = std::move(bandwidth_limit);
 
     char errbuf[CURL_ERROR_SIZE] = {0};

@@ -118,6 +118,32 @@ void test_hls_download(const std::string& dir, testutil::TestHttpServer& server)
     CHECK(std::filesystem::is_empty(settings.temp_dir));
 }
 
+void test_hls_reports_speed(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = server.base_url() + "/hls/master.m3u8";
+    // Throttled so the aggregate sampler runs inside a segment instead of
+    // only seeing segment boundaries.
+    request.bandwidth_limit_enabled = true;
+    request.bandwidth_limit_kbps = 32;
+
+    double peak_speed = 0.0;
+    size_t speed_reports = 0;
+    const auto result = engine.run(request, [&](const ProgressInfo& info) {
+        if (info.speed_bps > 0.0) {
+            ++speed_reports;
+            peak_speed = std::max(peak_speed, info.speed_bps);
+        }
+        return true;
+    });
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(read_file(result.path) == expected_hls_bytes());
+    CHECK(speed_reports > 0);
+    CHECK(peak_speed > 0.0);
+    CHECK(peak_speed < 4.0 * 32.0 * 1024.0);
+}
+
 void test_hls_live_bandwidth_limit(const std::string& dir,
                                    testutil::TestHttpServer& server) {
     Settings settings = test_settings(dir);
@@ -246,6 +272,33 @@ void test_ftp_probe_and_download(const std::string& dir, testutil::TestFtpServer
     CHECK(server.retr_commands() >= 1);
 }
 
+void test_ftp_reports_speed(const std::string& dir, testutil::TestFtpServer& server) {
+    Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+    DownloadRequest request;
+    request.url = server.url("/ftp-file.bin");
+    // FTP always runs through stream_download; the rate must be reported there
+    // too, not only on the ranged HTTP path.
+    request.bandwidth_limit_enabled = true;
+    request.bandwidth_limit_kbps = 32;
+
+    double peak_speed = 0.0;
+    size_t speed_reports = 0;
+    const auto result = engine.run(request, [&](const ProgressInfo& info) {
+        if (info.speed_bps > 0.0) {
+            ++speed_reports;
+            peak_speed = std::max(peak_speed, info.speed_bps);
+        }
+        return true;
+    });
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(result.size, server.file_size());
+    CHECK(read_file(result.path) == expected_ftp_bytes());
+    CHECK(speed_reports > 0);
+    CHECK(peak_speed > 0.0);
+    CHECK(peak_speed < 4.0 * 32.0 * 1024.0);
+}
+
 void test_ftp_live_bandwidth_limit(const std::string& dir, testutil::TestFtpServer& server) {
     Settings settings = test_settings(dir);
     DownloadEngine engine(settings);
@@ -308,11 +361,13 @@ int main() {
 
     test_playlist_parsing();
     test_hls_download(dir, http);
+    test_hls_reports_speed(dir + "/hls-speed", http);
     test_hls_live_bandwidth_limit(dir + "/hls-live-limit", http);
     test_hls_resume(dir, http);
     test_hls_encrypted_is_refused(dir, http);
     test_hls_unsupported_scheme(dir, http);
     test_ftp_probe_and_download(dir, ftp);
+    test_ftp_reports_speed(dir + "/ftp-speed", ftp);
     test_ftp_live_bandwidth_limit(dir + "/ftp-live-limit", ftp);
     test_ftp_resume_uses_rest(dir, ftp);
 

@@ -117,12 +117,15 @@ enum class TransferOutcome { Completed, Paused, Failed };
 // `resume_from` > 0 continues an interrupted transfer at that offset (FTP
 // REST, or HTTP Range for servers without range support).
 // The shared bandwidth control can be changed while the transfer is active;
-// a zero rate means unlimited.
+// a zero rate means unlimited. When `speed_bps` is not null it receives the
+// current transfer rate: servers that omit Content-Length still get a speed,
+// sampled over the same window as the ranged transfer (kSpeedSampleMs).
 TransferOutcome stream_download(const HttpOptions& options, int write_fd,
                                 const std::function<bool(uint64_t done)>& on_progress,
                                 uint64_t* bytes_written, std::string* error,
                                 uint64_t resume_from = 0,
-                                std::shared_ptr<BandwidthLimit> bandwidth_limit = {});
+                                std::shared_ptr<BandwidthLimit> bandwidth_limit = {},
+                                double* speed_bps = nullptr);
 
 // Downloads the unfinished ranges of `state` into `write_fd` (positioned
 // writes at absolute offsets) using libcurl multi with parallel connections.
