@@ -27,7 +27,8 @@ concurrency:
 
 jobs:
   # The Windows port ships next to the Debian package: the same tag produces a
-  # portable ZIP and an Inno Setup installer, both attached to the release.
+  # portable ZIP, an Inno Setup installer and the same installer pinned to the
+  # all-users scope, all attached to the release.
   windows-package:
     name: Package the Windows port
     runs-on: windows-latest
@@ -96,6 +97,14 @@ jobs:
       - name: Build the installer
         shell: msys2 {0}
         run: cmake --build build --target windows-installer
+
+      # The same setup pinned to the all-users scope, for scripted rollouts; a
+      # separate name keeps the wizard-driven installer as the default download.
+      - name: Build the all-users installer
+        shell: msys2 {0}
+        run: |
+          cmake --build build --target windows-installer-machine
+          mv build/swiftdm-*-win64-setup.exe build/swiftdm-*-win64-setup-machine.exe
 
       - name: Write the checksum file
         shell: msys2 {0}

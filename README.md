@@ -122,7 +122,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.22.12_amd64.deb
+sudo apt install ./swiftdm_0.22.13_amd64.deb
 ```
 
 ```sh
@@ -196,10 +196,13 @@ it).
 
 The packages contain the executable, the Qt plugins, the MinGW/libcurl/SQLite
 runtime DLLs, the `ca-bundle.crt` CA bundle used by libcurl for HTTPS, and the
-Chromium extension. The installer is per-user, so it needs no administrator
-rights; neither it nor the executables are code signed yet, so SmartScreen warns
-on first run. The executable carries the SwiftDM icon, which the installer and
-its shortcuts use as well.
+Chromium extension. The installer asks whether to install for the current user
+(default, into `%LOCALAPPDATA%\Programs\SwiftDM`, no administrator rights) or for
+all users (`Program Files\SwiftDM`, with a UAC prompt); installing one scope
+while the other has a copy offers to uninstall that copy first, and an upgrade
+keeps the existing scope. Neither the installer nor the executables are code
+signed yet, so SmartScreen warns on first run. The executable carries the SwiftDM
+icon, which the installer and its shortcuts use as well.
 
 #### Running on Windows
 
@@ -222,7 +225,8 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.22.12 is the port tracking `main` (speed for downloads of
+full list. Version 0.22.13 is the port tracking `main` (a Windows installer that
+asks whether to install for the current user or all users, speed for downloads of
 unknown size, FTP and HLS, the Chromium extension as a release asset, the
 single-instance guard for the shortcut, terminal start and
 login entry, connection-limit aware parallel plan, redownload from the item

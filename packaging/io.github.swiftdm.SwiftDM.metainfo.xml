@@ -34,8 +34,9 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
-    <release version="0.22.12" date="2026-11-05">
+    <release version="0.22.13" date="2026-11-08">
       <description>
+        <p>The Windows installer asks whether to install for the current user or for all users. The per-user default needs no administrator rights and puts SwiftDM in %LOCALAPPDATA%\Programs; the all-users choice installs into Program Files and asks for elevation. Silent installs take /CURRENTUSER or /ALLUSERS, an upgrade keeps the scope of the install it replaces, and a fresh install in the other scope offers to remove the existing copy first.</p>
         <p>Downloads whose size the server does not announce now show their transfer speed. Servers that answer without a Content-Length, FTP transfers and HLS streams all report the current rate in the Bandwidth column and in the download window, sampled over the same 200 ms window the ranged transfer uses. The remaining time stays empty for those downloads, because it needs a total size the server never sent.</p>
       </description>
     </release>

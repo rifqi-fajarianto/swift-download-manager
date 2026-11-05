@@ -4,11 +4,27 @@
 ; the executable, runs windeployqt and the MSYS2 runtime copy, so the installer
 ; only wraps a directory that already runs standalone.
 ;
-; Build from the build directory:  cmake --build build --target windows-installer
-; Build by hand:                   ISCC /DAppVersion=0.19.18 /DSourceDir=..\windows-deploy
-
-#define AppName "SwiftDM"
-#define AppPublisher "SwiftDM contributors"
+; Build from the build directory (see CMakeLists.txt):
+;   cmake --build build --target windows-installer
+; Build by hand:
+;   ISCC /DAppVersion=0.22.13 /DSourceDir=..\windows-deploy
+;
+; The setup asks who the app is installed for. The default is a per-user install
+; in %LOCALAPPDATA%\Programs, which needs no administrator rights and matches the
+; %APPDATA%/%LOCALAPPDATA% paths the app uses for config and data. Choosing "all
+; users" raises the usual UAC prompt and installs into Program Files.
+;
+; Both scopes can be installed on one PC: each has its own shortcuts, its own
+; uninstall entry and its own config directory per Windows account, but they share
+; the single-instance state, so both copies never run at once. The setup records
+; the scope under Software\SwiftDM (HKCU or HKLM) and, when a fresh install finds
+; SwiftDM in the other scope, offers to remove that copy first; declining keeps it.
+; Upgrades stay in the scope they were installed in.
+;
+; A fixed scope can be compiled in for scripted builds:
+;   ISCC /DInstallScope=machine ...
+; or /DInstallScope=user. Such a setup skips the question and rejects the
+; opposite /ALLUSERS or /CURRENTUSER option.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -23,35 +39,53 @@
   #define SetupIcon "..\..\ui-assets\app-icon\main.ico"
 #endif
 
-; ponytail: setup is unsigned, so SmartScreen still warns; add code signing
-; before the Windows port is called stable.
+; "ask" (default) shows the install-mode page; "user" and "machine" pin the scope.
+#ifndef InstallScope
+  #define InstallScope "ask"
+#endif
+#if InstallScope == "machine"
+  #define DefaultPrivileges "admin"
+#else
+  #define DefaultPrivileges "lowest"
+#endif
+
+; Shared by the [Registry] entries and the uninstall lookup in [Code].
+#define ScopeKey "Software\SwiftDM"
 
 [Setup]
-; A stable AppId keeps upgrades installed over the previous version.
+; A stable AppId makes an upgrade install over the previous version in the same
+; scope. The scope is not part of it: switching scopes goes through the
+; uninstall prompt in [Code], which removes the old install before the new one.
 AppId={{7A3D6C1B-9E42-4B7F-8C55-2D6A9F13B8E4}
-AppName={#AppName}
+AppName=SwiftDM
 AppVersion={#AppVersion}
-AppVerName={#AppName} {#AppVersion}
-AppPublisher={#AppPublisher}
+AppVerName=SwiftDM {#AppVersion}
+AppPublisher=SwiftDM contributors
 AppPublisherURL=https://github.com/rifqi-fajarianto/swift-download-manager
 AppSupportURL=https://github.com/rifqi-fajarianto/swift-download-manager/issues
-DefaultDirName={autopf}\{#AppName}
-DefaultGroupName={#AppName}
+DefaultDirName={autopf}\SwiftDM
+DefaultGroupName=SwiftDM
 DisableProgramGroupPage=yes
-; Per-user install: no UAC prompt for an unsigned setup, and the same place the
-; app already keeps its config (%APPDATA%) and data (%LOCALAPPDATA%).
-PrivilegesRequired=lowest
+; `lowest` is the per-user default, so an unsigned setup raises no UAC prompt.
+; The overrides let the install-mode page (and /ALLUSERS, /CURRENTUSER) switch to
+; `admin`, which the /DInstallScope=machine build pins through the define above.
+PrivilegesRequired={#DefaultPrivileges}
+PrivilegesRequiredOverridesAllowed=dialog commandline
 ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 SetupIconFile={#SetupIcon}
 Compression=lzma2/max
 SolidCompression=yes
 OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup
 UninstallDisplayIcon={app}\swiftdm.exe
-UninstallDisplayName={#AppName}
+UninstallDisplayName=SwiftDM
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[CustomMessages]
+english.InstallModePageLabel={code:InstallModePageLabel}
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -60,8 +94,244 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\swiftdm.exe"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\swiftdm.exe"; Tasks: desktopicon
+Name: "{autoprograms}\SwiftDM"; Filename: "{app}\swiftdm.exe"
+Name: "{autodesktop}\SwiftDM"; Filename: "{app}\swiftdm.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\swiftdm.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\swiftdm.exe"; Description: "{cm:LaunchProgram,SwiftDM}"; Flags: nowait postinstall skipifsilent
+
+[Registry]
+; Records which scope this install belongs to, so a later setup started in the
+; other scope can name the install it is about to replace. Removed on uninstall.
+Root: {code:ScopeRegistryRoot}; Subkey: "{#ScopeKey}"; ValueType: string; \
+  ValueName: "InstallScope"; ValueData: "{code:ScopeName}"; Flags: uninsdeletekey
+Root: {code:ScopeRegistryRoot}; Subkey: "{#ScopeKey}"; ValueType: string; \
+  ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
+
+[Code]
+const
+  // A machine-wide uninstall can raise its own UAC prompt, so the wait only
+  // guards against an uninstaller that never finishes.
+  UninstallPollMs = 250;
+  UninstallPolls = 1200;
+
+// Is this setup upgrading an existing SwiftDM install? Releases up to 0.22.12
+// recorded no scope, so an uninstaller in the install directory is the marker
+// they left behind; newer installs are recognised by Inno through their AppId.
+function IsUpgrade(): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\unins000.exe'));
+end;
+
+// An upgrade keeps the scope of the install it replaces, because Inno keeps the
+// scope of an existing install; the page then says so instead of offering a
+// choice that would not be honoured.
+function InstallModePageLabel(Param: String): String;
+begin
+  if IsUpgrade() then
+    Result := 'Setup upgrades the existing SwiftDM install and keeps its '
+              + 'install scope.'
+  else
+    Result := 'Choose whether SwiftDM is installed for you only, or for everyone '
+              + 'who uses this PC.';
+end;
+
+// Called while installing, so the scope is the one the setup settled on.
+function ScopeName(Param: String): String;
+begin
+  if IsAdminInstallMode() then
+    Result := 'machine'
+  else
+    Result := 'user';
+end;
+
+function ScopeRegistryRoot(Param: String): String;
+begin
+  // During uninstall IsAdminInstallMode reports the scope the install was made
+  // in, so this keeps pointing at the key of that install.
+  if IsAdminInstallMode() then
+    Result := 'HKLM'
+  else
+    Result := 'HKCU';
+end;
+
+// Is SwiftDM recorded as installed under Root, i.e. in that scope?
+function IsInstalledFor(const Root: Integer): Boolean;
+var
+  Recorded: String;
+begin
+  Result := RegQueryStringValue(Root, '{#ScopeKey}', 'InstallScope', Recorded);
+end;
+
+function RegisteredPath(const Root: Integer): String;
+begin
+  if not RegQueryStringValue(Root, '{#ScopeKey}', 'InstallPath', Result) then
+    Result := '';
+end;
+
+// The old install's uninstaller deletes its own directory, so its exit code is
+// copied to a log outside that directory; otherwise the code cannot be read once
+// unins000.exe is gone.
+function OldUninstallLogPath(): String;
+begin
+  Result := ExpandConstant('{tmp}\swiftdm-old-uninstall.log');
+end;
+
+function OldUninstallExitCode(): Integer;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+  Line: String;
+begin
+  Result := -1;
+  if not LoadStringsFromFile(OldUninstallLogPath(), Lines) then exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do begin
+    Line := Trim(Lines[I]);
+    if CompareText(Copy(Line, 1, 11), 'Exit code: ') = 0 then begin
+      Result := StrToIntDef(Copy(Line, 12, Length(Line) - 11), -1);
+      exit;
+    end;
+  end;
+end;
+
+// Runs the uninstaller of the install in the other scope and waits for it.
+// Message explains what went wrong when Result is False.
+function RemoveOtherScope(const Root: Integer; const OtherPath: String;
+  out Message: String): Boolean;
+var
+  Uninstaller: String;
+  ExitCode: Integer;
+  LogPath: String;
+  Attempts: Integer;
+begin
+  Result := False;
+  Message := '';
+
+  Uninstaller := '';
+  if OtherPath <> '' then
+    Uninstaller := AddBackslash(OtherPath) + 'unins000.exe';
+  if (Uninstaller = '') or not FileExists(Uninstaller) then begin
+    // The record outlived a moved or half-removed install: there is nothing left
+    // to uninstall, only the record to drop.
+    if RegDeleteKeyIncludingSubkeys(Root, '{#ScopeKey}') or
+       not RegKeyExists(Root, '{#ScopeKey}') then
+      Result := True
+    else
+      Message := 'SwiftDM is recorded as installed for the other scope, but its '
+                 + 'leftover registry entry could not be removed. Restart '
+                 + 'Windows and run this setup again.';
+    exit;
+  end;
+
+  // A machine-wide uninstaller asks for elevation itself, so this process does
+  // not have to run as administrator for the per-user scope.
+  LogPath := OldUninstallLogPath();
+  DeleteFile(LogPath);
+  if not Exec(Uninstaller,
+              '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /COPYLOG=1 /LOG="'
+              + LogPath + '"',
+              '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then begin
+    Message := 'Windows could not start the old SwiftDM uninstaller: ' + #13#10
+               + Uninstaller + #13#10#13#10
+               + 'Remove SwiftDM from Settings > Apps first, then run this setup '
+               + 'again.';
+    exit;
+  end;
+  // The process exit code is only trustworthy when the run was not elevated;
+  // the copied log carries the code either way.
+  if OldUninstallExitCode() <> -1 then
+    ExitCode := OldUninstallExitCode();
+  if ExitCode <> 0 then begin
+    Message := Format('The old SwiftDM uninstaller failed (exit code %d). '
+                      + 'Remove SwiftDM from Settings > Apps first, then run '
+                      + 'this setup again.', [ExitCode]);
+    exit;
+  end;
+
+  // Dropping the key is the uninstaller's last step; give it a moment to land.
+  Attempts := 0;
+  while RegKeyExists(Root, '{#ScopeKey}') and (Attempts < UninstallPolls) do begin
+    Sleep(UninstallPollMs);
+    Attempts := Attempts + 1;
+  end;
+  if RegKeyExists(Root, '{#ScopeKey}') then begin
+    Message := 'The old SwiftDM install was removed, but its registry entry is '
+               + 'still present. Restart Windows and run this setup again.';
+    exit;
+  end;
+
+  Result := True;
+end;
+
+// A setup compiled for a fixed scope must not be steered into the other scope by
+// /ALLUSERS or /CURRENTUSER on its command line. UserInfoInstallMode is only
+// valid once the wizard runs, so the check happens before the first page.
+procedure InitializeWizard();
+var
+  RequestedAdmin: Boolean;
+begin
+  if '{#InstallScope}' = 'ask' then exit;
+  RequestedAdmin := UserInfoInstallMode = imAdmin;
+  if RequestedAdmin = ('{#InstallScope}' = 'machine') then exit;
+  MsgBox('This SwiftDM setup is built to install for a fixed scope only, but it '
+         + 'was started with /ALLUSERS or /CURRENTUSER. Run it again without '
+         + 'that option.', mbError, MB_OK);
+  Abort;
+end;
+
+// The install-mode page names the choice; an upgrade cannot change the scope of
+// the install it replaces, so the page says that instead.
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID <> wpSelectDir then exit;
+  if not IsUpgrade() then exit;
+  WizardForm.InstallModePageLabel.Caption := InstallModePageLabel('');
+end;
+
+// The install-mode page is left behind before the directory page, so from there
+// on the chosen scope is known: that is where the other scope is checked, before
+// anything is written.
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  OtherRoot: Integer;
+  OtherDesc: String;
+  OtherPath: String;
+  Message: String;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then exit;
+
+  if IsAdminInstallMode() then begin
+    OtherRoot := HKCU;
+    OtherDesc := 'the current user';
+  end else begin
+    OtherRoot := HKLM;
+    OtherDesc := 'all users';
+  end;
+
+  if not IsInstalledFor(OtherRoot) then exit;
+  OtherPath := RegisteredPath(OtherRoot);
+  if OtherPath <> '' then
+    OtherDesc := OtherDesc + ' (' + OtherPath + ')';
+
+  // An upgrade leaves the other scope alone: it keeps the scope it was installed
+  // in, and whoever installed the other copy gets their own upgrade.
+  if IsUpgrade() then exit;
+
+  if WizardSilent() then begin
+    MsgBox('SwiftDM is also installed for ' + OtherDesc + '. Both installs stay '
+           + 'as they are; remove the other one from Settings > Apps if you only '
+           + 'want one.', mbInformation, MB_OK);
+    exit;
+  end;
+
+  if MsgBox('SwiftDM is also installed for ' + OtherDesc + '.' + #13#10#13#10
+            + 'Remove that install before adding SwiftDM for this scope?',
+            mbConfirmation, MB_YESNO) <> IDYES then
+    exit;
+
+  if not RemoveOtherScope(OtherRoot, OtherPath, Message) then begin
+    MsgBox(Message, mbError, MB_OK);
+    Result := False;
+  end;
+end;

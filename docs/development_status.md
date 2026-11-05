@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-05**, versi kerja **0.22.12**. Status ini cepat
+> Snapshot terakhir: **2026-11-08**, versi kerja **0.22.13**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -12,7 +12,13 @@
   mengirim progress dan kecepatan ke UI tiap 50 ms, dan 0.22.3 menyesuaikan
   UI/UX jendela *Refresh download URL*: teks, ukuran compact, nama field, dan
   tombol yang lebih jelas.
-- **Versi kerja**: 0.22.12. Unduhan tanpa ukuran dari server (chunked), FTP,
+- **Versi kerja**: 0.22.13. Installer Windows (Inno Setup) kini menanyakan
+  scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
+  tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
+  dicatat di `Software\SwiftDM` (HKCU/HKLM), pemasangan di scope lain ditolak
+  dan ditawari uninstall lebih dulu, upgrade mempertahankan scope lama, dan
+  target `windows-installer-machine` membangun installer yang dipin ke
+  all-users. Sebelumnya, 0.22.12: unduhan tanpa ukuran dari server (chunked), FTP,
   dan HLS kini melaporkan kecepatan: `stream_download` mengambil sample byte
   per 200 ms dengan smoothing yang sama seperti transfer ranged, HLS menjumlah
   byte lintas segmen agar angka tidak jatuh ke nol di setiap batas segmen, dan

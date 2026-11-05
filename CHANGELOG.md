@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.22.13 — 2026-11-08
+
+The Windows installer now asks whether to install for the current user or for
+all users.
+
+- `packaging/windows/swiftdm.iss` adds the Inno Setup install-mode page:
+  **Only for me** (default) installs to `%LOCALAPPDATA%\Programs\SwiftDM` without
+  an administrator prompt, **All users** raises UAC and installs to
+  `Program Files\SwiftDM` with shortcuts in the common Start menu. Silent setups
+  accept `/CURRENTUSER` and `/ALLUSERS`; without either the per-user default is
+  used.
+- Two installs of the same app can coexist, but they share the single-instance
+  state, so the setup records the chosen scope under `Software\SwiftDM` (HKCU or
+  HKLM, removed on uninstall) and checks the other scope before writing
+  anything. A fresh install in one scope while the other scope has SwiftDM offers
+  to uninstall that copy first (silent setups get a note instead); declining
+  keeps both and continues.
+- An upgrade keeps the scope of the install it replaces, so the setup never moves
+  an existing install between scopes; the install-mode page then says that the
+  scope is kept. New CMake target `windows-installer-machine` builds a setup
+  pinned to the all-users scope (`/DInstallScope=machine`) for scripted rollouts;
+  such a setup rejects the opposite `/ALLUSERS` or `/CURRENTUSER` option.
+- Application config stays per Windows account (`%APPDATA%\SwiftDM`), and the
+  startup entry stays under `HKCU\...\Run`, so each user still turns autostart on
+  for themselves in either scope.
+
 ## 0.22.12 — 2026-11-05
 
 Downloads whose size the server does not announce now show their speed.
