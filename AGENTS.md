@@ -344,8 +344,20 @@ Catatan:
 - Jangan memindahkan atau menghapus tag yang sudah dipublikasikan. Jika rilis
   bermasalah, perbaiki dan naikkan patch baru.
 - Workflow release membuat release sebagai draft, mengunggah `.deb`, ZIP
-  Windows, dan installer `-setup.exe`, lalu mempublikasikannya. Re-run workflow
-  akan memakai release yang sudah ada dan mengganti aset tersebut (`--clobber`).
+  Windows, installer `-setup.exe`, dan ZIP ekstensi Chromium
+  (`swiftdm-chromium-extension-<versi-ekstensi>.zip`), lalu mempublikasikannya.
+  Re-run workflow akan memakai release yang sudah ada dan mengganti aset
+  tersebut (`--clobber`).
+- Aset ekstensi sengaja berupa ZIP unpacked, bukan `.crx`: Chrome menolak CRX
+  self-signed yang di-drag ke `chrome://extensions`
+  (`CRX_REQUIRED_PROOF_MISSING`), dan Windows/macOS memblokir instalasi CRX
+  lokal. ZIP dijalankan lewat job `extension-package`
+  (`tools/extension_pack.mjs`), dan job itu gagal bila ID turunan dari `key` di
+  `ext/chromium/manifest.json` tidak sama dengan `kExtensionId` di
+  `src/ui/browser_integration.cpp`. Jangan menerbitkan aset ekstensi tanpa
+  melewati pemeriksaan tersebut; handshake dari ekstensi akan ditolak aplikasi.
+- Versi ekstensi di `ext/chromium/manifest.json` bergerak sendiri (mis. `0.5.2`)
+  dan dipakai sebagai nama berkas ZIP; naikkan bila isi ekstensi berubah.
 - `workflow_dispatch` dengan `dry_run: true` (default) adalah cara aman menguji
   pipeline: build, `ctest`, `cpack`, installer, dan ekstraksi catatan rilis
   tetap dijalankan, hasilnya hanya artifact. Set `dry_run: false` untuk benar-

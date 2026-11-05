@@ -76,7 +76,7 @@ jobs:
         shell: msys2 {0}
         run: |
           tests="$(ctest --test-dir build -N)"
-          for name in extension_logic extension_popup; do
+          for name in extension_logic extension_popup extension_package; do
             if ! echo "$tests" | grep -q " ${name}$"; then
               echo "::error::${name} is not registered; nodejs is probably missing"
               exit 1
@@ -126,9 +126,80 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The browser integration ships as an unpacked ZIP: Chrome rejects
+  # self-signed CRX drag-and-drop (CRX_REQUIRED_PROOF_MISSING) and Windows and
+  # macOS refuse local CRX installs, so "Load unpacked" is the only path that
+  # works on every platform. No Qt is needed here, only Node.
+  extension-package:
+    name: Package the Chromium extension
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # A stale allowlist silently rejects every handshake from the packaged
+      # extension, so fail the release instead of shipping a broken pairing.
+      - name: Verify the extension ID matches the app allowlist
+        run: node tools/extension_pack.mjs verify
+
+      - name: Build the unpacked extension ZIP
+        run: |
+          version="$(node -p "require('./ext/chromium/manifest.json').version")"
+          node tools/extension_pack.mjs zip \
+            --out "swiftdm-chromium-extension-${version}.zip"
+          echo "EXTENSION_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Verify the archive layout
+        run: |
+          # manifest.json must be at the root of the ZIP, otherwise Chrome
+          # refuses the extracted folder as an unpacked extension. Node reads
+          # the central directory so the check needs no extra runner package.
+          node -e '
+            const { readFileSync } = require("node:fs");
+            const archive = readFileSync(process.argv[1]);
+            const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+            if (end < 0) throw new Error("no end-of-central-directory record");
+            const count = archive.readUInt16LE(end + 10);
+            let cursor = archive.readUInt32LE(end + 16);
+            const names = [];
+            for (let i = 0; i < count; i += 1) {
+              const nameLength = archive.readUInt16LE(cursor + 28);
+              names.push(archive.toString("utf8", cursor + 46, cursor + 46 + nameLength));
+              cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) +
+                archive.readUInt16LE(cursor + 32);
+            }
+            if (!names.includes("manifest.json")) {
+              throw new Error(`manifest.json is not at the archive root: ${names.join(", ")}`);
+            }
+            console.log(`${names.length} files, manifest.json at the root`);
+          ' "swiftdm-chromium-extension-${EXTENSION_VERSION}.zip"
+
+      - name: Write the checksum file
+        run: |
+          sha256sum ./*.zip | sed -E 's| [*]?\./| |' > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload the extension package
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftdm-extension
+          path: |
+            swiftdm-chromium-extension-*.zip
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     name: Publish the release
-    needs: windows-package
+    needs: [windows-package, extension-package]
     runs-on: ubuntu-24.04
     container: debian:13
     timeout-minutes: 30
@@ -174,6 +245,12 @@ jobs:
         with:
           name: swiftdm-windows
           path: windows
+
+      - name: Download the extension package
+        uses: actions/download-artifact@v7
+        with:
+          name: swiftdm-extension
+          path: extension
 
       - name: Install build and release dependencies
         run: |
@@ -227,7 +304,7 @@ jobs:
       - name: Verify that the extension tests are registered
         run: |
           tests="$(ctest --test-dir build -N)"
-          for name in extension_logic extension_popup; do
+          for name in extension_logic extension_popup extension_package; do
             if ! echo "$tests" | grep -q " ${name}$"; then
               echo "::error::${name} is not registered; nodejs is probably missing"
               exit 1
@@ -250,6 +327,7 @@ jobs:
           cd build
           sha256sum ./*.deb | sed -E 's| [*]?\./| |' > SHA256SUMS
           cat ../windows/SHA256SUMS >> SHA256SUMS
+          cat ../extension/SHA256SUMS >> SHA256SUMS
           cat SHA256SUMS
 
       - name: Attest the package provenance
@@ -260,6 +338,7 @@ jobs:
             build/*.deb
             windows/*.zip
             windows/*-setup.exe
+            extension/*.zip
 
       # The changelog is the source of truth for the release notes. Require the
       # section so a tag cannot be published without documented changes.
@@ -286,6 +365,7 @@ jobs:
           path: |
             build/*.deb
             build/SHA256SUMS
+            extension/*.zip
             release-notes.md
           if-no-files-found: error
           retention-days: 7
@@ -298,7 +378,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe"
+          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe extension/*.zip"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" $assets --clobber --repo "$repo"
             gh release edit "$tag" \
