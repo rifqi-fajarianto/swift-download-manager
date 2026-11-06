@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.15" date="2026-11-08">
+      <description>
+        <p>Fixes the Windows installer build: a lost line break had removed a script declaration, so the installer did not compile. No application behaviour changed.</p>
+      </description>
+    </release>
     <release version="0.22.14" date="2026-11-08">
       <description>
         <p>Fixes the Windows installer build of 0.22.13. The installer script did not compile, because the registry root that records the install scope used an unsupported constant; it now relies on Inno Setup's HKA root. No application behaviour changed.</p>

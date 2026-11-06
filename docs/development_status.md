@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-08**, versi kerja **0.22.14**. Status ini cepat
+> Snapshot terakhir: **2026-11-08**, versi kerja **0.22.15**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,9 +8,10 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.22.14 — perbaikan build installer
-  Windows yang gagal dikompilasi di 0.22.13 (`Root: {code:...}` di `[Registry]`
-  diganti `HKA`), dengan perilaku aplikasi sama. 0.22.13 sendiri adalah rilis
+- **Rilis terakhir di jalur `main`**: 0.22.15 — perbaikan kedua build installer
+  Windows: `Root: {code:...}` di `[Registry]` diganti `HKA` (0.22.14) dan baris
+  `function IsUpgrade` yang hilang karena line break terhapus dipulihkan
+  (0.22.15), dengan perilaku aplikasi sama. 0.22.13 sendiri adalah rilis
   pertama yang memuat branch `engine` (deteksi kecepatan untuk unduhan tanpa
   ukuran, ekstensi Chromium sebagai aset rilis, single-instance, dan installer
   Windows per-user / all-users); workflow-nya berhenti sebelum release terbit,
@@ -19,7 +20,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.22.14. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.22.15. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang

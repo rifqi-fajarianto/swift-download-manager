@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.15 — 2026-11-08
+
+Fixes the Windows installer build again. The release run for 0.22.14 stopped at
+`PreprocessingError ... Column 3` because an edit had joined a comment line with
+the `function IsUpgrade` line, so the declaration never existed; the newline is
+back. No application behaviour changed since 0.22.13.
+
 ## 0.22.14 — 2026-11-08
 
 Fixes the release build of 0.22.13: the Windows installer script did not
