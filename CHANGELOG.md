@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.22.14 — 2026-11-08
+
+Fixes the release build of 0.22.13: the Windows installer script did not
+compile, so no package was published.
+
+- `[Registry]` `Root` accepts only the fixed key names, so the scope record now
+  uses `HKA` (HKLM in an all-users install, HKCU in a per-user one) instead of a
+  `{code:...}` constant, which failed with `Parameter "Root" is not a valid
+  value.`
+- The install-mode choice is a prompt shown before the wizard starts, not a
+  wizard page. The check that a setup pinned with `/DInstallScope` rejects the
+  opposite `/ALLUSERS` or `/CURRENTUSER` now reads the command line directly,
+  and the custom message that was meant to describe the choice is removed
+  (custom messages are formatted, never expanded).
+- The CI workflow also builds the all-users installer, so a broken pinned-scope
+  script fails in CI rather than in the release run.
+- No application behaviour changed: 0.22.14 carries the same per-user / all-users
+  installer and the same engine fixes as 0.22.13.
+
 ## 0.22.13 — 2026-11-08
 
 The Windows installer now asks whether to install for the current user or for

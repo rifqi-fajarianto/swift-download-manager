@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.14" date="2026-11-08">
+      <description>
+        <p>Fixes the Windows installer build of 0.22.13. The installer script did not compile, because the registry root that records the install scope used an unsupported constant; it now relies on Inno Setup's HKA root. No application behaviour changed.</p>
+      </description>
+    </release>
     <release version="0.22.13" date="2026-11-08">
       <description>
         <p>The Windows installer asks whether to install for the current user or for all users. The per-user default needs no administrator rights and puts SwiftDM in %LOCALAPPDATA%\Programs; the all-users choice installs into Program Files and asks for elevation. Silent installs take /CURRENTUSER or /ALLUSERS, an upgrade keeps the scope of the install it replaces, and a fresh install in the other scope offers to remove the existing copy first.</p>
