@@ -39,23 +39,25 @@
   #define SetupIcon "..\..\ui-assets\app-icon\main.ico"
 #endif
 
-; "ask" (default) shows the install-mode page; "user" and "machine" pin the scope.
+; "ask" (default) lets Setup ask who to install for; "user" and "machine" pin it.
 #ifndef InstallScope
   #define InstallScope "ask"
 #endif
 #if InstallScope == "machine"
   #define DefaultPrivileges "admin"
+  #define ScopeText "all users only"
 #else
   #define DefaultPrivileges "lowest"
+  #define ScopeText "the current user only"
 #endif
 
 ; Shared by the [Registry] entries and the uninstall lookup in [Code].
 #define ScopeKey "Software\SwiftDM"
 
 [Setup]
-; A stable AppId makes an upgrade install over the previous version in the same
-; scope. The scope is not part of it: switching scopes goes through the
-; uninstall prompt in [Code], which removes the old install before the new one.
+; A stable AppId makes an upgrade install over the previous version. Setup treats
+; an install as the same application only within one install mode, so each scope
+; upgrades separately; the two scopes are told apart by the record in [Registry].
 AppId={{7A3D6C1B-9E42-4B7F-8C55-2D6A9F13B8E4}
 AppName=SwiftDM
 AppVersion={#AppVersion}
@@ -84,9 +86,6 @@ UninstallDisplayName=SwiftDM
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[CustomMessages]
-english.InstallModePageLabel={code:InstallModePageLabel}
-
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
@@ -103,9 +102,12 @@ Filename: "{app}\swiftdm.exe"; Description: "{cm:LaunchProgram,SwiftDM}"; Flags:
 [Registry]
 ; Records which scope this install belongs to, so a later setup started in the
 ; other scope can name the install it is about to replace. Removed on uninstall.
-Root: {code:ScopeRegistryRoot}; Subkey: "{#ScopeKey}"; ValueType: string; \
+; Root takes only the fixed key names, so HKA is used: it resolves to HKLM in
+; administrative install mode and to HKCU otherwise, which is exactly the scope
+; the setup settled on (and, during uninstall, the one the install was made in).
+Root: HKA; Subkey: "{#ScopeKey}"; ValueType: string; \
   ValueName: "InstallScope"; ValueData: "{code:ScopeName}"; Flags: uninsdeletekey
-Root: {code:ScopeRegistryRoot}; Subkey: "{#ScopeKey}"; ValueType: string; \
+Root: HKA; Subkey: "{#ScopeKey}"; ValueType: string; \
   ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Code]
@@ -117,23 +119,29 @@ const
 
 // Is this setup upgrading an existing SwiftDM install? Releases up to 0.22.12
 // recorded no scope, so an uninstaller in the install directory is the marker
-// they left behind; newer installs are recognised by Inno through their AppId.
-function IsUpgrade(): Boolean;
+// they left behind; newer installs are recognised by Inno through their AppId.function IsUpgrade(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{app}\unins000.exe'));
 end;
 
-// An upgrade keeps the scope of the install it replaces, because Inno keeps the
-// scope of an existing install; the page then says so instead of offering a
-// choice that would not be honoured.
-function InstallModePageLabel(Param: String): String;
+// A fixed-scope setup must not be steered into the other scope by /ALLUSERS or
+// /CURRENTUSER: the install would then land in a scope its built-in default and
+// its silent path do not expect. Setup reads the mode from the command line
+// before the wizard exists and asks about it with a task dialog, so the options
+// are checked here as soon as the wizard is up.
+procedure InitializeWizard();
+var
+  Wanted: String;
+  Requested: String;
 begin
-  if IsUpgrade() then
-    Result := 'Setup upgrades the existing SwiftDM install and keeps its '
-              + 'install scope.'
-  else
-    Result := 'Choose whether SwiftDM is installed for you only, or for everyone '
-              + 'who uses this PC.';
+  Wanted := '{#InstallScope}';
+  if (Wanted <> 'user') and (Wanted <> 'machine') then exit;
+  Requested := CommandLineScopeOption();
+  if Requested = '' then exit;
+  if (Requested = 'admin') = (Wanted = 'machine') then exit;
+  MsgBox('This SwiftDM setup is built to install for {#ScopeText}; drop the '
+         + '/ALLUSERS or /CURRENTUSER option and run it again.', mbError, MB_OK);
+  Abort;
 end;
 
 // Called while installing, so the scope is the one the setup settled on.
@@ -145,25 +153,15 @@ begin
     Result := 'user';
 end;
 
-function ScopeRegistryRoot(Param: String): String;
-begin
-  // During uninstall IsAdminInstallMode reports the scope the install was made
-  // in, so this keeps pointing at the key of that install.
-  if IsAdminInstallMode() then
-    Result := 'HKLM'
-  else
-    Result := 'HKCU';
-end;
-
 // Is SwiftDM recorded as installed under Root, i.e. in that scope?
-function IsInstalledFor(const Root: Integer): Boolean;
+function IsInstalledFor(const Root: HKEY): Boolean;
 var
   Recorded: String;
 begin
   Result := RegQueryStringValue(Root, '{#ScopeKey}', 'InstallScope', Recorded);
 end;
 
-function RegisteredPath(const Root: Integer): String;
+function RegisteredPath(const Root: HKEY): String;
 begin
   if not RegQueryStringValue(Root, '{#ScopeKey}', 'InstallPath', Result) then
     Result := '';
@@ -196,7 +194,7 @@ end;
 
 // Runs the uninstaller of the install in the other scope and waits for it.
 // Message explains what went wrong when Result is False.
-function RemoveOtherScope(const Root: Integer; const OtherPath: String;
+function RemoveOtherScope(const Root: HKEY; const OtherPath: String;
   out Message: String): Boolean;
 var
   Uninstaller: String;
@@ -264,36 +262,29 @@ begin
 end;
 
 // A setup compiled for a fixed scope must not be steered into the other scope by
-// /ALLUSERS or /CURRENTUSER on its command line. UserInfoInstallMode is only
-// valid once the wizard runs, so the check happens before the first page.
-procedure InitializeWizard();
+// /ALLUSERS or /CURRENTUSER on its command line. Setup keeps the non-internal
+// parameters in ParamStr, so they are checked directly.
+function CommandLineScopeOption(): String;
 var
-  RequestedAdmin: Boolean;
+  I: Integer;
+  Param: String;
 begin
-  if '{#InstallScope}' = 'ask' then exit;
-  RequestedAdmin := UserInfoInstallMode = imAdmin;
-  if RequestedAdmin = ('{#InstallScope}' = 'machine') then exit;
-  MsgBox('This SwiftDM setup is built to install for a fixed scope only, but it '
-         + 'was started with /ALLUSERS or /CURRENTUSER. Run it again without '
-         + 'that option.', mbError, MB_OK);
-  Abort;
+  Result := '';
+  for I := 1 to ParamCount do begin
+    Param := ParamStr(I);
+    if SameText(Param, '/ALLUSERS') then
+      Result := 'admin'
+    else if SameText(Param, '/CURRENTUSER') then
+      Result := 'lowest';
+  end;
 end;
 
-// The install-mode page names the choice; an upgrade cannot change the scope of
-// the install it replaces, so the page says that instead.
-procedure CurPageChanged(CurPageID: Integer);
-begin
-  if CurPageID <> wpSelectDir then exit;
-  if not IsUpgrade() then exit;
-  WizardForm.InstallModePageLabel.Caption := InstallModePageLabel('');
-end;
-
-// The install-mode page is left behind before the directory page, so from there
-// on the chosen scope is known: that is where the other scope is checked, before
+// The scope is settled before the wizard runs, so the directory page is the first
+// point where it is safe to look for an install in the other scope, before
 // anything is written.
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  OtherRoot: Integer;
+  OtherRoot: HKEY;
   OtherDesc: String;
   OtherPath: String;
   Message: String;
