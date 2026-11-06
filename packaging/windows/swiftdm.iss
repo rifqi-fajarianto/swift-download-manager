@@ -125,6 +125,24 @@ begin
   Result := FileExists(ExpandConstant('{app}\unins000.exe'));
 end;
 
+// A setup compiled for a fixed scope must not be steered into the other scope by
+// /ALLUSERS or /CURRENTUSER on its command line. Setup keeps the non-internal
+// parameters in ParamStr, so they are checked directly.
+function CommandLineScopeOption(): String;
+var
+  I: Integer;
+  Param: String;
+begin
+  Result := '';
+  for I := 1 to ParamCount do begin
+    Param := ParamStr(I);
+    if SameText(Param, '/ALLUSERS') then
+      Result := 'admin'
+    else if SameText(Param, '/CURRENTUSER') then
+      Result := 'lowest';
+  end;
+end;
+
 // A fixed-scope setup must not be steered into the other scope by /ALLUSERS or
 // /CURRENTUSER: the install would then land in a scope its built-in default and
 // its silent path do not expect. Setup reads the mode from the command line
@@ -260,24 +278,6 @@ begin
   end;
 
   Result := True;
-end;
-
-// A setup compiled for a fixed scope must not be steered into the other scope by
-// /ALLUSERS or /CURRENTUSER on its command line. Setup keeps the non-internal
-// parameters in ParamStr, so they are checked directly.
-function CommandLineScopeOption(): String;
-var
-  I: Integer;
-  Param: String;
-begin
-  Result := '';
-  for I := 1 to ParamCount do begin
-    Param := ParamStr(I);
-    if SameText(Param, '/ALLUSERS') then
-      Result := 'admin'
-    else if SameText(Param, '/CURRENTUSER') then
-      Result := 'lowest';
-  end;
 end;
 
 // The scope is settled before the wizard runs, so the directory page is the first
