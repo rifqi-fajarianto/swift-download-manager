@@ -173,6 +173,13 @@ are our own choices where the original is UNKNOWN (E23).
   speed is 0. The engine reports progress every 50 ms and samples the speed
   over a 200 ms window; the UI has no timer of its own, so the table and the
   progress window repaint at up to 20 Hz.
+- The speed is reported on every transfer path, not only for ranged HTTP: a
+  server that omits `Content-Length` (chunked streaming), FTP transfers, and
+  HLS all report a rate. The sequential paths sample the bytes written inside
+  `stream_download`, and HLS samples its aggregate byte count across segments so
+  the value does not drop to zero at every segment boundary. Unknown-size
+  downloads still show no Remaining Time, because that needs a total
+  (0.22.12).
 
 ## 7. Scheduling and limits (0.19.0)
 

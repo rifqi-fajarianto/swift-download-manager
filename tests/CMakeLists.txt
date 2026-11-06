@@ -51,6 +51,10 @@ if(NODE_EXECUTABLE)
         COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_logic.js")
     add_test(NAME extension_popup
         COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_popup.js")
+    # The release ZIP is built by the same helper the workflow runs, so this
+    # test guards the archive layout users load with "Load unpacked".
+    add_test(NAME extension_package
+        COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_package.js")
 endif()
 
 if(SWIFTSDM_BUILD_UI)

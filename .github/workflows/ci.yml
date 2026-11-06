@@ -57,7 +57,7 @@ jobs:
         shell: msys2 {0}
         run: |
           tests="$(ctest --test-dir build -N)"
-          for name in extension_logic extension_popup; do
+          for name in extension_logic extension_popup extension_package; do
             if ! echo "$tests" | grep -q " ${name}$"; then
               echo "::error::${name} is not registered; nodejs is probably missing"
               exit 1
@@ -138,7 +138,7 @@ jobs:
       - name: Verify that the extension tests are registered
         run: |
           tests="$(ctest --test-dir build -N)"
-          for name in extension_logic extension_popup; do
+          for name in extension_logic extension_popup extension_package; do
             if ! echo "$tests" | grep -q " ${name}$"; then
               echo "::error::${name} is not registered; nodejs is probably missing"
               exit 1

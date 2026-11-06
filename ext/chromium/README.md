@@ -22,6 +22,42 @@ the app cannot be reached) and a pill with the connection state; the two
 toggles are switch rows, and the detected media are listed as rows in their own
 group.
 
+## Install from a release
+
+Every `vX.Y.Z` release on the GitHub releases page carries
+`swiftdm-chromium-extension-<version>.zip`. That archive is the extension
+directory itself, so no build and no checkout of this repository is needed:
+
+1. Download the ZIP and extract it to a folder you keep, for example
+   `~/swiftdm-extension`. Extract it *as a folder*: the browser needs a
+   directory, not the archive.
+2. Open the browser's extensions page (`chrome://extensions`,
+   `edge://extensions`, `brave://extensions`), enable **Developer mode**, and
+   choose **Load unpacked**. Select the folder that contains `manifest.json`.
+3. Start SwiftDM and use the popup or the right-click actions as described
+   below.
+
+Chromium keeps a permission grant per install location, so keep the folder in
+place after installing. Moving or deleting it makes the browser drop the
+extension on the next start, and reinstalling from the new path needs the
+`downloads`/`webRequest` permissions to be accepted again. The archive also
+appears in the release's `SHA256SUMS`, and its build provenance can be checked
+with `gh attestation verify swiftdm-chromium-extension-*.zip --repo
+<owner>/<repo>`.
+
+### Why there is no `.crx`
+
+Dragging a `.crx` onto `chrome://extensions` does not work with a self-signed
+package: current Chrome builds require a proof that only a Chrome Web Store
+listing provides and refuse the file with `CRX_REQUIRED_PROOF_MISSING`. Even a
+correctly signed CRX is refused on Windows and macOS, which only accept
+extensions from the store; local CRX files are a Linux-only route through the
+external-extension preferences file, or an enterprise policy on managed
+machines. That is why the release ships the unpacked ZIP instead, and why the
+`key` field in `manifest.json` matters: it pins the ID
+(`hagednkleljjijmjonpeiokknhngknbb`) that the application accepts, so the
+extension keeps the same identity in every extracted folder.
+
 ## Install for development
 
 1. Build and start SwiftDM. The app listens on `127.0.0.1:10007` while its GUI
@@ -134,5 +170,5 @@ downloader does not retain.
   manual dialog and CLI accept FTP URLs directly.
 - `showPanel` and `getVersion` protocol commands are implemented server-side;
   this initial extension does not expose a separate panel UI.
-- Extension store packaging/signing and persistent install instructions are
-  not part of this development build.
+- Extension store packaging/signing is not part of this build; the release ZIP
+  above is the supported way to install the extension without a store listing.

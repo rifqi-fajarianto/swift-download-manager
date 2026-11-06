@@ -209,8 +209,10 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
 
     ProgressInfo info;
     info.total = probe.content_length;
+    double stream_speed = 0.0;
     auto progress = [&](uint64_t done) -> bool {
         info.done = done;
+        info.speed_bps = stream_speed;
         info.percent = percent_of(done, probe.content_length);
         return on_progress ? on_progress(info) : true;
     };
@@ -218,7 +220,7 @@ DownloadResult run_ftp(const HttpOptions& options, const ProbeResult& probe,
     std::string transfer_error;
     const TransferOutcome outcome =
         stream_download(options, fd, progress, &written, &transfer_error, resume_from,
-                        bandwidth_limit);
+                        bandwidth_limit, &stream_speed);
     sync_file(fd);
     close_file(fd);
 
@@ -387,6 +389,33 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         out << index;
     };
 
+    // Speed across segments. A per-request speed would drop to zero at every
+    // segment boundary, so the aggregate byte count is sampled here instead,
+    // over the same 200 ms window and smoothing the other transfer paths use.
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point started = Clock::now();
+    auto elapsed_ms = [&started](Clock::time_point t) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(t - started).count();
+    };
+    constexpr int64_t kSegmentSpeedSampleMs = 200;
+    int64_t last_sample_ms = 0;
+    uint64_t last_sampled_bytes = bytes_done;
+    double aggregate_speed = 0.0;
+    const auto sample_speed = [&](uint64_t done) {
+        const int64_t now = elapsed_ms(Clock::now());
+        const int64_t dt_ms = now - last_sample_ms;
+        if (dt_ms < kSegmentSpeedSampleMs) return;
+        const double dt = static_cast<double>(dt_ms) / 1000.0;
+        const double inst = static_cast<double>(done - last_sampled_bytes) / dt;
+        aggregate_speed = (aggregate_speed == 0.0) ? inst : (0.6 * aggregate_speed + 0.4 * inst);
+        last_sampled_bytes = done;
+        last_sample_ms = now;
+    };
+    const auto report = [&]() -> bool {
+        info.speed_bps = aggregate_speed;
+        return on_progress ? on_progress(info) : true;
+    };
+
     std::string transfer_error;
     bool paused = false;
     bool failed = false;
@@ -397,11 +426,15 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         const TransferOutcome outcome =
             stream_download(segment_options, fd,
                             [&](uint64_t) -> bool {
-                                return on_progress ? on_progress(info) : true;
+                                sample_speed(bytes_done + written_here);
+                                return report();
                             },
                             &written_here, &transfer_error, 0, bandwidth_limit);
         bytes_done += written_here;
         info.done = bytes_done;
+        // The last sample lands before the final byte, so the next segment
+        // starts measuring from the true total rather than trailing behind.
+        sample_speed(bytes_done);
         if (outcome == TransferOutcome::Completed) return true;
         if (outcome == TransferOutcome::Paused) {
             paused = true;
@@ -413,7 +446,7 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
 
     // Report the starting state first so a pause request stops before any
     // network I/O.
-    if (on_progress && !on_progress(info)) paused = true;
+    if (!report()) paused = true;
 
     if (!paused && !failed && next_index == 0 && !playlist.init_segment.empty()) {
         if (!fetch_one(playlist.init_segment)) {
@@ -425,11 +458,15 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
         next_index = i + 1;
         info.percent = static_cast<int>(percent_of(next_index, playlist.segments.size()));
         save_progress(next_index);
-        if (on_progress && !on_progress(info)) {
+        if (!report()) {
             paused = true;
             break;
         }
     }
+    // The transfer is over: report the final byte count with no rate, so the
+    // Bandwidth column does not keep showing a stale speed until finished().
+    info.speed_bps = 0.0;
+    if (on_progress) on_progress(info);
     sync_file(fd);
     close_file(fd);
     save_progress(next_index);
@@ -841,16 +878,21 @@ DownloadResult DownloadEngine::run(
             return result;
         }
         ProgressInfo info;
+        // A server that omits Content-Length still transfers bytes at a real
+        // rate. stream_download samples it; without this the Bandwidth column
+        // stayed empty for exactly those downloads.
+        double stream_speed = 0.0;
         auto progress = [&](uint64_t done) -> bool {
             info.done = done;
             info.percent = 0;
+            info.speed_bps = stream_speed;
             return on_progress ? on_progress(info) : true;
         };
         uint64_t written = 0;
         std::string transfer_error;
         const TransferOutcome outcome =
             stream_download(options, fd, progress, &written, &transfer_error, 0,
-                            bandwidth_limit);
+                            bandwidth_limit, &stream_speed);
         sync_file(fd);
         close_file(fd);
 

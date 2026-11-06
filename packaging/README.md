@@ -51,7 +51,7 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.22.10_amd64.deb
+sudo apt install ./build/swiftdm_0.22.13_amd64.deb
 ```
 
 `apt` resolves only the runtime dependencies (`libqt6*`, `libcurl4t64`,
@@ -64,7 +64,7 @@ Chromium-based browser (Chrome, Chromium, Edge, Brave).
 Confirm that the generated package has no browser or printer recommendations:
 
 ```sh
-dpkg-deb -f build/swiftdm_0.22.10_amd64.deb Depends Recommends Suggests
+dpkg-deb -f build/swiftdm_0.22.13_amd64.deb Depends Recommends Suggests
 ```
 
 `Recommends` and `Suggests` should be empty. Use `--no-install-recommends`
@@ -90,7 +90,12 @@ only picked up from `/usr/share`.
 - The launcher entry appears in the application menu as **SwiftDM**.
 - The browser extension lives in `/usr/share/swiftdm/chromium`. Load it from
   `chrome://extensions` with **Load unpacked**, or keep using the checkout in
-  `ext/chromium` while developing.
+  `ext/chromium` while developing. Release pages carry the same files as
+  `swiftdm-chromium-extension-<version>.zip`, which is the route to use when
+  SwiftDM was installed from the portable ZIP or the installer instead of the
+  `.deb`. Build that archive with `node tools/extension_pack.mjs zip --out
+  extension.zip`; it keeps `manifest.json` at the archive root so the extracted
+  folder loads directly.
 - Closing the main window hides the app in the tray; quit from the tray menu.
 
 ## 6. Windows packages
@@ -105,12 +110,34 @@ cd build-win && cpack                                     # swiftdm-<version>-wi
 cmake --build . --target windows-installer                # swiftdm-<version>-win64-setup.exe
 ```
 
-Both artifacts are written to the build directory. The installer is per-user
-(`%LOCALAPPDATA%\Programs\SwiftDM`) so it needs no administrator rights and
-matches the `%APPDATA%`/`%LOCALAPPDATA%` paths the app uses for config and data.
+Both artifacts are written to the build directory. The installer asks who the
+app is installed for:
+
+| Choice | Install directory | Shortcuts | Elevation |
+|---|---|---|---|
+| **Only for me** (default) | `%LOCALAPPDATA%\Programs\SwiftDM` | current user | none |
+| **All users** | `Program Files\SwiftDM` | all users | UAC prompt |
+
+The per-user default needs no administrator rights and matches the
+`%APPDATA%`/`%LOCALAPPDATA%` paths the app uses for config and data. Either way
+the app config stays per Windows account and the startup entry stays under
+`HKCU\...\Run`, so each user turns autostart on for themselves.
+
+Silent installs take `/CURRENTUSER` or `/ALLUSERS`; without either the per-user
+default applies. The setup records the installed scope under `Software\SwiftDM`
+(HKCU or HKLM, removed on uninstall). Installing for one scope while the other
+scope has SwiftDM offers to uninstall that copy first; declining installs anyway,
+so both scopes can coexist (each with its own shortcuts and uninstall entry, but
+a shared single-instance state). An upgrade keeps the scope of the install it
+replaces.
+
+`cmake --build . --target windows-installer-machine` builds a setup pinned to the
+all-users scope (`/DInstallScope=machine`, same output name) for scripted
+rollouts; it skips the question and rejects `/CURRENTUSER`.
+
 No code signing is set up yet, so Windows SmartScreen warns before running an
 unsigned installer or executable. The script lives in
-`packaging/windows/swiftdm.iss`; CMake skips the target when `ISCC.exe` is not
+`packaging/windows/swiftdm.iss`; CMake skips the targets when `ISCC.exe` is not
 found.
 
 ## Regenerating icons

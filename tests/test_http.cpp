@@ -884,6 +884,43 @@ void test_chunked_unknown_size(const std::string& dir, testutil::TestHttpServer&
     CHECK(file_matches(result.path, 300000));
 }
 
+// A server that omits Content-Length still transfers bytes at a real rate, so
+// the engine must report one. The transfer is throttled so it spans several
+// 200 ms speed windows instead of finishing inside the first one.
+void test_chunked_reports_speed(const std::string& dir, testutil::TestHttpServer& server) {
+    const Settings settings = test_settings(dir);
+    DownloadEngine engine(settings);
+
+    constexpr uint64_t kSize = 1u << 20;
+    DownloadRequest req;
+    req.url = server.base_url() + "/chunked/" + std::to_string(kSize);
+    req.bandwidth_limit_enabled = true;
+    req.bandwidth_limit_kbps = 256;  // ~4 s for 1 MiB, so sampling runs
+
+    double peak_speed = 0.0;
+    uint64_t reported_total = 1;
+    size_t speed_reports = 0;
+    const auto result = engine.run(req, [&](const ProgressInfo& info) {
+        reported_total = info.total;
+        if (info.speed_bps > 0.0) {
+            ++speed_reports;
+            peak_speed = std::max(peak_speed, info.speed_bps);
+        }
+        return true;
+    });
+
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK_EQ(result.size, kSize);
+    CHECK(file_matches(result.path, kSize));
+    // Still no total: only the speed is now available.
+    CHECK_EQ(reported_total, uint64_t(0));
+    CHECK(speed_reports > 0);
+    // The limiter caps the rate; the measurement must not invent a value far
+    // above it.
+    CHECK(peak_speed > 0.0);
+    CHECK(peak_speed < 4.0 * 256.0 * 1024.0);
+}
+
 // The speed limiter toggle is authoritative: on applies the value to the
 // sequential (unknown-size) path as well, off means unlimited no matter what
 // value is stored per download or in the settings. libcurl enforces the rate
@@ -1228,6 +1265,7 @@ int main() {
     test_retry_after_503(dir + "/retry-after", server);
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);
+    test_chunked_reports_speed(dir + "/chunked-speed", server);
     test_bandwidth_limit_toggle(dir + "/bandwidth-limit", server);
     test_live_bandwidth_limit(dir + "/live-bandwidth-limit", server);
     test_server_creation_date(dir + "/server-date", server);
