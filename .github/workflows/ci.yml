@@ -90,7 +90,7 @@ jobs:
           name: swiftdm-windows
           path: |
             build/*.zip
-            build/*-setup.exe
+            build/*-setup*.exe
           if-no-files-found: error
           retention-days: 14
 

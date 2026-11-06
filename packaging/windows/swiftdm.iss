@@ -43,6 +43,10 @@
 #ifndef InstallScope
   #define InstallScope "ask"
 #endif
+; Appended to the output name, so a pinned build does not overwrite the default.
+#ifndef OutputSuffix
+  #define OutputSuffix ""
+#endif
 #if InstallScope == "machine"
   #define DefaultPrivileges "admin"
   #define ScopeText "all users only"
@@ -79,7 +83,7 @@ WizardStyle=modern
 SetupIconFile={#SetupIcon}
 Compression=lzma2/max
 SolidCompression=yes
-OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup
+OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup{#OutputSuffix}
 UninstallDisplayIcon={app}\swiftdm.exe
 UninstallDisplayName=SwiftDM
 

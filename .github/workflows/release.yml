@@ -102,9 +102,7 @@ jobs:
       # separate name keeps the wizard-driven installer as the default download.
       - name: Build the all-users installer
         shell: msys2 {0}
-        run: |
-          cmake --build build --target windows-installer-machine
-          mv build/swiftdm-*-win64-setup.exe build/swiftdm-*-win64-setup-machine.exe
+        run: cmake --build build --target windows-installer-machine
 
       - name: Write the checksum file
         shell: msys2 {0}
@@ -112,7 +110,7 @@ jobs:
           cd build
           # sha256sum marks binary-mode entries with '*' and keeps the ./ prefix;
           # publish plain "hash  name" lines so the file matches the .deb entry.
-          sha256sum ./*.zip ./*-setup.exe | sed -E 's| [*]?\./| |' > SHA256SUMS
+          sha256sum ./*.zip ./*-setup*.exe | sed -E 's| [*]?\./| |' > SHA256SUMS
           cat SHA256SUMS
 
       - name: Upload the test log
@@ -130,7 +128,7 @@ jobs:
           name: swiftdm-windows
           path: |
             build/*.zip
-            build/*-setup.exe
+            build/*-setup*.exe
             build/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
@@ -346,7 +344,7 @@ jobs:
           subject-path: |
             build/*.deb
             windows/*.zip
-            windows/*-setup.exe
+            windows/*-setup*.exe
             extension/*.zip
 
       # The changelog is the source of truth for the release notes. Require the
@@ -387,7 +385,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe extension/*.zip"
+          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup*.exe extension/*.zip"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" $assets --clobber --repo "$repo"
             gh release edit "$tag" \

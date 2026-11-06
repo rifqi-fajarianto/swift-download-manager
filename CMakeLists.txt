@@ -267,7 +267,12 @@ if(SWIFTSDM_BUILD_UI)
             # asks the user.
             function(add_windows_installer target scope)
                 if(scope)
-                    set(scope_arg "/DInstallScope=${scope}")
+                    # A separate output name keeps the wizard-driven installer as
+                    # the default download and avoids renaming after the build.
+                    set(scope_arg
+                        "/DInstallScope=${scope}"
+                        "/DOutputSuffix=-${scope}"
+                    )
                 endif()
                 add_custom_target(${target}
                     COMMAND "${ISCC_EXECUTABLE}" /Qp
