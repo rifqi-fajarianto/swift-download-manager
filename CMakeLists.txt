@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.22.16
+    VERSION 0.22.17
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -256,38 +256,23 @@ if(SWIFTSDM_BUILD_UI)
         )
 
         # Inno Setup is optional: without it the build and the ZIP package still
-        # work, only the installer targets are missing. The setup asks whether to
-        # install for the current user or all users, so one installer serves both;
-        # windows-installer-machine builds the same setup pinned to the all-users
-        # scope, for scripted rollouts.
+        # work, only the windows-installer target is missing. The setup asks
+        # whether to install for the current user or all users, so this one
+        # installer serves both; a silent run picks with /CURRENTUSER or
+        # /ALLUSERS.
         find_program(ISCC_EXECUTABLE NAMES ISCC
             HINTS "C:/Program Files (x86)/Inno Setup 6" "C:/Program Files/Inno Setup 6")
         if(ISCC_EXECUTABLE)
-            # Only the pinned setup gets the scope, so the default installer still
-            # asks the user.
-            function(add_windows_installer target scope)
-                if(scope)
-                    # A separate output name keeps the wizard-driven installer as
-                    # the default download and avoids renaming after the build.
-                    set(scope_arg
-                        "/DInstallScope=${scope}"
-                        "/DOutputSuffix=-${scope}"
-                    )
-                endif()
-                add_custom_target(${target}
-                    COMMAND "${ISCC_EXECUTABLE}" /Qp
-                            "/DAppVersion=${PROJECT_VERSION}"
-                            "/DSourceDir=${SWIFTSDM_WINDOWS_DEPLOY_DIR}"
-                            ${scope_arg}
-                            "/O${CMAKE_CURRENT_BINARY_DIR}"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/swiftdm.iss"
-                    DEPENDS swiftdm
-                    COMMENT "Building the Windows installer"
-                    VERBATIM
-                )
-            endfunction()
-            add_windows_installer(windows-installer "")
-            add_windows_installer(windows-installer-machine machine)
+            add_custom_target(windows-installer
+                COMMAND "${ISCC_EXECUTABLE}" /Qp
+                        "/DAppVersion=${PROJECT_VERSION}"
+                        "/DSourceDir=${SWIFTSDM_WINDOWS_DEPLOY_DIR}"
+                        "/O${CMAKE_CURRENT_BINARY_DIR}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/swiftdm.iss"
+                DEPENDS swiftdm
+                COMMENT "Building the Windows installer"
+                VERBATIM
+            )
         endif()
     endif()
 

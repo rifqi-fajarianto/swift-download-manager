@@ -51,7 +51,7 @@ This writes `swiftdm_<version>_amd64.deb` into the build directory. Install it
 with:
 
 ```sh
-sudo apt install ./build/swiftdm_0.22.16_amd64.deb
+sudo apt install ./build/swiftdm_0.22.17_amd64.deb
 ```
 
 `apt` resolves only the runtime dependencies (`libqt6*`, `libcurl4t64`,
@@ -64,7 +64,7 @@ Chromium-based browser (Chrome, Chromium, Edge, Brave).
 Confirm that the generated package has no browser or printer recommendations:
 
 ```sh
-dpkg-deb -f build/swiftdm_0.22.16_amd64.deb Depends Recommends Suggests
+dpkg-deb -f build/swiftdm_0.22.17_amd64.deb Depends Recommends Suggests
 ```
 
 `Recommends` and `Suggests` should be empty. Use `--no-install-recommends`
@@ -131,13 +131,9 @@ so both scopes can coexist (each with its own shortcuts and uninstall entry, but
 a shared single-instance state). An upgrade keeps the scope of the install it
 replaces.
 
-`cmake --build . --target windows-installer-machine` builds a setup pinned to the
-all-users scope (`/DInstallScope=machine`, same output name) for scripted
-rollouts; it skips the question and rejects `/CURRENTUSER`.
-
 No code signing is set up yet, so Windows SmartScreen warns before running an
 unsigned installer or executable. The script lives in
-`packaging/windows/swiftdm.iss`; CMake skips the targets when `ISCC.exe` is not
+`packaging/windows/swiftdm.iss`; CMake skips the target when `ISCC.exe` is not
 found.
 
 ## Regenerating icons

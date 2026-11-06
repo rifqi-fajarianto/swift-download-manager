@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.22.17" date="2026-11-08">
+      <description>
+        <p>The release ships a single Windows installer again: it already asks whether to install for the current user or all users, so the separate all-users download was removed. No application behaviour changed.</p>
+      </description>
+    </release>
     <release version="0.22.16" date="2026-11-08">
       <description>
         <p>Completes the Windows packaging fix: the all-users installer now gets its own output name from the build, so the release job publishes both installers. No application behaviour changed.</p>

@@ -7,7 +7,7 @@
 ; Build from the build directory (see CMakeLists.txt):
 ;   cmake --build build --target windows-installer
 ; Build by hand:
-;   ISCC /DAppVersion=0.22.16 /DSourceDir=..\windows-deploy
+;   ISCC /DAppVersion=0.22.17 /DSourceDir=..\windows-deploy
 ;
 ; The setup asks who the app is installed for. The default is a per-user install
 ; in %LOCALAPPDATA%\Programs, which needs no administrator rights and matches the
@@ -19,12 +19,8 @@
 ; the single-instance state, so both copies never run at once. The setup records
 ; the scope under Software\SwiftDM (HKCU or HKLM) and, when a fresh install finds
 ; SwiftDM in the other scope, offers to remove that copy first; declining keeps it.
-; Upgrades stay in the scope they were installed in.
-;
-; A fixed scope can be compiled in for scripted builds:
-;   ISCC /DInstallScope=machine ...
-; or /DInstallScope=user. Such a setup skips the question and rejects the
-; opposite /ALLUSERS or /CURRENTUSER option.
+; Upgrades stay in the scope they were installed in. Scripted installs pick the
+; scope with /CURRENTUSER or /ALLUSERS.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -39,21 +35,9 @@
   #define SetupIcon "..\..\ui-assets\app-icon\main.ico"
 #endif
 
-; "ask" (default) lets Setup ask who to install for; "user" and "machine" pin it.
-#ifndef InstallScope
-  #define InstallScope "ask"
-#endif
-; Appended to the output name, so a pinned build does not overwrite the default.
-#ifndef OutputSuffix
-  #define OutputSuffix ""
-#endif
-#if InstallScope == "machine"
-  #define DefaultPrivileges "admin"
-  #define ScopeText "all users only"
-#else
-  #define DefaultPrivileges "lowest"
-  #define ScopeText "the current user only"
-#endif
+; `lowest` makes the per-user install the default; PrivilegesRequiredOverridesAllowed
+; below lets the install-mode prompt (and /ALLUSERS, /CURRENTUSER) switch to admin.
+#define DefaultPrivileges "lowest"
 
 ; Shared by the [Registry] entries and the uninstall lookup in [Code].
 #define ScopeKey "Software\SwiftDM"
@@ -73,8 +57,8 @@ DefaultDirName={autopf}\SwiftDM
 DefaultGroupName=SwiftDM
 DisableProgramGroupPage=yes
 ; `lowest` is the per-user default, so an unsigned setup raises no UAC prompt.
-; The overrides let the install-mode page (and /ALLUSERS, /CURRENTUSER) switch to
-; `admin`, which the /DInstallScope=machine build pins through the define above.
+; The overrides let the install-mode prompt (and /ALLUSERS, /CURRENTUSER) switch
+; to `admin` for an all-users install.
 PrivilegesRequired={#DefaultPrivileges}
 PrivilegesRequiredOverridesAllowed=dialog commandline
 ArchitecturesAllowed=x64compatible
@@ -83,7 +67,7 @@ WizardStyle=modern
 SetupIconFile={#SetupIcon}
 Compression=lzma2/max
 SolidCompression=yes
-OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup{#OutputSuffix}
+OutputBaseFilename=swiftdm-{#AppVersion}-win64-setup
 UninstallDisplayIcon={app}\swiftdm.exe
 UninstallDisplayName=SwiftDM
 
@@ -127,44 +111,6 @@ const
 function IsUpgrade(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{app}\unins000.exe'));
-end;
-
-// A setup compiled for a fixed scope must not be steered into the other scope by
-// /ALLUSERS or /CURRENTUSER on its command line. Setup keeps the non-internal
-// parameters in ParamStr, so they are checked directly.
-function CommandLineScopeOption(): String;
-var
-  I: Integer;
-  Param: String;
-begin
-  Result := '';
-  for I := 1 to ParamCount do begin
-    Param := ParamStr(I);
-    if SameText(Param, '/ALLUSERS') then
-      Result := 'admin'
-    else if SameText(Param, '/CURRENTUSER') then
-      Result := 'lowest';
-  end;
-end;
-
-// A fixed-scope setup must not be steered into the other scope by /ALLUSERS or
-// /CURRENTUSER: the install would then land in a scope its built-in default and
-// its silent path do not expect. Setup reads the mode from the command line
-// before the wizard exists and asks about it with a task dialog, so the options
-// are checked here as soon as the wizard is up.
-procedure InitializeWizard();
-var
-  Wanted: String;
-  Requested: String;
-begin
-  Wanted := '{#InstallScope}';
-  if (Wanted <> 'user') and (Wanted <> 'machine') then exit;
-  Requested := CommandLineScopeOption();
-  if Requested = '' then exit;
-  if (Requested = 'admin') = (Wanted = 'machine') then exit;
-  MsgBox('This SwiftDM setup is built to install for {#ScopeText}; drop the '
-         + '/ALLUSERS or /CURRENTUSER option and run it again.', mbError, MB_OK);
-  Abort;
 end;
 
 // Called while installing, so the scope is the one the setup settled on.

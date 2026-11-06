@@ -78,19 +78,13 @@ jobs:
         shell: msys2 {0}
         run: cmake --build build --target windows-installer
 
-      # The same script compiled with a pinned scope, so a broken
-      # /DInstallScope branch fails here instead of in the release run.
-      - name: Build the all-users installer
-        shell: msys2 {0}
-        run: cmake --build build --target windows-installer-machine
-
       - name: Upload Windows packages
         uses: actions/upload-artifact@v7
         with:
           name: swiftdm-windows
           path: |
             build/*.zip
-            build/*-setup*.exe
+            build/*-setup.exe
           if-no-files-found: error
           retention-days: 14
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.22.17 — 2026-11-08
+
+The release no longer ships a second Windows installer.
+
+- 0.22.16 published both `swiftdm-<version>-win64-setup.exe` and a
+  `-setup-machine.exe` pinned to the all-users scope. The default installer
+  already asks whether to install for the current user or all users, and scripted
+  installs already choose with `/CURRENTUSER` or `/ALLUSERS`, so the second
+  download only made the release page ambiguous. The pinned build, its CMake
+  target `windows-installer-machine`, the `/DInstallScope` and `/DOutputSuffix`
+  defines and the script's command-line scope guard are gone; the checksum,
+  artifact and release-asset patterns are back to `*-setup.exe`.
+- No application behaviour changed: the single installer still offers both scopes
+  and still records the chosen one.
+
 ## 0.22.16 — 2026-11-08
 
 Completes the Windows packaging fix. 0.22.15 built both installers but the
