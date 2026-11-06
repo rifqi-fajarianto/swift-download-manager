@@ -7,7 +7,7 @@
 ; Build from the build directory (see CMakeLists.txt):
 ;   cmake --build build --target windows-installer
 ; Build by hand:
-;   ISCC /DAppVersion=0.22.15 /DSourceDir=..\windows-deploy
+;   ISCC /DAppVersion=0.22.16 /DSourceDir=..\windows-deploy
 ;
 ; The setup asks who the app is installed for. The default is a per-user install
 ; in %LOCALAPPDATA%\Programs, which needs no administrator rights and matches the

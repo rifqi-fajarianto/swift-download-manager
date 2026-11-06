@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.22.16 — 2026-11-08
+
+Completes the Windows packaging fix. 0.22.15 built both installers but the
+release job still failed before publishing.
+
+- The pinned all-users setup was renamed with a glob as the `mv` destination,
+  which writes a literal file named `swiftdm-*-win64-setup-machine.exe`; the
+  checksum step then found no installer at all. The pinned build now gets its
+  name from CMake (`/DOutputSuffix=-machine`), so nothing is renamed, and the
+  checksum, artifact and release-asset patterns cover `*-setup*.exe` so they
+  include both installers.
+- No application behaviour changed since 0.22.13.
+
 ## 0.22.15 — 2026-11-08
 
 Fixes the Windows installer build again. The release run for 0.22.14 stopped at
