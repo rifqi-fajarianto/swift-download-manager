@@ -173,14 +173,14 @@ begin
 end;
 
 // Is SwiftDM recorded as installed under Root, i.e. in that scope?
-function IsInstalledFor(const Root: HKEY): Boolean;
+function IsInstalledFor(const Root: Integer): Boolean;
 var
   Recorded: String;
 begin
   Result := RegQueryStringValue(Root, '{#ScopeKey}', 'InstallScope', Recorded);
 end;
 
-function RegisteredPath(const Root: HKEY): String;
+function RegisteredPath(const Root: Integer): String;
 begin
   if not RegQueryStringValue(Root, '{#ScopeKey}', 'InstallPath', Result) then
     Result := '';
@@ -213,7 +213,7 @@ end;
 
 // Runs the uninstaller of the install in the other scope and waits for it.
 // Message explains what went wrong when Result is False.
-function RemoveOtherScope(const Root: HKEY; const OtherPath: String;
+function RemoveOtherScope(const Root: Integer; const OtherPath: String;
   out Message: String): Boolean;
 var
   Uninstaller: String;
@@ -285,7 +285,7 @@ end;
 // anything is written.
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  OtherRoot: HKEY;
+  OtherRoot: Integer;
   OtherDesc: String;
   OtherPath: String;
   Message: String;
