@@ -119,7 +119,8 @@ const
 
 // Is this setup upgrading an existing SwiftDM install? Releases up to 0.22.12
 // recorded no scope, so an uninstaller in the install directory is the marker
-// they left behind; newer installs are recognised by Inno through their AppId.function IsUpgrade(): Boolean;
+// they left behind; newer installs are recognised by Inno through their AppId.
+function IsUpgrade(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{app}\unins000.exe'));
 end;
