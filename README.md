@@ -79,14 +79,14 @@ Neat Download Manager.
   or the login entry brings the running window forward instead of opening a
   second one, and `swiftdm get` refuses while the app is running.
 - Download from the command line without opening the GUI.
-- Preview integration with the Chromium extension: send links or pages,
-  intercept HTTP(S) downloads, and detect playlists/media pairs.
+- Preview integration with the Chromium and Firefox extensions: send links or
+  pages, intercept HTTP(S) downloads, and detect playlists/media pairs.
 - Browser download confirmations appear while link metadata is checked; the
   initial transfer reuses that probe instead of repeating network checks.
 - Resolve supported Google Drive download link formats.
 
-> Note: a Firefox extension and muxing paired audio/video tracks are not
-> available yet. The Chromium extension is a development preview. See the
+> Note: muxing paired audio/video tracks into one file is not available yet.
+> Both extensions are development previews. See the
 > [parity checklist](docs/spec/06-parity-checklist.md) for feature status and
 > limitations.
 
@@ -122,7 +122,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.22.17_amd64.deb
+sudo apt install ./swiftdm_0.23.0_amd64.deb
 ```
 
 ```sh
@@ -225,10 +225,10 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.22.17 is the port tracking `main` (a Windows installer that
+full list. Version 0.23.0 is the port tracking `main` (a Windows installer that
 asks whether to install for the current user or all users, speed for downloads of
-unknown size, FTP and HLS, the Chromium extension as a release asset, the
-single-instance guard for the shortcut, terminal start and
+unknown size, FTP and HLS, the Chromium and Firefox extensions as release assets,
+the single-instance guard for the shortcut, terminal start and
 login entry, connection-limit aware parallel plan, redownload from the item
 context menu, the context-menu dismissal fix, refresh download address, a 50 ms
 progress refresh, per-category custom folders, window geometry, per-download
@@ -240,16 +240,19 @@ Windows 10 are still manual.
 
 CI runs the Linux build and test sequence above on Debian 13 for pull requests
 and pushes to `main`. Pushing a `vX.Y.Z` tag publishes the matching `.deb`
-package, the Windows portable ZIP, the Windows installer, and the Chromium
-extension as an unpacked ZIP (`swiftdm-chromium-extension-<version>.zip`) to
-GitHub Releases; a `workflow_dispatch` run with `dry_run` enabled builds and
-tests both platforms without publishing. The release checklist is in
-[`AGENTS.md`](AGENTS.md).
+package, the Windows portable ZIP, the Windows installer, and both browser
+extensions as unpacked ZIPs (`swiftdm-chromium-extension-<version>.zip` and
+`swiftdm-firefox-extension-<version>.zip`) to GitHub Releases; a
+`workflow_dispatch` run with `dry_run` enabled builds and tests both platforms
+without publishing. The release checklist is in [`AGENTS.md`](AGENTS.md).
 
-The extension ZIP installs without a build: extract it, then use **Load
-unpacked** in `chrome://extensions`. The browser integration section of
-[`ext/chromium/README.md`](ext/chromium/README.md) explains why the release
-ships an unpacked archive instead of a `.crx`.
+The Chromium ZIP installs without a build: extract it, then use **Load unpacked**
+in `chrome://extensions`. The Firefox ZIP is loaded from `about:debugging` for the
+session, and the release also publishes a Mozilla-signed `.xpi` when the AMO API
+secrets are configured, which is the only way to install the add-on permanently.
+Both guides explain why the release ships unpacked archives instead of a `.crx`:
+[`ext/chromium/README.md`](ext/chromium/README.md) and
+[`ext/firefox/README.md`](ext/firefox/README.md).
 
 ## Application data
 
@@ -283,5 +286,6 @@ and maintaining these icons.
 
 - [Specifications and feature status](docs/spec/06-parity-checklist.md)
 - [Chromium extension guide](ext/chromium/README.md)
+- [Firefox extension guide](ext/firefox/README.md)
 - [Packaging guide](packaging/README.md)
 - [Changelog](CHANGELOG.md)

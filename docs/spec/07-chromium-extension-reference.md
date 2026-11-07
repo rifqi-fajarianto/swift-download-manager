@@ -18,7 +18,7 @@ Nothing in this document overrides `04-protocols.md`; our protocol stays
 | Original extension | `binary-original/original-chromium-extension/1.9.91_0/` — *NeatDownloadManager Extension* v1.9.91 (Manifest V3), Edge store build; author "Javad Motallebi" |
 | Files | `manifest.json`; `bg.js` (service worker, 19.7 KB minified); `ct.js` (content script, 17 KB minified); `img/`; `_metadata/` (store hashes) |
 | Original application | `binary-original/original-windows-binary/NeatDM.exe`, SHA-256 `60b06db7dfeb6fffb1be82f8ad059d61bdb1b1a3889439b56eaac162e64c0f37` |
-| Our extension | `ext/chromium/` (v0.2.0) — see `ext/chromium/README.md` |
+| Our extensions | `ext/shared/` (single source) assembled into `ext/chromium/` and `ext/firefox/` (v0.6.0) — see `ext/chromium/README.md` and `ext/firefox/README.md` |
 | Our app side | `src/ui/browser_integration.cpp` (`swiftdm.v1`, JSON envelope) |
 | Evidence | E27–E37 in `evidence-ledger.md` (extension source lines + REA IDs) |
 
@@ -318,7 +318,9 @@ selected, record the decision here and implement it against this document and
 - `04-protocols.md` §3 — our `swiftdm.v1` protocol and its rationale.
 - `06-parity-checklist.md` §v2 — status of browser integration.
 - `evidence-ledger.md` E27–E37 — evidence rows for this document.
-- `ext/chromium/README.md` — our extension's install steps and limitations.
+- `ext/chromium/README.md` — the Chromium extension's install steps and limitations.
+- `ext/firefox/README.md` — the Firefox build's install steps (unpacked ZIP, signed
+  XPI), Firefox permissions and limitations.
 
 ## 10. Decision log
 

@@ -1,9 +1,9 @@
 # SwiftDM Chromium extension
 
-Initial integration supports Chromium-based browsers (Chrome, Chromium, Edge,
-Brave) using Manifest V3. SwiftDM does not depend on a browser package: the
-`.deb` only installs these extension files, and any supported browser can host
-the extension. It adds right-click actions for a link or the current page and a
+Integration for Chromium-based browsers (Chrome, Chromium, Edge, Brave) using
+Manifest V3. SwiftDM does not depend on a browser package: the `.deb` only
+installs these extension files, and any supported browser can host the
+extension. It adds right-click actions for a link or the current page and a
 popup button for the current page. Automatic HTTP(S) download
 interception is enabled by default and can be switched off from the extension
 popup, which keeps new downloads in the browser while the manual actions still
@@ -13,14 +13,32 @@ a grayscale variant while it is off. The popup shows the app's live status
 current tab: HLS (`.m3u8`) playlists and adaptive video+audio track pairs, each
 downloadable with one click.
 
+The Firefox build is [`../firefox/`](../firefox/README.md) and behaves the same
+way. Both extensions are assembled from one set of sources in `../shared/`
+(`popup.html`, `popup.css`, `popup.js`, `api.js`, `core.js`,
+`cookie-permission.js`, `action-icon.js`, `icons/`); the browser directories add
+their own `manifest.json` and `background.js`, and the assembled copies inside
+them are generated (git-ignored). `api.js` hides the difference between the
+callback-based `chrome.*` namespace and the promise-based `browser.*` namespace,
+so the shared files never branch on the browser.
+
+To load the extension from a checkout, assemble the directory first:
+
+```sh
+node tools/extension_pack.mjs build --browser chromium
+```
+
+CMake performs the same copy into `build/extensions/chromium` for the install
+rules, so a system install never depends on the generated source-tree copies.
+
 The popup layout follows `ext/extension-ui-template.html`, which is kept as the
-design reference only. The shipped popup (`popup.html`) splits that design into
-`popup.css` (styles) and `popup.js` (behavior), because the extension page CSP
-allows only extension scripts, so no inline script may be used. The header
-shows the app version reported by the running app (the extension version when
-the app cannot be reached) and a pill with the connection state; the two
-toggles are switch rows, and the detected media are listed as rows in their own
-group.
+design reference only. The shipped popup (`popup.html` in `ext/shared/`) splits
+that design into `popup.css` (styles) and `popup.js` (behavior), because the
+extension page CSP allows only extension scripts, so no inline script may be
+used. The header shows the app version reported by the running app (the
+extension version when the app cannot be reached) and a pill with the
+connection state; the two toggles are switch rows, and the detected media are
+listed as rows in their own group.
 
 ## Install from a release
 
@@ -62,12 +80,22 @@ extension keeps the same identity in every extracted folder.
 
 1. Build and start SwiftDM. The app listens on `127.0.0.1:10007` while its GUI
    is running.
-2. Open the browser's extensions page (for example `chrome://extensions`),
+2. Assemble the loadable directory, which copies `ext/shared/` next to the
+   Chromium manifest:
+
+   ```sh
+   node tools/extension_pack.mjs build --browser chromium
+   ```
+
+   Rerun the command after changing anything in `ext/shared/`. The generated
+   copies are git-ignored; `build/extensions/chromium` holds the same directory
+   after a CMake build.
+3. Open the browser's extensions page (for example `chrome://extensions`),
    enable **Developer mode**, and choose **Load unpacked**.
-3. Select this `ext/chromium` directory.
-4. Open an HTTP(S) page, then use the extension popup or right-click a link and
+4. Select this `ext/chromium` directory.
+5. Open an HTTP(S) page, then use the extension popup or right-click a link and
    select **Download link with SwiftDM**.
-5. Chromium asks for the `downloads` and `webRequest` permissions plus HTTP(S)
+6. Chromium asks for the `downloads` and `webRequest` permissions plus HTTP(S)
    host access when the extension is installed or reloaded. Observation is used
    only to remember POST bodies and `x-*` request headers for intercepted
    downloads; those entries expire after 30 seconds and are never sent anywhere
@@ -82,13 +110,14 @@ For command-line builds, install Qt 6 Network as well as Qt 6 Widgets (on Debian
 and Ubuntu this is included in `qt6-base-dev`).
 
 The app binds only to IPv4 loopback and accepts the `swiftdm.v1` WebSocket
-subprotocol from a well-formed Chromium extension origin. The exact extension ID
-is intentionally not pinned: reloading an unpacked extension from a different
-path can change its ID. Browser cookie data is held only for the active request
-and is not persisted by SwiftDM. Redirect requests do not forward sensitive
-Cookie/Authorization headers to another host. Partitioned (CHIPS) cookies are
-currently omitted because they require a top-level-site context that the
-downloader does not retain.
+subprotocol from a Chromium extension origin whose ID matches the checked-in
+`key` (`hagednkleljjijmjonpeiokknhngknbb`), or from a Firefox
+`moz-extension://<uuid>` origin, whose UUID cannot be pinned. Every accepted
+origin is logged and shown in the app's **Extensions** dialog. Browser cookie
+data is held only for the active request and is not persisted by SwiftDM.
+Redirect requests do not forward sensitive Cookie/Authorization headers to
+another host. Partitioned (CHIPS) cookies are currently omitted because they
+require a top-level-site context that the downloader does not retain.
 
 ## Troubleshooting
 
@@ -127,12 +156,14 @@ downloader does not retain.
 - Successive extension commands reuse one WebSocket while it remains open; a
   closed connection is recreated for the next attempt. The command socket is
   separate from the status subscription socket and is warmed while optional
-  browser cookie metadata is being gathered (extension 0.5.2 / app 0.18.19).
+  browser cookie metadata is being gathered (extension 0.6.0 / app 0.23.0).
 - The toolbar icon mirrors that switch: colored while automatic handoff is on,
-  grayscale while it is off (the popup and the worker both apply it, so it also
-  survives a worker restart). The PNGs in `icons/` are rendered from
+  grayscale while it is off (the popup and the background context both apply it,
+  so it also survives a worker or event-page restart). The PNGs in
+  `ext/shared/icons/` are rendered from
   `ui-assets/app-icon/extension-icon.svg` and
-  `extension-diactivate-icon.svg` by `render-extension-icons`.
+  `extension-diactivate-icon.svg` by `render-extension-icons`, and both browser
+  directories receive a copy when they are assembled.
 - Automatic interception cancels the browser item before contacting SwiftDM. If
   SwiftDM is unreachable, the extension asks the browser to download the URL
   again. Very small downloads that finish before they can be canceled stay in
@@ -169,6 +200,8 @@ downloader does not retain.
   explicit `ftp://` links can be sent from the context menu, and the app's
   manual dialog and CLI accept FTP URLs directly.
 - `showPanel` and `getVersion` protocol commands are implemented server-side;
-  this initial extension does not expose a separate panel UI.
+  this extension does not expose a separate panel UI.
 - Extension store packaging/signing is not part of this build; the release ZIP
   above is the supported way to install the extension without a store listing.
+  The Firefox build can additionally be signed for a permanent install — see
+  [`../firefox/README.md`](../firefox/README.md).

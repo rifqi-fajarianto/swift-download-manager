@@ -107,24 +107,41 @@ URL-scoped through libcurl, and transfers reuse the probe's resolved URL so they
 do not repeat the redirect.
 
 Port defaults to 10007. The current implementation binds IPv4 loopback only and
-accepts only the extension ID derived from the checked-in manifest's fixed
-public key (`hagednkleljjijmjonpeiokknhngknbb`), using Chromium's
-`chrome-extension://` or Edge's `extensions://`/`extension://` origin scheme,
-together with the `swiftdm.v1` subprotocol during the handshake (0.19.7).
-Ordinary web origins and other installed extensions are rejected, the rejection
-is logged, and the reason is shown in the Extensions dialog. An incomplete
-WebSocket handshake is closed after five seconds so it cannot occupy one of the
-bounded client slots indefinitely. The Chromium Manifest V3 extension sends
-downloads either from an explicit context-menu/popup action or by intercepting
-HTTP(S) downloads. `webRequest` observation (host permissions for http/https)
-remembers POST bodies, `x-*` request headers, and response content types for a
+accepts two kinds of extension origin, together with the `swiftdm.v1`
+subprotocol during the handshake:
+
+- **Chromium:** only the extension ID derived from the checked-in manifest's
+  fixed public key (`hagednkleljjijmjonpeiokknhngknbb`), using Chromium's
+  `chrome-extension://` or Edge's `extensions://`/`extension://` scheme (0.19.7).
+- **Firefox:** any `moz-extension://<uuid>` origin, matched by shape only
+  (0.23.0). Firefox generates that UUID per profile and ignores the `key`
+  manifest field, so an ID cannot be pinned; `browser_specific_settings.gecko.id`
+  names the add-on but never appears in the Origin header. The accepted origin is
+  logged and shown in the Extensions dialog, so a handoff from an unexpected
+  add-on is visible.
+
+Ordinary web origins and Chromium extensions with another ID are rejected, the
+rejection is logged, and the reason is shown in the Extensions dialog. An
+incomplete WebSocket handshake is closed after five seconds so it cannot occupy
+one of the bounded client slots indefinitely. Both extensions send downloads
+either from an explicit context-menu/popup action or by intercepting HTTP(S)
+downloads, and they share one set of sources in `ext/shared/` behind an `api.js`
+adapter that hides the callback-based `chrome.*` and promise-based `browser.*`
+namespaces; only the manifest and the background bootstrap differ (a Chromium
+service worker against a Firefox event page, since Firefox does not run
+extension service workers). `webRequest` observation (host permissions for
+http/https) remembers POST bodies, `x-*` request headers, and response content
+types for a
 short window so an
 intercepted POST download is forwarded with them. A popup switch turns
 automatic interception off while manual actions keep working. A persistent
 subscription socket receives app-status pushes for the popup. Cookie permission
 is optional, and only a user gesture may ask for it: the popup's "Send browser
 cookies" switch requests it for the current site, the context-menu action for
-its target origin, and later automatic handoffs reuse the grant. Scoped cookie
+its target origin, and later automatic handoffs reuse the grant. On Firefox the
+site-scoped request falls back to the plain `cookies` permission, because only
+origins declared in `optional_host_permissions` can be requested there. Scoped
+cookie
 attributes are passed to libcurl so cookies follow domain/path/secure rules
 across redirects. `addDownload` does not start a transfer directly: the app
 immediately shows the independent Download Confirmation window while probing
@@ -148,8 +165,9 @@ latency improvement 0.18.19). The extension reuses its command WebSocket for
 successive requests; the socket is separate from the long-lived status
 subscription.
 The server rejects unsafe URLs, malformed messages, oversized frames, bodies or
-headers over the caps above, and cookies scoped to a different host. Firefox
-support and a production extension-store ID pin remain future work. The original
+headers over the caps above, and cookies scoped to a different host. A
+production extension-store ID pin (Chrome Web Store and AMO listings) remains
+future work. The original
 `neatextension.v1` protocol and the behavioral comparison with the shipped
 NeatDownloadManager extension are documented in
 `07-chromium-extension-reference.md`; the adopted/remaining candidates are

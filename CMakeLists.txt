@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.22.17
+    VERSION 0.23.0
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -57,8 +57,9 @@ if(SWIFTSDM_BUILD_UI)
     target_compile_definitions(render-ico PRIVATE
         SWIFTSDM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
-    # Regenerates ext/chromium/icons/*.png from the SVG sources after an icon
+    # Regenerates ext/shared/icons/*.png from the SVG sources after an icon
     # change: cmake --build build --target render-extension-icons
+    # Both extensions load these files from their assembled directories.
     add_executable(render-extension-icons tools/render_icons.cpp)
     target_link_libraries(render-extension-icons PRIVATE Qt6::Gui)
     target_compile_definitions(render-extension-icons PRIVATE
@@ -288,14 +289,59 @@ endif()
 # Install rules (system install and CPack .deb)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Browser extensions
+# ---------------------------------------------------------------------------
+# ext/shared/ holds the single copy of the extension logic; ext/chromium/ and
+# ext/firefox/ only add a manifest and a background bootstrap. Both loadable
+# directories are assembled at build time, so an install never depends on the
+# copies tools/extension_pack.mjs writes into the source tree (those are
+# generated and git-ignored). Node is not needed here.
+# Every shared file is a dependency, so editing one re-assembles both browser
+# directories on the next build. CONFIGURE_DEPENDS re-globs when files are added.
+file(GLOB_RECURSE SWIFTSDM_EXTENSION_SHARED_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/ext/shared/*")
+
+set(SWIFTSDM_EXTENSION_BROWSERS chromium firefox)
+foreach(browser IN LISTS SWIFTSDM_EXTENSION_BROWSERS)
+    set(target "${CMAKE_CURRENT_BINARY_DIR}/extensions/${browser}")
+    set(stamp "${target}/.assembled")
+    # The browser's own files first, then the shared ones on top, exactly like
+    # `node tools/extension_pack.mjs build`. The stamp file is the real output so
+    # the copy runs whenever a dependency changed, not only when the manifest
+    # changed.
+    add_custom_command(
+        OUTPUT "${stamp}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${target}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/ext/${browser}" "${target}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/ext/shared" "${target}"
+        COMMAND "${CMAKE_COMMAND}" -E remove -f
+                "${target}/README.md" "${target}/.assembled"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${stamp}"
+        DEPENDS
+            ${SWIFTSDM_EXTENSION_SHARED_FILES}
+            "${CMAKE_CURRENT_SOURCE_DIR}/ext/${browser}/manifest.json"
+            "${CMAKE_CURRENT_SOURCE_DIR}/ext/${browser}/background.js"
+        COMMENT "Assembling the ${browser} extension from ext/shared"
+        VERBATIM
+    )
+    add_custom_target(swiftdm-extension-${browser} ALL DEPENDS "${stamp}")
+    list(APPEND SWIFTSDM_EXTENSION_TARGETS swiftdm-extension-${browser})
+endforeach()
+
 if(WIN32)
     install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/windows-deploy/"
         DESTINATION "."
     )
-    # The browser integration ships next to the executable and is loaded as an
-    # unpacked extension, like the development copy installed on Unix.
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/chromium/"
+    # The browser integrations ship next to the executable and are loaded as
+    # unpacked extensions, like the development copies installed on Unix.
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/extensions/chromium/"
         DESTINATION "chromium-extension"
+    )
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/extensions/firefox/"
+        DESTINATION "firefox-extension"
     )
     install(FILES LICENSE README.md
         DESTINATION "."
@@ -317,9 +363,13 @@ if(UNIX)
         DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/swiftdm"
         RENAME copyright
     )
-    # Development copy of the browser integration; the store-free workflow is to
-    # load ext/chromium as an unpacked extension from a checkout or from this copy.
-    install(DIRECTORY ext/chromium
+    # Installed copies of the browser integrations. The store-free workflow is to
+    # load these (or the assembled directories in a checkout) as unpacked
+    # extensions.
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/extensions/chromium"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/swiftdm"
+    )
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/extensions/firefox"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/swiftdm"
     )
 endif()

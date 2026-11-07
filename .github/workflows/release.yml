@@ -127,14 +127,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # The browser integration ships as an unpacked ZIP: Chrome rejects
+  # Both browser integrations ship as unpacked ZIPs. Chromium: Chrome rejects
   # self-signed CRX drag-and-drop (CRX_REQUIRED_PROOF_MISSING) and Windows and
   # macOS refuse local CRX installs, so "Load unpacked" is the only path that
-  # works on every platform. No Qt is needed here, only Node.
+  # works on every platform. Firefox: an XPI needs a Mozilla signature to install
+  # permanently, so the ZIP is what users load from about:debugging, or sign
+  # themselves; the optional signing step below produces a signed XPI when the
+  # AMO API credentials are configured. No Qt is needed here, only Node.
   extension-package:
-    name: Package the Chromium extension
+    name: Package the browser extensions
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -151,49 +154,92 @@ jobs:
       - name: Verify the extension ID matches the app allowlist
         run: node tools/extension_pack.mjs verify
 
-      - name: Build the unpacked extension ZIP
+      # Both manifests must carry the same version: one release ships one
+      # extension number, and the ZIP names are built from it.
+      - name: Check that both manifests share the version
         run: |
-          version="$(node -p "require('./ext/chromium/manifest.json').version")"
-          node tools/extension_pack.mjs zip \
-            --out "swiftdm-chromium-extension-${version}.zip"
+          version="$(node tools/extension_pack.mjs version)"
           echo "EXTENSION_VERSION=${version}" >> "$GITHUB_ENV"
+          echo "extension version ${version}"
+
+      # `zip` assembles a throwaway directory from ext/shared/ itself, so the
+      # archives never depend on the generated copies in the source tree.
+      - name: Build the unpacked extension ZIPs
+        run: |
+          node tools/extension_pack.mjs zip --browser chromium \
+            --out "swiftdm-chromium-extension-${EXTENSION_VERSION}.zip"
+          node tools/extension_pack.mjs zip --browser firefox \
+            --out "swiftdm-firefox-extension-${EXTENSION_VERSION}.zip"
 
       - name: Verify the archive layout
         run: |
-          # manifest.json must be at the root of the ZIP, otherwise Chrome
-          # refuses the extracted folder as an unpacked extension. Node reads
-          # the central directory so the check needs no extra runner package.
+          # manifest.json must be at the root of each ZIP, otherwise the browser
+          # refuses the extracted folder as an unpacked extension. Node reads the
+          # central directory so the check needs no extra runner package.
           node -e '
             const { readFileSync } = require("node:fs");
-            const archive = readFileSync(process.argv[1]);
-            const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-            if (end < 0) throw new Error("no end-of-central-directory record");
-            const count = archive.readUInt16LE(end + 10);
-            let cursor = archive.readUInt32LE(end + 16);
-            const names = [];
-            for (let i = 0; i < count; i += 1) {
-              const nameLength = archive.readUInt16LE(cursor + 28);
-              names.push(archive.toString("utf8", cursor + 46, cursor + 46 + nameLength));
-              cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) +
-                archive.readUInt16LE(cursor + 32);
+            for (const file of process.argv.slice(1)) {
+              const archive = readFileSync(file);
+              const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+              if (end < 0) throw new Error(`${file}: no end-of-central-directory record`);
+              const count = archive.readUInt16LE(end + 10);
+              let cursor = archive.readUInt32LE(end + 16);
+              const names = [];
+              for (let i = 0; i < count; i += 1) {
+                const nameLength = archive.readUInt16LE(cursor + 28);
+                names.push(archive.toString("utf8", cursor + 46, cursor + 46 + nameLength));
+                cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) +
+                  archive.readUInt16LE(cursor + 32);
+              }
+              if (!names.includes("manifest.json")) {
+                throw new Error(`${file}: manifest.json is not at the archive root: ${names.join(", ")}`);
+              }
+              console.log(`${file}: ${names.length} files, manifest.json at the root`);
             }
-            if (!names.includes("manifest.json")) {
-              throw new Error(`manifest.json is not at the archive root: ${names.join(", ")}`);
-            }
-            console.log(`${names.length} files, manifest.json at the root`);
-          ' "swiftdm-chromium-extension-${EXTENSION_VERSION}.zip"
+          ' "swiftdm-chromium-extension-${EXTENSION_VERSION}.zip" \
+            "swiftdm-firefox-extension-${EXTENSION_VERSION}.zip"
+
+      # A permanent Firefox install needs a Mozilla-signed XPI. Signing is
+      # optional: without the AMO API secrets the release still ships the
+      # unpacked ZIP, which is what about:debugging loads.
+      - name: Sign the Firefox extension (optional)
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: |
+          if [ -z "${WEB_EXT_API_KEY}" ] || [ -z "${WEB_EXT_API_SECRET}" ]; then
+            echo "No AMO API credentials; shipping the unpacked ZIP only."
+            exit 0
+          fi
+          node tools/extension_pack.mjs build --browser firefox --out firefox-sign
+          npx --yes web-ext@8 sign \
+            --source-dir firefox-sign \
+            --artifacts-dir signed \
+            --channel unlisted
+          signed="$(find signed -name '*.xpi' -print -quit)"
+          if [ -z "${signed}" ]; then
+            echo "::error::web-ext produced no XPI"
+            exit 1
+          fi
+          mv "${signed}" "swiftdm-firefox-extension-${EXTENSION_VERSION}.xpi"
+          echo "signed the Firefox extension as swiftdm-firefox-extension-${EXTENSION_VERSION}.xpi"
 
       - name: Write the checksum file
         run: |
-          sha256sum ./*.zip | sed -E 's| [*]?\./| |' > SHA256SUMS
+          # The signed XPI is optional; checksums cover whatever was built.
+          files=(./*.zip)
+          for xpi in ./*.xpi; do [ -e "$xpi" ] && files+=("$xpi"); done
+          sha256sum "${files[@]}" | sed -E 's| [*]?\./| |' > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Upload the extension package
+      - name: Upload the extension packages
         uses: actions/upload-artifact@v7
         with:
           name: swiftdm-extension
           path: |
             swiftdm-chromium-extension-*.zip
+            swiftdm-firefox-extension-*.zip
+            swiftdm-firefox-extension-*.xpi
             SHA256SUMS
           if-no-files-found: error
           retention-days: 14
@@ -340,6 +386,7 @@ jobs:
             windows/*.zip
             windows/*-setup.exe
             extension/*.zip
+            extension/*.xpi
 
       # The changelog is the source of truth for the release notes. Require the
       # section so a tag cannot be published without documented changes.
@@ -367,6 +414,7 @@ jobs:
             build/*.deb
             build/SHA256SUMS
             extension/*.zip
+            extension/*.xpi
             release-notes.md
           if-no-files-found: error
           retention-days: 7
@@ -379,7 +427,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe extension/*.zip"
+          assets="build/*.deb build/SHA256SUMS windows/*.zip windows/*-setup.exe extension/*.zip extension/*.xpi"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" $assets --clobber --repo "$repo"
             gh release edit "$tag" \

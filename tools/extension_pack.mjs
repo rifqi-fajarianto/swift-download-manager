@@ -1,13 +1,28 @@
 #!/usr/bin/env node
-// Release helper for the Chromium extension.
+// Release helper for the browser extensions (Chromium and Firefox).
 //
-// The extension ships as an unpacked ZIP because current Chrome builds reject
-// self-signed CRX files dragged onto chrome://extensions (the browser demands a
-// Chrome Web Store proof, CRX_REQUIRED_PROOF_MISSING), and Windows/macOS refuse
-// local CRX installs outright. The ZIP is what users extract and load with
-// "Load unpacked".
+// Both extensions are assembled from one set of shared sources in ext/shared/
+// plus a per-browser manifest and bootstrap:
 //
-// Two things must stay true for that to work:
+//   ext/shared/     popup.html, popup.css, popup.js, api.js, core.js,
+//                   cookie-permission.js, action-icon.js, icons/
+//   ext/chromium/   manifest.json (MV3 + fixed "key"), background.js
+//   ext/firefox/    manifest.json (MV3 + gecko.id), background.js
+//
+// The assembled copies inside ext/chromium/ and ext/firefox/ are generated and
+// ignored by git: `build` writes them for a checkout that is loaded directly,
+// and `zip` assembles a throwaway copy so packaging never depends on the state
+// of the working tree. CMake performs the same copy for the install rules, so a
+// system install needs no Node.
+//
+// The Chromium extension ships as an unpacked ZIP because current Chrome builds
+// reject self-signed CRX files dragged onto chrome://extensions
+// (CRX_REQUIRED_PROOF_MISSING), and Windows/macOS refuse local CRX installs
+// outright. The Firefox extension ships as an unpacked ZIP too: an XPI needs a
+// Mozilla signature to install permanently, so the ZIP is what users load from
+// about:debugging or sign with `web-ext sign`.
+//
+// Two things must stay true for the Chromium ZIP to work:
 //   1. The ZIP holds the extension files at its root, so manifest.json sits next
 //      to the icons directory, not inside a wrapper folder.
 //   2. The ID derived from the manifest's fixed public key matches the ID the
@@ -15,20 +30,44 @@
 //      silently rejects every handshake from the packaged extension.
 //
 // Usage:
+//   node tools/extension_pack.mjs build  --browser chromium|firefox [--out DIR]
 //   node tools/extension_pack.mjs verify [--manifest FILE] [--source FILE]
+//   node tools/extension_pack.mjs version
 //   node tools/extension_pack.mjs id     [--manifest FILE]
-//   node tools/extension_pack.mjs zip --out FILE [--dir DIR]
+//   node tools/extension_pack.mjs zip --out FILE [--browser B] [--dir DIR]
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { deflateRawSync } from "node:zlib";
-import { pathToFileURL } from "node:url";
 import path from "node:path";
 import process from "node:process";
 
-const defaultManifest = "ext/chromium/manifest.json";
+const browsers = {
+  chromium: {
+    dir: "ext/chromium",
+    manifest: "ext/chromium/manifest.json",
+    // Files that live in the browser directory instead of ext/shared/.
+    own: ["manifest.json", "background.js"],
+  },
+  firefox: {
+    dir: "ext/firefox",
+    manifest: "ext/firefox/manifest.json",
+    own: ["manifest.json", "background.js"],
+  },
+};
+
+const sharedDir = "ext/shared";
 const defaultSource = "src/ui/browser_integration.cpp";
-const defaultDir = "ext/chromium";
 
 // Files that belong to the repository but not to the installed extension.
 const excluded = new Set(["README.md", ".DS_Store"]);
@@ -51,19 +90,45 @@ function readOptions(argv) {
   return options;
 }
 
-function readManifest(file) {
-  let manifest;
+function browserName(options) {
+  const name = options.browser ?? "chromium";
+  if (!browsers[name]) {
+    fail(`unknown browser '${name}'; expected chromium or firefox`);
+  }
+  return name;
+}
+
+function readJson(file) {
   try {
-    manifest = JSON.parse(readFileSync(file, "utf8"));
+    return JSON.parse(readFileSync(file, "utf8"));
   } catch (error) {
     fail(`cannot read ${file}: ${error.message}`);
   }
+}
+
+function readManifest(file) {
+  const manifest = readJson(file);
   if (!manifest.key) {
-    // Without the key an unpacked load hashes the directory path instead, so
-    // the ID would change on every machine and never match the app.
-    fail(`${file} has no "key"; the packaged extension needs a fixed ID`);
+    // Without the key an unpacked Chromium load hashes the directory path
+    // instead, so the ID would change on every machine and never match the app.
+    fail(`${file} has no "key"; the packaged Chromium extension needs a fixed ID`);
   }
   return manifest;
+}
+
+// Both manifests must carry the same version: one release ships one extension
+// number for every browser, and the ZIP file names use it.
+export function extensionVersion(manifests = browsers) {
+  const versions = new Map();
+  for (const [name, spec] of Object.entries(manifests)) {
+    versions.set(name, readJson(spec.manifest).version);
+  }
+  const unique = new Set(versions.values());
+  if (unique.size !== 1) {
+    const detail = [...versions].map(([name, version]) => `${name} ${version}`).join(", ");
+    fail(`the extension manifests disagree on the version: ${detail}`);
+  }
+  return [...unique][0];
 }
 
 // Chromium derives the ID from the first 16 bytes of SHA-256 over the DER
@@ -100,6 +165,47 @@ function collectFiles(root) {
   };
   walk(root, "");
   return files;
+}
+
+// Copies the browser's own files, then ext/shared/ on top of them, into
+// `target`. Returns the shared file names it wrote.
+function assemble(name, target) {
+  const spec = browsers[name];
+  // The version check runs first so a half-written directory is impossible.
+  extensionVersion();
+  if (name === "chromium") readManifest(spec.manifest);
+  else readJson(spec.manifest);
+
+  mkdirSync(target, { recursive: true });
+  for (const own of spec.own) {
+    copyFileSync(path.join(spec.dir, own), path.join(target, own));
+  }
+
+  const written = [];
+  const walk = (dir, prefix) => {
+    for (const name of readdirSync(dir).sort()) {
+      if (name.startsWith(".") || excluded.has(name)) continue;
+      const full = path.join(dir, name);
+      const entry = prefix ? `${prefix}/${name}` : name;
+      if (statSync(full).isDirectory()) {
+        walk(full, entry);
+        continue;
+      }
+      const destination = path.join(target, entry);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(full, destination);
+      written.push(entry);
+    }
+  };
+  walk(sharedDir, "");
+  return written;
+}
+
+function buildDirectory(name, out) {
+  const target = out ?? browsers[name].dir;
+  const written = assemble(name, target);
+  console.log(`assembled ${target} (${written.length} shared files)`);
+  return target;
 }
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -184,15 +290,23 @@ function buildZip(files) {
 
 function main() {
   const options = readOptions(process.argv.slice(2));
-  const manifestFile = options.manifest ?? defaultManifest;
 
   switch (options.command) {
     case "id": {
-      console.log(extensionIdFromKey(readManifest(manifestFile).key));
+      const file = options.manifest ?? browsers.chromium.manifest;
+      console.log(extensionIdFromKey(readManifest(file).key));
+      return;
+    }
+    case "version": {
+      console.log(extensionVersion());
+      return;
+    }
+    case "build": {
+      buildDirectory(browserName(options), options.out);
       return;
     }
     case "verify": {
-      const derived = extensionIdFromKey(readManifest(manifestFile).key);
+      const derived = extensionIdFromKey(readManifest(options.manifest ?? browsers.chromium.manifest).key);
       const pinned = pinnedExtensionId(options.source ?? defaultSource);
       if (derived !== pinned) {
         fail(
@@ -205,21 +319,33 @@ function main() {
     }
     case "zip": {
       if (!options.out) fail("zip needs --out FILE");
-      readManifest(manifestFile);
-      const dir = options.dir ?? defaultDir;
-      const files = collectFiles(dir);
-      if (!files.some((file) => file.name === "manifest.json")) {
-        fail(`${dir} has no manifest.json at its root`);
+      const name = browserName(options);
+      // Without --dir the archive is built from a fresh assembly, so a stale
+      // checkout copy can never leak into a release.
+      let dir = options.dir;
+      let temporary = null;
+      if (!dir) {
+        temporary = mkdtempSync(path.join(tmpdir(), `swiftdm-${name}-`));
+        dir = path.join(temporary, name);
+        assemble(name, dir);
       }
-      writeFileSync(options.out, buildZip(files));
-      console.log(`wrote ${options.out} (${files.length} files)`);
+      try {
+        const files = collectFiles(dir);
+        if (!files.some((file) => file.name === "manifest.json")) {
+          fail(`${dir} has no manifest.json at its root`);
+        }
+        writeFileSync(options.out, buildZip(files));
+        console.log(`wrote ${options.out} (${files.length} files)`);
+      } finally {
+        if (temporary) rmSync(temporary, { recursive: true, force: true });
+      }
       return;
     }
     default:
-      fail("expected one of: verify, id, zip");
+      fail("expected one of: build, verify, version, id, zip");
   }
 }
 
-// Compare URLs rather than raw paths: a Windows path such as C:\... is not a
-// valid "file://" string, so the helper would silently do nothing there.
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+  main();
+}

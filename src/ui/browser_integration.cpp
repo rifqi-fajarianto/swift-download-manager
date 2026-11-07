@@ -29,16 +29,27 @@ const QString kSubprotocol = QStringLiteral("swiftdm.v1");
 static_assert(sizeof(kExtensionId) - 1 == 32,
               "extension ID must match Chromium's 32-character ID format");
 
-// The checked-in manifest has a fixed public key, so its extension ID is stable
-// across load locations. Only the app's own ID is allowed; a shape-only check
-// would accept any extension installed in the browser. Edge may report the
-// same ID with either of its extension schemes.
-bool is_chromium_extension_origin(const QByteArray& origin) {
-    static const QRegularExpression pattern(
+// The checked-in Chromium manifest has a fixed public key, so its extension ID
+// is stable across load locations. Only the app's own ID is allowed; a
+// shape-only check would accept any extension installed in the browser. Edge may
+// report the same ID with either of its extension schemes.
+//
+// Firefox cannot pin a Chromium-style ID: `moz-extension://` carries a UUID that
+// Firefox generates per profile and per installation, and the `key` manifest
+// field is unsupported there (`browser_specific_settings.gecko.id` names the
+// add-on but does not appear in the Origin header). The Firefox origin is
+// therefore validated by shape only, and the accepted origin is logged and shown
+// in the Extensions dialog so a handoff from an unexpected add-on is visible.
+bool is_allowed_extension_origin(const QByteArray& origin) {
+    static const QRegularExpression chromium_pattern(
         QStringLiteral("^(chrome-extension|extensions|extension)://([a-p]{32})$"));
-    const QRegularExpressionMatch match = pattern.match(QString::fromLatin1(origin));
-    if (!match.hasMatch()) return false;
-    return match.captured(2) == QLatin1String(kExtensionId);
+    const QRegularExpressionMatch chromium =
+        chromium_pattern.match(QString::fromLatin1(origin));
+    if (chromium.hasMatch()) return chromium.captured(2) == QLatin1String(kExtensionId);
+
+    static const QRegularExpression firefox_pattern(QStringLiteral(
+        "^moz-extension://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
+    return firefox_pattern.match(QString::fromLatin1(origin)).hasMatch();
 }
 
 QByteArray websocket_frame(const QByteArray& payload, quint8 opcode = 0x1) {
@@ -215,7 +226,7 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         for (QByteArray token : protocols.split(',')) {
             if (token.trimmed() == needed_protocol) protocol_ok = true;
         }
-        if (!is_chromium_extension_origin(origin) || decoded_key.size() != 16 ||
+        if (!is_allowed_extension_origin(origin) || decoded_key.size() != 16 ||
             headers.value("upgrade").toLower() != "websocket" || !connection_upgrade ||
             headers.value("sec-websocket-version") != "13" || !protocol_ok) {
             reject(QStringLiteral("rejected handshake: origin='%1' protocol='%2'")

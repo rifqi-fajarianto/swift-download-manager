@@ -39,7 +39,12 @@
   di setiap rilis lewat job `extension-package` (`tools/extension_pack.mjs`,
   dijaga `extension_package` di `ctest`); job itu gagal bila ID turunan `key`
   manifest tidak sama dengan `kExtensionId` aplikasi, dan tidak ada `.crx`
-  karena Chrome menolak CRX self-signed hasil drag-and-drop. Jauh sebelumnya,
+  karena Chrome menolak CRX self-signed hasil drag-and-drop. Sejak 0.23.0
+  ekstensi Firefox ikut terbit dari job yang sama: logika, popup, dan ikon
+  dipindah ke `ext/shared/` dan dirakit ke `ext/chromium` serta `ext/firefox`
+  oleh `tools/extension_pack.mjs build`, kedua manifest wajib berversi sama,
+  dan aplikasi menerima origin `moz-extension://<uuid>` di samping ID Chromium
+  yang dipin. Jauh sebelumnya,
   0.22.10 menjadikan SwiftDM single-instance: lock file
   per-user (`src/core/instance_lock.*`, `flock`/`LockFileEx`, lokasi di
   `$XDG_RUNTIME_DIR` atau `%LOCALAPPDATA%\SwiftDM`) diambil sebelum settings
@@ -199,7 +204,9 @@
 - URL yang dapat diedit di Properties. (Per-download log file selesai di 0.20.0:
   `logs/<id>-<filename>.log`, dibuka dari `Open Log`.
 - UI saved passwords (`auths`); tab `Passwords` sengaja belum ditampilkan.
-- Ekstensi Firefox.
+- Instalasi permanen ekstensi Firefox di mesin tanpa akses AMO (butuh XPI
+  bertanda tangan Mozilla; ZIP hanya untuk `about:debugging`), dan publikasi
+  store (Chrome Web Store / AMO).
 - Muxing MKV/WebM untuk pasangan video+audio (saat ini dua file terpisah
   dengan `groupid`).
 - In-page media panel dan site extractor (C4–C6, C9 di

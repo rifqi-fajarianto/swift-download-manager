@@ -9,6 +9,26 @@ build-*/
 generated/
 compile_commands.json
 
+# Assembled extension directories: ext/shared/ is the source, the copies inside
+# ext/chromium/ and ext/firefox/ are written by tools/extension_pack.mjs (and by
+# CMake for the install rules).
+/ext/chromium/api.js
+/ext/chromium/core.js
+/ext/chromium/popup.html
+/ext/chromium/popup.css
+/ext/chromium/popup.js
+/ext/chromium/cookie-permission.js
+/ext/chromium/action-icon.js
+/ext/chromium/icons/
+/ext/firefox/api.js
+/ext/firefox/core.js
+/ext/firefox/popup.html
+/ext/firefox/popup.css
+/ext/firefox/popup.js
+/ext/firefox/cookie-permission.js
+/ext/firefox/action-icon.js
+/ext/firefox/icons/
+
 # Editor/IDE
 .vscode/
 .idea/

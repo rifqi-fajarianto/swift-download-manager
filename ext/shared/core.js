@@ -1,7 +1,7 @@
-// Shared optional-cookie helpers (the popup can prompt; the worker only reads).
-importScripts("cookie-permission.js");
-// Toolbar icon switching (active vs. automatic handoff off).
-importScripts("action-icon.js");
+// Background logic shared by the Chromium service worker and the Firefox event
+// page. `api.js`, `cookie-permission.js` and `action-icon.js` are loaded first
+// (importScripts in Chromium, background.scripts in Firefox), so `swiftdmApi`,
+// `swiftdmCookies` and `swiftdmActionIcon` already exist when this file runs.
 
 const SOCKET_URL = "ws://127.0.0.1:10007/";
 const SUBPROTOCOL = "swiftdm.v1";
@@ -36,8 +36,8 @@ const commandRequests = new Map();
 // value whenever it wakes; the popup also applies it immediately on a flip.
 async function restoreActionIcon() {
   try {
-    const { autoIntercept = true } = await chrome.storage.local.get(["autoIntercept"]);
-    swiftdmActionIcon.apply(autoIntercept !== false);
+    const { autoIntercept = true } = await swiftdmApi.storage.get(["autoIntercept"]);
+    await swiftdmActionIcon.apply(autoIntercept !== false);
   } catch {
     // The toolbar icon is cosmetic; never fail a handoff because of it.
   }
@@ -45,49 +45,47 @@ async function restoreActionIcon() {
 
 void restoreActionIcon();
 
-chrome.storage.onChanged?.addListener((changes, area) => {
+swiftdmApi.storage.onChanged((changes, area) => {
   if (area !== "local" || !changes.autoIntercept) return;
-  swiftdmActionIcon.apply(changes.autoIntercept.newValue !== false);
+  void swiftdmActionIcon.apply(changes.autoIntercept.newValue !== false);
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(["autoIntercept", "bypassDownloads"], (values) => {
-    const defaults = {};
-    if (typeof values.autoIntercept !== "boolean") defaults.autoIntercept = true;
-    // The separate bypass switch was removed in 0.4.0: it did exactly what
-    // turning automatic interception off does. Carry an enabled bypass over as
-    // "automatic interception off" so the user's choice is preserved.
-    if (values.bypassDownloads === true) defaults.autoIntercept = false;
-    if (Object.keys(defaults).length) chrome.storage.local.set(defaults);
-    if (values.bypassDownloads !== undefined) {
-      chrome.storage.local.remove("bypassDownloads");
-    }
-  });
-  createContextMenus();
+swiftdmApi.runtime.onInstalled(async () => {
+  const values = await swiftdmApi.storage.get(["autoIntercept", "bypassDownloads"]);
+  const defaults = {};
+  if (typeof values.autoIntercept !== "boolean") defaults.autoIntercept = true;
+  // The separate bypass switch was removed in 0.4.0: it did exactly what
+  // turning automatic interception off does. Carry an enabled bypass over as
+  // "automatic interception off" so the user's choice is preserved.
+  if (values.bypassDownloads === true) defaults.autoIntercept = false;
+  if (Object.keys(defaults).length) await swiftdmApi.storage.set(defaults);
+  if (values.bypassDownloads !== undefined) {
+    await swiftdmApi.storage.remove("bypassDownloads");
+  }
+  await createContextMenus();
   ensureStatusSocket();
   void restoreActionIcon();
 });
 
-chrome.runtime.onStartup?.addListener(() => ensureStatusSocket());
+swiftdmApi.runtime.onStartup(() => ensureStatusSocket());
 
-function createContextMenus() {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: MENU_LINK,
-      title: "Download link with SwiftDM",
-      contexts: ["link"],
-      targetUrlPatterns: ["http://*/*", "https://*/*"]
-    });
-    chrome.contextMenus.create({
-      id: MENU_PAGE,
-      title: "Download page with SwiftDM",
-      contexts: ["page"],
-      documentUrlPatterns: ["http://*/*", "https://*/*"]
-    });
+async function createContextMenus() {
+  await swiftdmApi.menus.removeAll();
+  await swiftdmApi.menus.create({
+    id: MENU_LINK,
+    title: "Download link with SwiftDM",
+    contexts: ["link"],
+    targetUrlPatterns: ["http://*/*", "https://*/*"]
+  });
+  await swiftdmApi.menus.create({
+    id: MENU_PAGE,
+    title: "Download page with SwiftDM",
+    contexts: ["page"],
+    documentUrlPatterns: ["http://*/*", "https://*/*"]
   });
 }
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+swiftdmApi.menus.onClicked((info, tab) => {
   if (info.menuItemId === MENU_LINK) {
     void sendDownload(info.linkUrl, info.pageUrl, tab?.title ?? "", {
       requestCookiePermission: true
@@ -103,7 +101,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
   if (message?.type === "download-current-tab") {
     void sendDownload(message.url, "", message.title ?? "", {
       useGrantedCookiePermission: message.cookiesGranted === true
@@ -141,45 +139,34 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // ---------------------------------------------------------------------------
 
 const observedTypes = ["main_frame", "sub_frame", "object", "xmlhttprequest", "other"];
+const observedFilter = { urls: ["http://*/*", "https://*/*"], types: observedTypes };
 
-if (chrome.webRequest?.onBeforeRequest) {
-  chrome.webRequest.onBeforeRequest.addListener(
-    (details) => {
-      rememberRequest(details.url, {
-        method: details.method,
-        ...requestBodyPayload(details.requestBody)
-      });
-    },
-    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
-    ["requestBody"]
-  );
-  chrome.webRequest.onBeforeSendHeaders.addListener(
-    (details) => {
-      const headers = [];
-      for (const header of details.requestHeaders ?? []) {
-        const name = String(header.name ?? "");
-        if (name.toLowerCase().startsWith("x-") && headers.length < 16) {
-          headers.push({ name: name.toLowerCase(), value: String(header.value ?? "") });
-        }
+if (swiftdmApi.webRequest.available()) {
+  swiftdmApi.webRequest.listen("onBeforeRequest", (details) => {
+    rememberRequest(details.url, {
+      method: details.method,
+      ...requestBodyPayload(details.requestBody)
+    });
+  }, observedFilter, ["requestBody"]);
+  swiftdmApi.webRequest.listen("onBeforeSendHeaders", (details) => {
+    const headers = [];
+    for (const header of details.requestHeaders ?? []) {
+      const name = String(header.name ?? "");
+      if (name.toLowerCase().startsWith("x-") && headers.length < 16) {
+        headers.push({ name: name.toLowerCase(), value: String(header.value ?? "") });
       }
-      rememberRequest(details.url, { headers });
-    },
-    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
-    ["requestHeaders"]
-  );
-  chrome.webRequest.onHeadersReceived.addListener(
-    (details) => {
-      const header = (details.responseHeaders ?? []).find(
-        (entry) => String(entry.name ?? "").toLowerCase() === "content-type"
-      );
-      const mimeType = header ? String(header.value ?? "") : "";
-      if (!mimeType) return;
-      rememberRequest(details.url, { mimeType: mimeType.split(";")[0].trim().toLowerCase() });
-      rememberStream(details.tabId, details.url, mimeType);
-    },
-    { urls: ["http://*/*", "https://*/*"], types: observedTypes },
-    ["responseHeaders"]
-  );
+    }
+    rememberRequest(details.url, { headers });
+  }, observedFilter, ["requestHeaders"]);
+  swiftdmApi.webRequest.listen("onHeadersReceived", (details) => {
+    const header = (details.responseHeaders ?? []).find(
+      (entry) => String(entry.name ?? "").toLowerCase() === "content-type"
+    );
+    const mimeType = header ? String(header.value ?? "") : "";
+    if (!mimeType) return;
+    rememberRequest(details.url, { mimeType: mimeType.split(";")[0].trim().toLowerCase() });
+    rememberStream(details.tabId, details.url, mimeType);
+  }, observedFilter, ["responseHeaders"]);
 }
 
 // Media-only responses that the popup can offer (HLS requires app support,
@@ -248,9 +235,7 @@ function streamGroup(videoUrl) {
   return `pair-${hash.toString(16).padStart(8, "0")}`;
 }
 
-if (chrome.tabs?.onRemoved) {
-  chrome.tabs.onRemoved.addListener((tabId) => tabStreams.delete(tabId));
-}
+swiftdmApi.tabs.onRemoved((tabId) => tabStreams.delete(tabId));
 
 function rememberRequest(url, patch) {
   if (!url) return;
@@ -322,7 +307,7 @@ function observedExtrasFor(...urls) {
 // Automatic handoff
 // ---------------------------------------------------------------------------
 
-chrome.downloads.onCreated.addListener((item) => {
+swiftdmApi.downloads.onCreated((item) => {
   if (item.state !== "in_progress" || item.incognito || !validHttpUrl(item.url)) return;
   // Downloads started by this extension (the fallback path below) are already
   // handled; intercepting them again would loop forever.
@@ -334,7 +319,7 @@ chrome.downloads.onCreated.addListener((item) => {
 
 async function interceptDownload(item) {
   const handoffStartedAt = Date.now();
-  const { autoIntercept = true } = await chrome.storage.local.get(["autoIntercept"]);
+  const { autoIntercept = true } = await swiftdmApi.storage.get(["autoIntercept"]);
   if (!autoIntercept) return;
 
   // Cancel immediately rather than pause: a paused item can still finish for
@@ -342,15 +327,17 @@ async function interceptDownload(item) {
   // SwiftDM could take over. If SwiftDM is unreachable, the fallback below asks
   // the browser to download the URL again.
   try {
-    await chrome.downloads.cancel(item.id);
-    try { await chrome.downloads.erase({ id: item.id }); } catch { /* already gone */ }
+    await swiftdmApi.downloads.cancel(item.id);
+    try { await swiftdmApi.downloads.erase({ id: item.id }); } catch { /* already gone */ }
   } catch {
     // The download already completed (for example a tiny data response); keep
     // the browser's copy instead of downloading it twice.
     return;
   }
 
-  const observed = observedExtrasFor(item.finalUrl, item.url);
+  // Chromium reports the post-redirect address as `finalUrl`; Firefox's
+  // DownloadItem has no such field, so the original URL is the fallback there.
+  const observed = observedExtrasFor(item.finalUrl ?? "", item.url);
   try {
     await sendDownloadWithRetry(item.url, item.referrer ?? "", "", {
       useGrantedCookiePermission: true,
@@ -359,13 +346,15 @@ async function interceptDownload(item) {
     console.info("SwiftDM handoff accepted", {
       elapsedMs: Date.now() - handoffStartedAt
     });
-    clearActionError();
+    await clearActionError();
   } catch (error) {
-    showActionError(new Error(`SwiftDM unavailable, browser download restarted: ${errorText(error)}`));
+    await showActionError(new Error(
+      `SwiftDM unavailable, browser download restarted: ${errorText(error)}`
+    ));
     try {
-      await chrome.downloads.download({ url: item.url, conflictAction: "uniquify" });
+      await swiftdmApi.downloads.download({ url: item.url, conflictAction: "uniquify" });
     } catch (fallbackError) {
-      showActionError(new Error(
+      await showActionError(new Error(
         `SwiftDM unavailable and the browser fallback failed: ${errorText(fallbackError)}`
       ));
     }
@@ -376,8 +365,8 @@ async function sendDownloadWithRetry(...args) {
   try {
     return await sendDownload(...args);
   } catch {
-    // The app may still be starting, or the service worker may have raced the
-    // port becoming available. One short retry avoids needlessly restoring the
+    // The app may still be starting, or the worker may have raced the port
+    // becoming available. One short retry avoids needlessly restoring the
     // browser download.
     await new Promise((resolve) => setTimeout(resolve, 250));
     return sendDownload(...args);
@@ -388,7 +377,7 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
   const url = validHttpUrl(rawUrl);
   if (!url) throw new Error("Only HTTP and HTTPS URLs can be sent to SwiftDM.");
 
-  // Establish the local command channel while Chrome's cookie API is being
+  // Establish the local command channel while the browser's cookie API is being
   // queried. On a cold handoff this overlaps the WebSocket handshake with the
   // browser metadata work instead of adding those latencies in series.
   const commandSocketWarmup = getCommandSocket();
@@ -400,14 +389,14 @@ async function sendDownload(rawUrl, pageUrl, pageTitle, options = {}) {
     // unavailable prompt just means the handoff continues without cookies.
     granted = await swiftdmCookies.request(url.href);
   } else if (options.useGrantedCookiePermission) {
-    // Service-worker events cannot prompt; the popup asks once and later
-    // automatic handoffs reuse that grant.
+    // Background events cannot prompt; the popup asks once and later automatic
+    // handoffs reuse that grant.
     granted = await swiftdmCookies.granted();
   }
   let cookies = [];
   if (granted) {
     try {
-      const siteCookies = await chrome.cookies.getAll({ url: url.href });
+      const siteCookies = await swiftdmApi.cookies.getAll({ url: url.href });
       cookies = siteCookies
         .filter((cookie) => !cookie.partitionKey)
         .map((cookie) => ({
@@ -472,13 +461,13 @@ function ensureStatusSocket() {
   socket.addEventListener("open", () => {
     try {
       socket.send(JSON.stringify({ v: 1, cmd: "subscribe", id: crypto.randomUUID(), data: {} }));
-    } catch { /* the socket closed again */ }
+    } catch { /* socket closed before the subscribe was written */ }
   });
   socket.addEventListener("message", (event) => {
     try {
       const message = JSON.parse(event.data);
       if (message.event === "status" && message.data) {
-        chrome.storage.local.set({ appStatus: message.data });
+        void swiftdmApi.storage.set({ appStatus: message.data });
       }
     } catch { /* ignore malformed events */ }
   });
@@ -500,19 +489,58 @@ function scheduleStatusReconnect() {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Command channel (extension -> app request/response)
 // ---------------------------------------------------------------------------
 
-function validHttpUrl(value) {
-  try {
-    const url = new URL(value);
-    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
-      return null;
-    }
-    return url;
-  } catch {
-    return null;
+async function getCommandSocket() {
+  if (commandSocket && commandSocket.readyState === WebSocket.OPEN) return commandSocket;
+  if (commandSocket && commandSocket.readyState === WebSocket.CONNECTING && commandSocketReady) {
+    return commandSocketReady;
   }
+
+  let socket;
+  try {
+    socket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
+  } catch (error) {
+    return Promise.reject(new Error(`Cannot create the SwiftDM connection: ${errorText(error)}`));
+  }
+  commandSocket = socket;
+  commandSocketReady = new Promise((resolve, reject) => {
+    let opened = false;
+    socket.addEventListener("open", () => {
+      opened = true;
+      resolve(socket);
+    }, { once: true });
+    socket.addEventListener("message", (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        if (typeof response.id !== "string") return;
+        if (!response.ok) {
+          finishCommandRequest(response.id, new Error(response.error ?? "SwiftDM rejected the request."));
+        } else {
+          finishCommandRequest(response.id, null, response.data ?? {});
+        }
+      } catch {
+        dropCommandSocket(socket, new Error("SwiftDM sent an invalid response."));
+      }
+    });
+    socket.addEventListener("error", () => {
+      const error = new Error(
+        "Cannot connect to SwiftDM. Make sure SwiftDM is running and check its Extensions dialog."
+      );
+      if (!opened) reject(error);
+      dropCommandSocket(socket, error);
+    });
+    socket.addEventListener("close", (event) => {
+      const detail = event.code && event.code !== 1005 ? ` (close ${event.code})` : "";
+      const error = new Error(`SwiftDM closed the connection${detail}.`);
+      if (!opened) reject(error);
+      dropCommandSocket(socket, error);
+    });
+  }).finally(() => {
+    if (commandSocket === socket) commandSocketReady = null;
+  });
+  return commandSocketReady;
 }
 
 function sendCommand(cmd, data, socketPromise = null) {
@@ -539,58 +567,6 @@ function sendCommand(cmd, data, socketPromise = null) {
   });
 }
 
-function getCommandSocket() {
-  if (commandSocket?.readyState === WebSocket.OPEN) return Promise.resolve(commandSocket);
-  if (commandSocket?.readyState === WebSocket.CONNECTING && commandSocketReady) {
-    return commandSocketReady;
-  }
-
-  let socket;
-  try {
-    socket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
-  } catch (error) {
-    return Promise.reject(new Error(`Cannot create the SwiftDM connection: ${errorText(error)}`));
-  }
-  commandSocket = socket;
-  commandSocketReady = new Promise((resolve, reject) => {
-    let opened = false;
-    socket.addEventListener("open", () => {
-      opened = true;
-      resolve(socket);
-    }, { once: true });
-    socket.addEventListener("message", (event) => {
-      try {
-        const response = JSON.parse(event.data);
-        if (typeof response.id !== "string") return;
-        if (!response.ok) {
-          finishCommandRequest(response.id,
-            new Error(response.error ?? "SwiftDM rejected the request."));
-        } else {
-          finishCommandRequest(response.id, null, response.data ?? {});
-        }
-      } catch {
-        dropCommandSocket(socket, new Error("SwiftDM sent an invalid response."));
-      }
-    });
-    socket.addEventListener("error", () => {
-      const error = new Error(
-        "Cannot connect to SwiftDM. Make sure SwiftDM is running and check its Extensions dialog for the status."
-      );
-      if (!opened) reject(error);
-      dropCommandSocket(socket, error);
-    });
-    socket.addEventListener("close", (event) => {
-      const detail = event.code && event.code !== 1005 ? ` (close ${event.code})` : "";
-      const error = new Error(`SwiftDM closed the connection${detail}.`);
-      if (!opened) reject(error);
-      dropCommandSocket(socket, error);
-    });
-  }).finally(() => {
-    if (commandSocket === socket) commandSocketReady = null;
-  });
-  return commandSocketReady;
-}
-
 function finishCommandRequest(id, error, response) {
   const pending = commandRequests.get(id);
   if (!pending) return;
@@ -611,19 +587,49 @@ function dropCommandSocket(socket, error) {
   } catch { /* already closed */ }
 }
 
-function errorText(error) {
-  return error instanceof Error ? error.message : String(error);
-}
+// ---------------------------------------------------------------------------
+// Toolbar feedback
+// ---------------------------------------------------------------------------
 
-function showActionError(error) {
+// The badge is the only feedback surface shared by both browsers (Chromium
+// needs the "action" permission for it, Firefox shows it on the toolbar button).
+async function showActionError(error) {
   const message = errorText(error);
   console.error("SwiftDM integration:", message);
-  chrome.action.setBadgeBackgroundColor({ color: "#c43c3c" });
-  chrome.action.setBadgeText({ text: "!" });
-  chrome.action.setTitle({ title: `SwiftDM: ${message}` });
+  try {
+    await swiftdmApi.action.setBadgeBackgroundColor({ color: "#c43c3c" });
+    await swiftdmApi.action.setBadgeText({ text: "!" });
+    await swiftdmApi.action.setTitle({ title: `SwiftDM: ${message}` });
+  } catch {
+    // The badge is cosmetic; the popup still reports the failure.
+  }
 }
 
-function clearActionError() {
-  chrome.action.setBadgeText({ text: "" });
-  chrome.action.setTitle({ title: "SwiftDM" });
+async function clearActionError() {
+  try {
+    await swiftdmApi.action.setBadgeText({ text: "" });
+    await swiftdmApi.action.setTitle({ title: "SwiftDM" });
+  } catch {
+    // ignored: see showActionError
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function validHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error);
 }

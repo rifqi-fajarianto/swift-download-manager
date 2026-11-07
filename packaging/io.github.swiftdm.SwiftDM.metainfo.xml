@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.23.0" date="2026-11-06">
+      <description>
+        <p>Adds the Firefox build of the browser integration. The extension logic, popup and icons now live in one shared source tree, and the app accepts the Firefox extension origin so downloads can be handed off from Firefox, LibreWolf, Waterfox and Zen as well as from Chromium browsers.</p>
+      </description>
+    </release>
     <release version="0.22.17" date="2026-11-08">
       <description>
         <p>The release ships a single Windows installer again: it already asks whether to install for the current user or all users, so the separate all-users download was removed. No application behaviour changed.</p>

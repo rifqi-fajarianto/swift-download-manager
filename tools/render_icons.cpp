@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     const QString root = argc > 1 ? QString::fromUtf8(argv[1])
                                   : QStringLiteral(SWIFTSDM_SOURCE_DIR);
     const QString assets = root + QStringLiteral("/ui-assets/app-icon");
-    const QString icons = root + QStringLiteral("/ext/chromium/icons");
+    const QString icons = root + QStringLiteral("/ext/shared/icons");
     if (!QDir().mkpath(icons)) {
         std::fprintf(stderr, "cannot create %s\n", qPrintable(icons));
         return 1;

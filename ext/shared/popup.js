@@ -22,26 +22,27 @@ function switchState(element) {
   return element.getAttribute("aria-checked") === "true";
 }
 
-chrome.storage.local.get(["autoIntercept", "appStatus"], (values) => {
+void (async () => {
+  const values = await swiftdmApi.storage.get(["autoIntercept", "appStatus"]);
   setSwitch(autoIntercept, values.autoIntercept !== false);
-  swiftdmActionIcon.apply(values.autoIntercept !== false);
+  await swiftdmActionIcon.apply(values.autoIntercept !== false);
   renderAppStatus(values.appStatus ?? null);
-});
+})();
 
 autoIntercept.addEventListener("click", () => {
   const enabled = !switchState(autoIntercept);
   setSwitch(autoIntercept, enabled);
-  chrome.storage.local.set({ autoIntercept: enabled });
-  swiftdmActionIcon.apply(enabled);
+  void swiftdmApi.storage.set({ autoIntercept: enabled });
+  void swiftdmActionIcon.apply(enabled);
   renderAppStatus(null);
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+swiftdmApi.storage.onChanged((changes, area) => {
   if (area !== "local") return;
   if (changes.appStatus) renderAppStatus(changes.appStatus.newValue ?? null);
   if (changes.autoIntercept) {
     setSwitch(autoIntercept, changes.autoIntercept.newValue !== false);
-    swiftdmActionIcon.apply(changes.autoIntercept.newValue !== false);
+    void swiftdmActionIcon.apply(changes.autoIntercept.newValue !== false);
     renderAppStatus(null);
   }
 });
@@ -84,37 +85,34 @@ function setConnection(state, label) {
 }
 
 function extensionVersion() {
-  try {
-    return chrome.runtime.getManifest?.().version ?? "";
-  } catch {
-    return "";
-  }
+  return swiftdmApi.runtime.manifest().version ?? "";
 }
 
-function checkConnection() {
+async function checkConnection() {
   download.disabled = true;
   retry.hidden = true;
   setConnection("busy", "Checking…");
   setStatus("Checking connection…");
-  chrome.runtime.sendMessage({ type: "get-connection-status" }, (response) => {
-    if (chrome.runtime.lastError) {
-      setConnection("off", "Offline");
-      setStatus(chrome.runtime.lastError.message, "error");
-      retry.hidden = false;
-      return;
-    }
-    if (!response?.ok) {
-      setConnection("off", "Offline");
-      setStatus(response?.error ?? "SwiftDM is not running on 127.0.0.1:10007.", "error");
-      retry.hidden = false;
-      return;
-    }
-    setConnection("ok", "Connected");
-    setStatus(`Connected to SwiftDM ${response.version}.`, "ok");
-    appVersion.textContent = `v${response.version}`;
-    appVersion.title = "SwiftDM app version";
-    download.disabled = false;
-  });
+  let response = null;
+  try {
+    response = await swiftdmApi.runtime.sendMessage({ type: "get-connection-status" });
+  } catch (error) {
+    setConnection("off", "Offline");
+    setStatus(error instanceof Error ? error.message : String(error), "error");
+    retry.hidden = false;
+    return;
+  }
+  if (!response?.ok) {
+    setConnection("off", "Offline");
+    setStatus(response?.error ?? "SwiftDM is not running on 127.0.0.1:10007.", "error");
+    retry.hidden = false;
+    return;
+  }
+  setConnection("ok", "Connected");
+  setStatus(`Connected to SwiftDM ${response.version}.`, "ok");
+  appVersion.textContent = `v${response.version}`;
+  appVersion.title = "SwiftDM app version";
+  download.disabled = false;
 }
 
 // Without a running app there is no app version to show; fall back to the
@@ -122,19 +120,20 @@ function checkConnection() {
 appVersion.textContent = `v${extensionVersion()}`;
 appVersion.title = "SwiftDM extension version";
 
-checkConnection();
-retry.addEventListener("click", checkConnection);
+void checkConnection();
+retry.addEventListener("click", () => void checkConnection());
 
 // Cookies are how private or signed-in downloads (for example a Google Drive
 // share) carry the browser session. Only a user gesture may ask for the
-// optional permission, and the popup is the place that has one; the service
-// worker can only read cookies after a grant.
+// optional permission, and the popup is the place that has one; the background
+// context can only read cookies after a grant.
 let pageUrl = "";
 
-chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
+void (async () => {
+  const [tab] = await swiftdmApi.tabs.query({ active: true, currentWindow: true });
   pageUrl = tab?.url ?? "";
   setSwitch(cookies, await swiftdmCookies.granted());
-});
+})();
 
 cookies.addEventListener("click", async () => {
   const wanted = !switchState(cookies);
@@ -155,8 +154,8 @@ download.addEventListener("click", async () => {
   download.disabled = true;
   setStatus("Sending download…");
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const response = await chrome.runtime.sendMessage({
+    const [tab] = await swiftdmApi.tabs.query({ active: true, currentWindow: true });
+    const response = await swiftdmApi.runtime.sendMessage({
       type: "download-current-tab",
       url: tab?.url ?? "",
       title: tab?.title ?? "",
@@ -175,13 +174,20 @@ download.addEventListener("click", async () => {
 // Detected media (HLS playlists and adaptive video/audio pairs)
 // ---------------------------------------------------------------------------
 
-chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+void (async () => {
+  const [tab] = await swiftdmApi.tabs.query({ active: true, currentWindow: true });
   if (typeof tab?.id !== "number") return;
-  chrome.runtime.sendMessage({ type: "get-media-streams", tabId: tab.id }, (response) => {
-    if (chrome.runtime.lastError || !response?.ok) return;
+  try {
+    const response = await swiftdmApi.runtime.sendMessage({
+      type: "get-media-streams",
+      tabId: tab.id
+    });
+    if (!response?.ok) return;
     renderMedia(response.media ?? { hls: [], pairs: [] });
-  });
-});
+  } catch {
+    // The background context may be restarting; the popup simply lists nothing.
+  }
+})();
 
 function shortName(url) {
   try {
@@ -232,9 +238,9 @@ async function sendDetected(item, button) {
   button.disabled = true;
   setStatus(item.urls.length > 1 ? "Sending video and audio…" : "Sending media…");
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await swiftdmApi.tabs.query({ active: true, currentWindow: true });
     for (const url of item.urls) {
-      const response = await chrome.runtime.sendMessage({
+      const response = await swiftdmApi.runtime.sendMessage({
         type: "download-url",
         url,
         pageUrl: tab?.url ?? "",

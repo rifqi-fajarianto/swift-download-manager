@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.23.0 — 2026-11-06
+
+Adds the Firefox build of the browser integration.
+
+- `ext/firefox/` is a Manifest V3 extension for Firefox and the Firefox based
+  browsers that accept Firefox add-ons (LibreWolf, Waterfox, Zen, Floorp, ESR).
+  Firefox does not run extension service workers, so its background context is
+  an event page declared with `background.scripts`; the rest of the extension is
+  the same code as the Chromium build.
+- The extension logic moved to `ext/shared/` (`api.js`, `core.js`, `popup.html`,
+  `popup.css`, `popup.js`, `cookie-permission.js`, `action-icon.js`, `icons/`).
+  `api.js` is a small adapter that hides the callback-based `chrome.*` namespace
+  from the promise-based `browser.*` one, so `core.js` and `popup.js` never
+  branch on the browser. `ext/chromium/` and `ext/firefox/` now hold only a
+  manifest, a background bootstrap and a README, plus the assembled copies of
+  the shared files.
+- `tools/extension_pack.mjs` gained `build` and `version` commands and a
+  `--browser` option. `build` assembles a browser directory from the shared
+  sources, `version` refuses to continue when the two manifests disagree, and
+  `zip --browser firefox` produces the Firefox archive. Both manifests share one
+  version, so every release publishes both extensions under the same number
+  (0.6.0 for this release).
+- The app accepts Firefox's `moz-extension://<uuid>` WebSocket origin in
+  addition to the pinned Chromium ID. Firefox generates that UUID per profile
+  and ignores the `key` manifest field, so the origin is validated by shape; the
+  accepted origin is logged and shown in the Extensions dialog. Malformed
+  Firefox origins, other Chromium extension IDs and ordinary web origins stay
+  rejected.
+- The Extensions dialog lists both integrations instead of announcing Firefox
+  support as "coming soon".
+- Cookie permission on Firefox falls back to the plain `cookies` permission when
+  the site-scoped request is refused, because only origins declared in
+  `optional_host_permissions` can be requested there.
+- `ext/firefox/README.md` documents the temporary install from
+  `about:debugging`, the permanent install from a signed XPI, and the optional
+  `web-ext sign --channel unlisted` step. The release workflow publishes
+  `swiftdm-firefox-extension-<version>.zip` next to the Chromium ZIP and adds a
+  signed `.xpi` when the AMO API secrets are configured.
+- The `extension_logic`, `extension_popup` and `extension_package` tests now
+  cover both flavours: the shared logic runs once through the Chromium
+  `importScripts` path and once as a Firefox event page, the popup assertions
+  run against both manifests, and the package test builds both ZIPs and fails
+  when an assembled directory drifts from `ext/shared/`.
+- `browser_protocol` covers the Firefox origin: a valid `moz-extension://` UUID
+  is accepted and answers `ping`, and five malformed variants are rejected.
+
 ## 0.22.17 — 2026-11-08
 
 The release no longer ships a second Windows installer.

@@ -281,8 +281,9 @@ void MainWindow::on_browsers() {
     box->setWindowModality(Qt::WindowModal);
     box->setIconPixmap(dialog_info_pixmap());
     box->setWindowTitle(tr("Browser Extensions"));
-    box->setText(tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n%1\n\n"
-                    "Firefox based browser integration coming soon.\n\n"
+    box->setText(tr("Chromium integration (Chrome / Chromium / Edge / Brave)\n"
+                    "Firefox integration (Firefox / LibreWolf / Waterfox / Zen)\n"
+                    "%1\n\n"
                     "Automatic browser download handoff is enabled in the extension popup.\n")
                      .arg(state));
     box->open();

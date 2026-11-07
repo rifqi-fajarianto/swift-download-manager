@@ -191,8 +191,11 @@ int main(int argc, char** argv) {
                     opaque_pixels(simple_tray));
     }
 
-    // The extension PNGs must exist at every size the manifest and the
-    // active/off switch reference; Chromium cannot load SVG toolbar icons.
+    // The extension PNGs must exist at every size both manifests and the
+    // active/off switch reference; neither browser can load an SVG toolbar icon.
+    // ext/shared/icons is the only checked-in copy: the browser directories get
+    // their icons when they are assembled, and extension_package verifies that
+    // copy together with the rest of the shared files.
     const QStringList extension_pngs = {
         QStringLiteral("icons/icon16.png"),      QStringLiteral("icons/icon32.png"),
         QStringLiteral("icons/icon48.png"),      QStringLiteral("icons/icon128.png"),
@@ -201,7 +204,7 @@ int main(int argc, char** argv) {
     };
     for (const QString& png : extension_pngs) {
         const QString path =
-            QStringLiteral("%1/ext/chromium/%2").arg(QStringLiteral(SWIFTSDM_SOURCE_DIR), png);
+            QStringLiteral("%1/ext/shared/%2").arg(QStringLiteral(SWIFTSDM_SOURCE_DIR), png);
         const QImage image(path);
         if (image.isNull() || opaque_pixels(image) == 0) {
             std::printf("FAIL %s: missing or empty\n", qPrintable(path));

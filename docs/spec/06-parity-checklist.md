@@ -103,17 +103,17 @@ kept here as the completion history of the release line.
 | Per-download log file (Properties "Log File") + editable URL field | Log file implemented (0.20.0); editable URL still planned (manual URL edit; the refresh flow above replaces a URL from a browser capture) | Engine appends `logs/<id>-<filename>.log` per run (probe, plan/resume, 403 fallback, pause, completion, failure), capped at 1 MiB; Properties shows the path with an `Open Log` button and row deletion removes the file |
 | Saved-passwords UI (Passwords tab; `auths` table) | Planned (tab removed 0.20.0) | The empty `Passwords` tab is gone from Settings; it returns together with the `auths` store and Basic/Digest matching |
 | "Get File Creation Date From Server" applied to file mtime | Implemented (0.20.0) | Probe records `Creation-Date`/`Last-Modified` (HTTP) or `CURLINFO_FILETIME` from the FTP `MDTM` probe; a completed file gets that modification time when the option is on |
-| Firefox extension | Planned |
+| Firefox extension | Development preview (0.23.0) | Firefox build in `ext/firefox/` (Manifest V3 event page) assembled from the same `ext/shared/` sources as the Chromium build behind an `api.js` adapter; `moz-extension://<uuid>` origins accepted by shape; a permanent install needs a signed XPI |
 
 ## v2 — browser integration
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Implemented | Well-formed Chromium extension origin and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19) |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin pinned to the manifest ID, Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0) |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
-| Firefox extension | Planned |
+| Firefox extension | Development preview (0.23.0) | Firefox build in `ext/firefox/` (Manifest V3 event page) assembled from the same `ext/shared/` sources as the Chromium build behind an `api.js` adapter; `moz-extension://<uuid>` origins accepted by shape; a permanent install needs a signed XPI |
 | Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); restored at startup since 0.17.0 |
 
 Open gaps identified by the original-extension comparison

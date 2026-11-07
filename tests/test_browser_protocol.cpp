@@ -101,6 +101,9 @@ bool connect_extension(QTcpSocket& socket, quint16 port) {
                                "chrome-extension://hagednkleljjijmjonpeiokknhngknbb");
 }
 
+// Firefox reports a per-profile UUID in the Origin header; it cannot be pinned.
+constexpr char kFirefoxOrigin[] = "moz-extension://6f2b1c40-7d3e-4a5b-8c9d-0e1f2a3b4c5d";
+
 bool reject_origin(QTcpSocket& socket, quint16 port, const QByteArray& origin) {
     socket.connectToHost(QHostAddress::LocalHost, port);
     if (!socket.waitForConnected(1000)) return false;
@@ -313,7 +316,8 @@ int main(int argc, char** argv) {
     }
 
     // Only the ID derived from the repository manifest's public key is
-    // accepted; another extension cannot use the loopback command server.
+    // accepted; another Chromium extension cannot use the loopback command
+    // server even though its origin has the right shape.
     QTcpSocket other_extension;
     check(reject_origin(other_extension, server.port(),
                         "chrome-extension://abcdefghijklmnopabcdefghijklmnop"),
@@ -345,6 +349,34 @@ int main(int argc, char** argv) {
         const QJsonObject ping =
             command(repeated, QStringLiteral("ping"), {}, QStringLiteral("repeat-%1").arg(i));
         check(ping.value(QStringLiteral("ok")).toBool(), "repeated ping succeeds");
+    }
+
+    // Firefox reports moz-extension://<uuid> in the Origin header. The UUID is
+    // generated per profile and cannot be pinned, so the server accepts the
+    // shape and the accepted origin is what identifies the client in the log.
+    {
+        QTcpSocket firefox;
+        check(connect_with_origin(firefox, server.port(), kFirefoxOrigin),
+              "Firefox extension origin is accepted");
+        if (firefox.state() == QAbstractSocket::ConnectedState) {
+            const QJsonObject ping =
+                command(firefox, QStringLiteral("ping"), {}, QStringLiteral("firefox-ping"));
+            check(ping.value(QStringLiteral("ok")).toBool(),
+                  "ping works from a Firefox extension origin");
+        }
+    }
+
+    // Shape validation only: a truncated or non-UUID moz-extension origin, and
+    // a Chromium-shaped origin that is not an extension id, stay rejected.
+    for (const QByteArray& origin : {
+             QByteArray("moz-extension://not-a-uuid"),
+             QByteArray("moz-extension://6f2b1c40-7d3e-4a5b-8c9d"),
+             QByteArray("moz-extension://"),
+             QByteArray("moz-extension://6f2b1c40-7d3e-4a5b-8c9d-0e1f2a3b4c5d/"),
+             QByteArray("moz-extension://6f2b1c40-7d3e-4a5b-8c9d-0e1f2a3b4c5z")}) {
+        QTcpSocket malformed_firefox;
+        check(reject_origin(malformed_firefox, server.port(), origin),
+              "a malformed moz-extension origin is rejected");
     }
 
     QString rejected_reason;

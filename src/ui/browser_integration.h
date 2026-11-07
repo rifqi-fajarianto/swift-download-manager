@@ -13,7 +13,8 @@ class QTimer;
 
 namespace swiftdm::ui {
 
-// Loopback-only WebSocket endpoint for the SwiftDM Chromium extension.
+// Loopback-only WebSocket endpoint for the SwiftDM browser extensions
+// (Chromium and Firefox).
 class BrowserIntegration : public QObject {
     Q_OBJECT
   public:

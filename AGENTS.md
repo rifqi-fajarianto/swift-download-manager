@@ -63,7 +63,9 @@ Cek status terbaru di file ini:
 | `src/net/` | Lapisan libcurl: `probe_url`, `fetch_text`, `stream_download`, `SegmentDownloader`, resolver interstitial Google Drive. |
 | `src/store/` | `Settings` (INI) dan `HistoryStore` (SQLite: `downloads`, `headers`, `auths`, `queues`). |
 | `src/ui/` | Qt6 Widgets: `MainWindow`, model/filter, `DownloadTask` (worker thread), dialog-dialog, `queue_logic`/`queue_dialog`, tema/ikon, `BrowserIntegration` (WebSocket loopback), dan `SingleInstanceGuard` (socket permintaan "tampilkan window" di atas `InstanceLock`). |
-| `ext/chromium/` | Ekstensi Chromium Manifest V3 (popup, service worker, cookie permission, ikon). |
+| `ext/shared/` | Sumber tunggal ekstensi: `api.js` (adapter `chrome.*`/`browser.*`), `core.js` (logika background), `popup.html`/`popup.css`/`popup.js`, `cookie-permission.js`, `action-icon.js`, `icons/`. |
+| `ext/chromium/` | Ekstensi Chromium Manifest V3: `manifest.json` (dengan `key` ID tetap) + `background.js` (service worker yang `importScripts` file `ext/shared/`). Salinan `ext/shared/` di sini generated. |
+| `ext/firefox/` | Ekstensi Firefox Manifest V3: `manifest.json` (`gecko.id`, `background.scripts`) + `background.js` (event page). Salinan `ext/shared/` di sini generated. |
 | `tests/` | Unit/integration test backend, server HTTP/FTP lokal, harness Node untuk logika ekstensi, test ikon offscreen, test protokol browser, dan test single-instance (lock + permintaan tampilkan window). |
 | `docs/spec/` | Spesifikasi perilaku clean-room, data model, engine, protokol, settings, parity checklist, referensi ekstensi, evidence ledger. |
 | `packaging/` | Desktop entry, AppStream metadata, maintainer script Debian, skrip installer Inno Setup (`packaging/windows/swiftdm.iss`), dokumentasi packaging. Ikon launcher hicolor dirender saat build ke `build/generated/icons/`. |
@@ -241,8 +243,9 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
   dihapus.
 - Autostart: `~/.config/autostart/swiftdm.desktop`.
 - Browser integration: WebSocket loopback `127.0.0.1:10007`, subprotokol
-  `swiftdm.v1`; ekstensi hasil install ada di `/usr/share/swiftdm/chromium`
-  (Linux) atau folder `chromium-extension/` di samping `swiftdm.exe` (Windows).
+  `swiftdm.v1`; ekstensi hasil install ada di `/usr/share/swiftdm/chromium` dan
+  `/usr/share/swiftdm/firefox` (Linux) atau folder `chromium-extension/` dan
+  `firefox-extension/` di samping `swiftdm.exe` (Windows).
 - Windows: config di `%APPDATA%\SwiftDM\swiftdm.ini`, database dan temp di
   `%LOCALAPPDATA%\SwiftDM\`, autostart lewat nilai `SwiftDM` di
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
@@ -264,7 +267,8 @@ Aturan kenaikan versi pada setiap perubahan aplikasi:
 | `docs/spec/05-settings.md` | Key settings, default, dan per-download override. |
 | `docs/spec/06-parity-checklist.md` | Status parity, fitur yang ditunda/di-drop, verification notes. |
 | `docs/spec/07-chromium-extension-reference.md` | Referensi perilaku ekstensi asal dan decision log. |
-| `ext/chromium/README.md` | Instalasi, troubleshooting, dan batasan ekstensi. |
+| `ext/chromium/README.md` | Instalasi, troubleshooting, dan batasan ekstensi Chromium. |
+| `ext/firefox/README.md` | Instalasi (ZIP unpacked, XPI bertanda tangan), izin, dan batasan ekstensi Firefox. |
 | `packaging/README.md` | Build/install `.deb`, ikon, dan layout paket. |
 
 ## 10. Definition of done & commit
@@ -344,20 +348,34 @@ Catatan:
 - Jangan memindahkan atau menghapus tag yang sudah dipublikasikan. Jika rilis
   bermasalah, perbaiki dan naikkan patch baru.
 - Workflow release membuat release sebagai draft, mengunggah `.deb`, ZIP
-  Windows, installer `-setup.exe`, dan ZIP ekstensi Chromium
-  (`swiftdm-chromium-extension-<versi-ekstensi>.zip`), lalu mempublikasikannya.
+  Windows, installer `-setup.exe`, ZIP ekstensi Chromium
+  (`swiftdm-chromium-extension-<versi-ekstensi>.zip`), ZIP ekstensi Firefox
+  (`swiftdm-firefox-extension-<versi-ekstensi>.zip`) dan, bila secret
+  `WEB_EXT_API_KEY`/`WEB_EXT_API_SECRET` tersedia, XPI bertanda tangan
+  (`swiftdm-firefox-extension-<versi-ekstensi>.xpi`), lalu mempublikasikannya.
   Re-run workflow akan memakai release yang sudah ada dan mengganti aset
   tersebut (`--clobber`).
 - Aset ekstensi sengaja berupa ZIP unpacked, bukan `.crx`: Chrome menolak CRX
   self-signed yang di-drag ke `chrome://extensions`
   (`CRX_REQUIRED_PROOF_MISSING`), dan Windows/macOS memblokir instalasi CRX
-  lokal. ZIP dijalankan lewat job `extension-package`
+  lokal. Firefox hanya mengizinkan instalasi permanen dari XPI yang ditandatangani
+  Mozilla, jadi ZIP dipakai untuk `about:debugging` dan XPI untuk instalasi tetap.
+  ZIP dijalankan lewat job `extension-package`
   (`tools/extension_pack.mjs`), dan job itu gagal bila ID turunan dari `key` di
   `ext/chromium/manifest.json` tidak sama dengan `kExtensionId` di
-  `src/ui/browser_integration.cpp`. Jangan menerbitkan aset ekstensi tanpa
-  melewati pemeriksaan tersebut; handshake dari ekstensi akan ditolak aplikasi.
-- Versi ekstensi di `ext/chromium/manifest.json` bergerak sendiri (mis. `0.5.2`)
-  dan dipakai sebagai nama berkas ZIP; naikkan bila isi ekstensi berubah.
+  `src/ui/browser_integration.cpp`, atau bila kedua manifest berbeda versi.
+  Jangan menerbitkan aset ekstensi tanpa melewati pemeriksaan tersebut;
+  handshake dari ekstensi akan ditolak aplikasi.
+- `ext/shared/` adalah satu-satunya sumber logika ekstensi. Salinan hasil rakitan
+  di `ext/chromium/` dan `ext/firefox/` adalah file generated (git-ignored):
+  CMake merakitnya ke `build/extensions/<browser>` saat build untuk install rule,
+  dan `node tools/extension_pack.mjs build --browser <browser>` merakitnya di
+  source tree untuk dibuka langsung dari checkout. `zip` selalu merakit salinan
+  sementara sendiri, jadi aset rilis tidak pernah memakai salinan yang basi.
+- Versi ekstensi ada di `ext/chromium/manifest.json` dan
+  `ext/firefox/manifest.json`, harus sama, bergerak sendiri dari versi aplikasi
+  (mis. `0.6.0`), dan dipakai sebagai nama berkas ZIP/XPI; naikkan bila isi
+  ekstensi berubah.
 - `workflow_dispatch` dengan `dry_run: true` (default) adalah cara aman menguji
   pipeline: build, `ctest`, `cpack`, installer, dan ekstraksi catatan rilis
   tetap dijalankan, hasilnya hanya artifact. Set `dry_run: false` untuk benar-
