@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.23.1" date="2026-11-07">
+      <description>
+        <p>Fixes the release build of the browser extensions: the packaging helper now detects its own entry point on Windows, so the Chromium and Firefox archives are produced again instead of the command exiting without output.</p>
+      </description>
+    </release>
     <release version="0.23.0" date="2026-11-06">
       <description>
         <p>Adds the Firefox build of the browser integration. The extension logic, popup and icons now live in one shared source tree, and the app accepts the Firefox extension origin so downloads can be handed off from Firefox, LibreWolf, Waterfox and Zen as well as from Chromium browsers.</p>

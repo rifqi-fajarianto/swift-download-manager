@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.23.1 — 2026-11-07
+
+Makes the extension packaging helper actually run on Windows, so the release
+job can build the browser archives again.
+
+- `tools/extension_pack.mjs` decided whether it was the entry point by comparing
+  `path.resolve(process.argv[1])` with `path.resolve(new URL(import.meta.url).pathname)`.
+  On Windows the URL pathname keeps a leading slash (`/D:/a/...`), so it never
+  matched `argv[1]` (`D:\a\...`) and `main()` was never called: every helper
+  command exited with status 0 without doing anything. Linux and macOS were
+  unaffected because the pathname already equals the `argv[1]` form there, which
+  is why local release runs looked fine.
+- The check now uses `fileURLToPath(import.meta.url)`, the documented conversion
+  that handles the drive letter on Windows.
+- `extension_package` now runs the helper's `version`, `id` and `verify`
+  commands and fails when a command prints nothing, so a silently skipped
+  command is caught on every platform instead of only failing later on a missing
+  ZIP.
+
 ## 0.23.0 — 2026-11-06
 
 Adds the Firefox build of the browser integration.
