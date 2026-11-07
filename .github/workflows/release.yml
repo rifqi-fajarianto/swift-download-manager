@@ -427,31 +427,34 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-          # Build the asset list from the files that exist: the signed XPI is
-          # optional, and an unmatched glob would otherwise reach gh verbatim
-          # and fail with "stat extension/*.xpi: no such file or directory".
-          assets=()
+          # Collect the files that exist: the signed XPI is optional, and an
+          # unmatched glob would otherwise reach gh verbatim and fail with
+          # "stat extension/*.xpi: no such file or directory". The job runs
+          # under sh, so the list is built positionally instead of with a bash
+          # array.
+          set --
           for pattern in build/*.deb build/SHA256SUMS windows/*.zip \
             windows/*-setup.exe extension/*.zip extension/*.xpi; do
             for file in $pattern; do
               if [ -e "$file" ]; then
-                assets+=("$file")
+                set -- "$@" "$file"
               fi
             done
           done
-          if [ "${#assets[@]}" -eq 0 ]; then
+          if [ "$#" -eq 0 ]; then
             echo "::error::No release assets were built"
             exit 1
           fi
-          printf 'Publishing assets:\n%s\n' "$(printf '  %s\n' "${assets[@]}")"
+          echo "Publishing assets:"
+          printf '  %s\n' "$@"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release upload "$tag" "${assets[@]}" --clobber --repo "$repo"
+            gh release upload "$tag" "$@" --clobber --repo "$repo"
             gh release edit "$tag" \
               --title "SwiftDM ${version}" \
               --notes-file release-notes.md \
               --repo "$repo"
           else
-            gh release create "$tag" "${assets[@]}" --draft \
+            gh release create "$tag" "$@" --draft \
               --title "SwiftDM ${version}" \
               --notes-file release-notes.md \
               --repo "$repo"
