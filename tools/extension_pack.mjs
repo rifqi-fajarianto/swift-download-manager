@@ -48,6 +48,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import path from "node:path";
 import process from "node:process";
@@ -346,6 +347,10 @@ function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+// Run only when executed directly, not when imported by a test. Comparing
+// `import.meta.url` with `process.argv[1]` must go through fileURLToPath: on
+// Windows `new URL(...).pathname` yields "/D:/a/...", which never matches the
+// "D:\a\..." form of argv[1], so every command would silently do nothing.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }

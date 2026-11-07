@@ -59,6 +59,21 @@ function runHelper(...args) {
   return execFileSync(process.execPath, [helper, ...args], { cwd: root, encoding: "utf8" }).trim();
 }
 
+// Every command must actually run when the helper is executed directly. A
+// broken "is this the entry point?" check makes the process exit successfully
+// without doing anything, which is invisible until a release asset is missing.
+// That happened on Windows, where `new URL(...).pathname` yields "/D:/...".
+for (const args of [["version"], ["id"], ["verify"]]) {
+  let output = "";
+  try {
+    output = runHelper(...args);
+  } catch (error) {
+    check(false, `node tools/extension_pack.mjs ${args.join(" ")} runs (${error.message.split("\n")[0]})`);
+    continue;
+  }
+  check(output.length > 0, `node tools/extension_pack.mjs ${args.join(" ")} prints a result`);
+}
+
 // Minimal central-directory reader: enough to list entries and inflate them
 // without adding a zip dependency to the test suite.
 function readZip(buffer) {
