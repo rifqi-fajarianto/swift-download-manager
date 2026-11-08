@@ -28,9 +28,11 @@ QString default_download_location(const QString& download_dir,
 // browser handoff): the server-resolved file name and size, the category
 // (extension-based default, user overridable), the destination folder
 // (category folder by default, user overridable) and the target queue.
-// "Download Now" targets the main Downloads list, while "Add to queue" asks
-// for the queue (or uses the one the download came from); Cancel leaves no row
-// and no database entry behind.
+// "Download Now" targets the main Downloads list and starts at once, while
+// "Download Later" inserts the same row in the main list but leaves it paused
+// until the user starts it from the list. "Add to queue" asks for the queue (or
+// uses the one the download came from); Cancel leaves no row and no database
+// entry behind.
 //
 // The window keeps a fixed geometry: the file name is elided in the middle
 // and the URL sits in a read-only field, so neither of them can widen the
@@ -60,6 +62,9 @@ class ConfirmDownloadDialog : public QDialog {
     qint64 selected_queue_id() const { return queue_target_; }
     // True when the user accepted with Add to queue rather than Download Now.
     bool queue_requested() const { return queue_requested_; }
+    // True when the user accepted with Download Later: the row is inserted in
+    // the main Downloads list but stays paused until the user starts it.
+    bool later_requested() const { return later_requested_; }
     void set_probe_pending();
     void set_probe_result(const QString& file_name, quint64 size);
 
@@ -90,6 +95,8 @@ class ConfirmDownloadDialog : public QDialog {
     bool category_custom_ = false;
     bool probe_ready_ = true;
     bool queue_requested_ = false;
+    // Set by Download Later; mutually exclusive with queue_requested_.
+    bool later_requested_ = false;
     // Full file name; the label shows an elided form of it.
     QString file_name_;
     QVector<QueueChoice> queue_choices_;
@@ -101,6 +108,7 @@ class ConfirmDownloadDialog : public QDialog {
     QLabel* file_label_ = nullptr;
     QLabel* size_label_ = nullptr;
     QPushButton* download_button_ = nullptr;
+    QPushButton* later_button_ = nullptr;
     QPushButton* queue_button_ = nullptr;
 };
 

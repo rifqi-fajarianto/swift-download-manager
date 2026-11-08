@@ -111,10 +111,14 @@ class MainWindow : public QMainWindow {
     void add_download(const QString& url, qint64 queue_id = 0);
     void add_browser_download(const QJsonObject& data);
     // Probes the URL (no list row, no database entry) and shows the download
-    // confirmation dialog. Only Download Now inserts the item and starts it.
+    // confirmation dialog. Only Download Now and Download Later insert the item;
+    // Download Later leaves it paused in the main list.
     void probe_and_confirm(DownloadTask::Options options, DownloadItem item);
+    // `start_immediately` false inserts the row paused without opening the
+    // progress window (Download Later); the user starts it from the list.
     void start_confirmed_download(DownloadItem item, DownloadTask::Options options,
-                                  const swiftdm::ProbeResult& probe);
+                                  const swiftdm::ProbeResult& probe,
+                                  bool start_immediately = true);
     void start_task_at_row(int row, const DownloadTask::Options* options_override = nullptr,
                            const swiftdm::ProbeResult* probe = nullptr);
     void open_download_window(int id);

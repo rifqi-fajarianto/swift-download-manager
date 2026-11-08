@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.24.0" date="2026-11-08">
+      <description>
+        <p>Adds a Download Later button to the download confirmation window: the link is added to the list already paused, and the transfer starts only when the user starts it from the list.</p>
+      </description>
+    </release>
     <release version="0.23.2" date="2026-11-08">
       <description>
         <p>Fixes the extension installed from a browser store, which stayed offline: Edge Add-ons and the Chrome Web Store re-sign the package, so the origin's extension ID no longer matches the manifest key. The WebSocket handshake now validates the Chromium origin's shape, as it already did for Firefox.</p>

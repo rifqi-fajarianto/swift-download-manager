@@ -115,10 +115,11 @@ extra header rows. `MainWindow::restore_history()` reloads every row at startup
 stay inactive with a Resume action, and stale `Downloading`/`Queued` rows in the
 main list are normalized to `Paused` (nothing starts automatically). Rows with a
 non-zero `queueid` are restored as `Queued`; a queue with autostart starts them,
-otherwise the user presses `Start Queue`. Progress is checkpointed every ~5 s
-and on exit; a paused row also reads `segments.json` so a hard kill loses at
-most the last engine checkpoint. Rows deleted by the user are removed from
-`downloads` and `headers`.
+otherwise the user presses `Start Queue`. A `Download Later` row is inserted
+with `status = 'Paused'` and `done = 0`, so it also restores paused (0.24.0).
+Progress is checkpointed every ~5 s and on exit; a paused row also reads
+`segments.json` so a hard kill loses at most the last engine checkpoint. Rows
+deleted by the user are removed from `downloads` and `headers`.
 
 Completed rows store the actual saved basename, so a file saved as
 `name (1).ext` is found again. If the file is gone, the row shows

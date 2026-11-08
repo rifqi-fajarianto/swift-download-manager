@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-07**, versi kerja **0.23.1**. Status ini cepat
+> Snapshot terakhir: **2026-11-08**, versi kerja **0.24.0**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,8 +8,13 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.23.1 — memperbaiki helper pengemasan
-  ekstensi agar benar-benar berjalan di Windows (`fileURLToPath` menggantikan
+- **Rilis terakhir di jalur `main`**: 0.24.0 — menambahkan tombol `Download
+  Later` pada jendela konfirmasi unduhan: item masuk ke daftar utama Downloads
+  dengan status Paused (0%) tanpa memulai transfer dan tanpa membuka jendela
+  progress, lalu user memulainya sendiri dari baris itu. Sebelumnya 0.23.2
+  menerima origin ekstensi hasil re-sign browser store. 0.23.1 memperbaiki
+  helper pengemasan ekstensi agar benar-benar berjalan di Windows
+  (`fileURLToPath` menggantikan
   perbandingan `URL.pathname`), sehingga job rilis bisa membuat ZIP ekstensi
   Chromium dan Firefox lagi; perilaku aplikasi sama dengan 0.23.0. Sebelumnya
   0.23.0 menambahkan ekstensi Firefox dan menyatukan sumber ekstensi di
@@ -29,7 +34,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.23.1. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.24.0. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang

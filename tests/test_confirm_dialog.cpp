@@ -174,6 +174,10 @@ int main(int argc, char** argv) {
           "pending probe shows a checking status");
     check(download_button && !download_button->isEnabled(),
           "Download Now is disabled while the probe is pending");
+    auto* pending_later =
+        qobject_cast<QPushButton*>(named_widget(&pending, "confirm_later"));
+    check(pending_later && !pending_later->isEnabled(),
+          "Download Later is disabled while the probe is pending");
     pending.set_probe_result(QStringLiteral("movie.mp4"), 1500000);
     check(download_button && download_button->isEnabled(),
           "Download Now is enabled after probe metadata arrives");
@@ -264,12 +268,19 @@ int main(int argc, char** argv) {
 
     auto* cancel_button =
         qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_cancel"));
+    auto* later_button =
+        qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_later"));
     auto* queue_button =
         qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_queue"));
     auto* download_button_widget =
         qobject_cast<QPushButton*>(named_widget(&dialog, "confirm_download"));
     check(cancel_button && cancel_button->text() == QStringLiteral("Cancel"),
           "Cancel is on the left side of the button row");
+    check(later_button && later_button->text() == QStringLiteral("Download Later"),
+          "Download Later is part of the button row");
+    check(later_button && later_button->isEnabled(),
+          "Download Later is enabled once metadata is ready");
+    check(!dialog.later_requested(), "Download Later is not the action by default");
     check(queue_button && queue_button->text() == QStringLiteral("Add to queue"),
           "Add to queue is part of the button row");
     check(queue_button && !queue_button->isEnabled(),
@@ -347,6 +358,48 @@ int main(int argc, char** argv) {
           "Download Now clears the queue target");
     check(!main_list.queue_requested(), "Download Now is not a queue action");
 
+    // Download Later accepts with the main-list target but defers the start.
+    ConfirmDownloadDialog later_dialog(QStringLiteral("movie.mp4"), 1500000,
+                                       QStringLiteral("https://example.com/movie.mp4"),
+                                       QStringLiteral("/tmp"), {}, true);
+    later_dialog.set_queue_choices({{7, QStringLiteral("Batch"), 2},
+                                    {9, QStringLiteral("Parts"), 0}},
+                                   9);
+    auto* later_click =
+        qobject_cast<QPushButton*>(named_widget(&later_dialog, "confirm_later"));
+    if (later_click) later_click->click();
+    check(later_dialog.result() == QDialog::Accepted,
+          "Download Later accepts the dialog");
+    check(later_dialog.later_requested(), "Download Later reports the later action");
+    check(!later_dialog.queue_requested(), "Download Later is not a queue action");
+    check(later_dialog.selected_queue_id() == 0,
+          "Download Later targets the main Downloads list");
+    // The default action stays where it was: Add to queue when the download
+    // came from a queue, Download Now otherwise.
+    ConfirmDownloadDialog later_plain(QStringLiteral("movie.mp4"), 1500000,
+                                      QStringLiteral("https://example.com/movie.mp4"),
+                                      QStringLiteral("/tmp"), {}, true);
+    auto* plain_later =
+        qobject_cast<QPushButton*>(named_widget(&later_plain, "confirm_later"));
+    auto* plain_download =
+        qobject_cast<QPushButton*>(named_widget(&later_plain, "confirm_download"));
+    if (plain_later) plain_later->click();
+    check(plain_download && plain_download->isDefault(),
+          "Download Later does not replace Download Now as the default");
+    check(later_plain.layout()->minimumSize().width() <=
+              ConfirmDownloadDialog::kMinWindowWidth,
+          "the three accept buttons still fit the minimum window width");
+
+    // Download Now never reports the later action.
+    ConfirmDownloadDialog now_after_later(QStringLiteral("movie.mp4"), 1500000,
+                                          QStringLiteral("https://example.com/movie.mp4"),
+                                          QStringLiteral("/tmp"), {}, true);
+    auto* now_click =
+        qobject_cast<QPushButton*>(named_widget(&now_after_later, "confirm_download"));
+    if (now_click) now_click->click();
+    check(!now_after_later.later_requested(),
+          "Download Now leaves the later action off");
+
     // Every input and button shares one height.
     QList<int> control_heights;
     for (const QWidget* widget : dialog.findChildren<QWidget*>()) {
@@ -356,7 +409,7 @@ int main(int argc, char** argv) {
             control_heights << widget->height();
         }
     }
-    check(control_heights.size() == 7, "the dialog has seven controls");
+    check(control_heights.size() == 8, "the dialog has eight controls");
     bool same_height = !control_heights.isEmpty();
     for (const int height : control_heights) {
         if (height != control_heights.first()) same_height = false;

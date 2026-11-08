@@ -162,6 +162,10 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     buttons->setSpacing(8);
     auto* cancel_button = new QPushButton(tr("Cancel"), this);
     cancel_button->setObjectName("confirm_cancel");
+    later_button_ = new QPushButton(tr("Download Later"), this);
+    later_button_->setObjectName("confirm_later");
+    later_button_->setToolTip(
+        tr("Add the download to the list paused and start it when you want."));
     queue_button_ = new QPushButton(tr("Add to queue"), this);
     queue_button_->setObjectName("confirm_queue");
     queue_button_->setEnabled(false);
@@ -170,14 +174,15 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     download_button_->setDefault(true);
     buttons->addWidget(cancel_button);
     buttons->addStretch(1);
+    buttons->addWidget(later_button_);
     buttons->addWidget(queue_button_);
     buttons->addWidget(download_button_);
     layout->addLayout(buttons);
 
     // Every input and button gets the same height.
     const QList<QWidget*> controls = {url_edit, category_box_, location_edit_,
-                                      browse_button, download_button_, queue_button_,
-                                      cancel_button};
+                                      browse_button, download_button_, later_button_,
+                                      queue_button_, cancel_button};
     const int control_height = common_control_height(controls);
     for (QWidget* widget : controls) widget->setFixedHeight(control_height);
 
@@ -195,14 +200,26 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     connect(location_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
         const bool valid = probe_ready_ && !text.trimmed().isEmpty();
         download_button_->setEnabled(valid);
+        later_button_->setEnabled(valid);
         queue_button_->setEnabled(valid && !queue_choices_.isEmpty());
     });
     connect(browse_button, &QPushButton::clicked, this,
             &ConfirmDownloadDialog::choose_location);
     connect(download_button_, &QPushButton::clicked, this, [this] {
         queue_requested_ = false;
+        later_requested_ = false;
         queue_target_ = 0;
         confirm_download();
+    });
+    // Download Later keeps the main-list target Download Now uses; only the
+    // start is deferred, so the row is inserted paused.
+    connect(later_button_, &QPushButton::clicked, this, [this] {
+        queue_requested_ = false;
+        later_requested_ = true;
+        queue_target_ = 0;
+        // A rejected folder keeps the dialog open; drop the intent so a later
+        // accept does not inherit it.
+        if (!confirm_download()) later_requested_ = false;
     });
     connect(queue_button_, &QPushButton::clicked, this,
             &ConfirmDownloadDialog::confirm_queue);
@@ -280,6 +297,7 @@ void ConfirmDownloadDialog::confirm_queue() {
     const qint64 previous = queue_target_;
     queue_target_ = target;
     queue_requested_ = true;
+    later_requested_ = false;
     if (!confirm_download()) {
         // Keep the dialog open and ask again on the next click instead of
         // silently reusing a target the user has not confirmed.
@@ -292,6 +310,7 @@ void ConfirmDownloadDialog::set_probe_pending() {
     probe_ready_ = false;
     size_label_->setText(tr("Checking…"));
     download_button_->setEnabled(false);
+    later_button_->setEnabled(false);
     queue_button_->setEnabled(false);
 }
 
@@ -313,6 +332,7 @@ void ConfirmDownloadDialog::set_probe_result(const QString& file_name, quint64 s
         if (!location_custom_) use_default_location();
     }
     download_button_->setEnabled(!location_edit_->text().trimmed().isEmpty());
+    later_button_->setEnabled(!location_edit_->text().trimmed().isEmpty());
     queue_button_->setEnabled(!location_edit_->text().trimmed().isEmpty() &&
                               !queue_choices_.isEmpty());
 }

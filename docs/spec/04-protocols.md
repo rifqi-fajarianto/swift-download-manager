@@ -164,9 +164,12 @@ while the wait lasts (0.22.1). The signal carrying the capture is queued rather
 than emitted inline, so this reply is written before any modal window opens; a
 capture repeating the address just applied by a refresh is ignored for 15 s so
 the extension's command retry cannot deliver the same handoff twice (0.22.2). The fallback name and `Checking…` are shown until
-metadata arrives; Download Now is disabled in that interval. After acceptance,
+metadata arrives; Download Now is disabled in that interval, and so are the
+other accept buttons. After acceptance,
 the successful probe is reused for the initial transfer (no duplicate preflight
-requests), while Resume still re-probes. The main window stays hidden or
+requests), while Resume still re-probes. `Download Later` (0.24.0) accepts into
+the main Downloads list with the row paused and starts nothing until the user
+starts it from the list. The main window stays hidden or
 minimized if it was not visible when the browser handoff arrived (0.18.3,
 latency improvement 0.18.19). The extension reuses its command WebSocket for
 successive requests; the socket is separate from the long-lived status

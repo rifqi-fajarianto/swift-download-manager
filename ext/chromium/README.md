@@ -155,7 +155,8 @@ require a top-level-site context that the downloader does not retain.
   the app displays it immediately while probing the URL without touching the
   list or database. A fallback filename and `Checking…` appear first, and
   Download Now becomes available when metadata arrives. The user can choose
-  Download Now, Cancel (nothing is stored) or Add to queue (placeholder). The
+  Download Now, Download Later (added to the list paused), Cancel (nothing is
+  stored) or Add to queue (placeholder). The
   successful probe is reused for the initial transfer; Resume checks the server
   again (0.18.19). If the main window is hidden, SwiftDM keeps it hidden and
   shows the independent confirmation window.

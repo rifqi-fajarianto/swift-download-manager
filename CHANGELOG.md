@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.24.0 — 2026-11-08
+
+Adds `Download Later` to the download confirmation window: queue the link now,
+transfer it when you are ready.
+
+- The confirmation window now offers three accept actions: `Download Now`
+  (unchanged, the default), `Add to queue`, and `Download Later` sitting between
+  them in the button row. `Download Later` inserts the row in the main Downloads
+  list already paused (0%) without starting a transfer and without opening the
+  progress window, so the user starts it later from the row itself (toolbar
+  `Resume`, or `Resume` in the progress window opened by double-clicking the
+  row).
+- The paused row is written to the history database as `Paused` at insert time,
+  so a restart restores it paused instead of starting it: the automatic startup
+  pass only resumes queued rows and autostart queues.
+- The confirmed request is kept on an inactive `DownloadTask`, exactly like a
+  queue item that has not been scheduled yet, so `Resume` reuses the cookies,
+  referer, User-Agent, extra headers and POST body that came from the
+  confirmation or the browser handoff.
+- `Download Later` targets the main Downloads list even when the confirmation
+  was opened from a queue view; it never becomes the default button, and it is
+  disabled while the probe is still running (like `Download Now`).
+- `test_confirm_dialog` covers the new button: it accepts the dialog, reports
+  the later action, clears the queue target, stays non-default, is disabled
+  while probing, and `Download Now` leaves the later flag off.
+
 ## 0.23.2 — 2026-11-08
 
 Lets the extension installed from a browser store talk to the app, fixing the

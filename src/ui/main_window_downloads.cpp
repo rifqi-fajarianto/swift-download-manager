@@ -409,6 +409,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
         start_options.filename = flow->resolved_name;
         start_options.category = draft.category;
         qint64 target_queue = flow->item.queue_id;
+        // Download Later accepts with the main-list target but defers the start.
+        bool download_later = false;
         if (flow->dialog) {
             draft.category = flow->dialog->category();
             draft.output_dir = flow->dialog->location();
@@ -419,6 +421,7 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             // queue chosen in the confirmation dialog (or the queue the
             // download came from, which the dialog resolves without a picker).
             target_queue = flow->dialog->selected_queue_id();
+            download_later = flow->dialog->later_requested();
             flow->dialog->deleteLater();
             flow->dialog = nullptr;
         } else {
@@ -440,7 +443,7 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             start_options.limit_kbps = 0;
         }
         start_confirmed_download(std::move(draft), std::move(start_options),
-                                 flow->probe_result);
+                                 flow->probe_result, !download_later);
     };
 
     if (flow->dialog) {
@@ -452,7 +455,8 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
 }
 
 void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Options options,
-                                          const swiftdm::ProbeResult& probe) {
+                                          const swiftdm::ProbeResult& probe,
+                                          bool start_immediately) {
     // The queue can disappear while a background probe runs (confirmation
     // disabled); fall back to the main list instead of hiding the row in a
     // workspace that no longer exists.
@@ -468,6 +472,9 @@ void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Optio
         item.bandwidth_limit_enabled = options.limit_enabled;
         item.bandwidth_limit_kbps = options.limit_kbps;
         item.connections = options.connections;
+        // Download Later: the row is stored as Paused before the history insert
+        // so a restart restores it paused too.
+        if (!start_immediately) item.state = DownloadItem::State::Paused;
     }
     const int row = model_->add_item(item);
     DownloadItem* added = model_->item_at(row);
@@ -490,6 +497,15 @@ void MainWindow::start_confirmed_download(DownloadItem item, DownloadTask::Optio
         complete_notified_.remove(queue_id);
         if (running_queues_.contains(queue_id)) schedule_queue(queue_id);
         rebuild_queue_tree();
+        update_status_bar();
+        return;
+    }
+    if (!start_immediately) {
+        // Download Later: keep the inactive task as the option carrier (cookies,
+        // headers, POST body) so Resume starts from the confirmed request, and
+        // leave the progress window closed; the user starts it from the list.
+        added->task = new DownloadTask(settings_, options, model_);
+        wire_task(added->task);
         update_status_bar();
         return;
     }

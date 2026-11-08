@@ -85,12 +85,13 @@ Layout (from `main-window.png`):
    row or database entry yet): full URL, server-resolved file name and size, a
    `Category` dropdown (file-type default, user overridable) and `Location`
    (category folder by default, user overridable). `Download Now` adds the
-   item to the main Downloads list and starts the transfer; `Cancel` leaves no
-   trace; `Add to queue` adds it to the chosen queue and starts it only when
-   that queue is running (0.19.0). While probing, the fallback filename and
-   `Checking…` size are shown and Download Now is disabled; server metadata
-   replaces them when ready. The successful probe is reused by the initial
-   transfer, while Resume probes again (0.18.19).
+   item to the main Downloads list and starts the transfer; `Download Later`
+   adds it to the same list already paused and starts nothing (0.24.0);
+   `Cancel` leaves no trace; `Add to queue` adds it to the chosen queue and
+   starts it only when that queue is running (0.19.0). While probing, the
+   fallback filename and `Checking…` size are shown and every accept button is
+   disabled; server metadata replaces them when ready. The successful probe is
+   reused by the initial transfer, while Resume probes again (0.18.19).
    - Fixed default size (650×330, minimum 560×320): the window never grows with
      the file name or the URL length (0.18.9). The file name line is elided in
      the middle and keeps the full name in its tooltip.
@@ -109,11 +110,20 @@ Layout (from `main-window.png`):
      confirmation window has no inline queue row. With the confirmation
      window off, `New URL` from a queue view targets that queue, while the
      main view and browser handoff target Downloads (0.19.0).
-   - The buttons sit in one row: `Cancel` on the left, `Add to queue` and
-     `Download Now` on the right; `Download Now` is the default button.
+   - `Download Later` (0.24.0) accepts with the main Downloads target and adds
+     the row already paused at 0%: no transfer starts, no progress window
+     opens, and the row is stored as `Paused` so a restart does not start it.
+     The user starts it later from the list (toolbar `Resume`, or `Resume` in
+     the progress window opened by double-clicking the row). It never becomes
+     the default button, is disabled while the probe runs, and is the only
+     accept action besides `Download Now` and `Add to queue`; `Cancel` still
+     creates nothing.
+   - The buttons sit in one row: `Cancel` on the left, then `Download Later`,
+     `Add to queue` and `Download Now` on the right; `Download Now` is the
+     default button (0.24.0 adds `Download Later`).
    - All inputs and buttons (URL field, location field, `Browse...`, category
-     dropdown, `Download Now`, `Add to queue`, `Cancel`) share one height, so
-     the rows look even in every style (0.18.9).
+     dropdown, `Download Now`, `Download Later`, `Add to queue`, `Cancel`) share
+     one height, so the rows look even in every style (0.18.9).
 2. **Download progress window**: double-click opens the per-download window
    (`download-window.png`):
    - Fixed default size (650×500, minimum 520×420): the window never grows with
