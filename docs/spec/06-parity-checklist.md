@@ -109,7 +109,7 @@ kept here as the completion history of the release line.
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin pinned to the manifest ID, Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin by shape (0.23.2: Edge Add-ons and the Chrome Web Store re-sign the package, so the store ID cannot be pinned), Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
 | Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0) |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |

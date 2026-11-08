@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.23.2 — 2026-11-08
+
+Lets the extension installed from a browser store talk to the app, fixing the
+permanent "offline" pill on the Edge Add-ons build.
+
+- The WebSocket handshake only accepted the extension ID derived from the
+  checked-in manifest's public key. Store packages are re-signed with the
+  store's own key, so an Edge Add-ons install reports
+  `lpfidepmgdmkbkfnlpomnjjhadefgklg` (the listing's ID) and was rejected with a
+  403, which the popup shows as offline. The Chrome Web Store behaves the same
+  way, so the ID cannot be pinned without one app release per store and listing.
+- `is_allowed_extension_origin()` now validates the Chromium origin's shape
+  (`chrome-extension://`/`extensions://`/`extension://` plus a 32-character
+  `a`-`p` ID), matching the rule already used for `moz-extension://`. A
+  non-manifest ID is logged, and every handoff still goes through the download
+  confirmation dialog unless the user turned it off.
+- `kExtensionId` is kept so `tools/extension_pack.mjs` still fails the release
+  when the manifest key and the app drift apart.
+- `test_browser_protocol` covers a store-signed ID being accepted and malformed
+  IDs (wrong length, uppercase) still being rejected.
+
 ## 0.23.1 — 2026-11-07
 
 Makes the extension packaging helper actually run on Windows, so the release

@@ -48,8 +48,11 @@
   ekstensi Firefox ikut terbit dari job yang sama: logika, popup, dan ikon
   dipindah ke `ext/shared/` dan dirakit ke `ext/chromium` serta `ext/firefox`
   oleh `tools/extension_pack.mjs build`, kedua manifest wajib berversi sama,
-  dan aplikasi menerima origin `moz-extension://<uuid>` di samping ID Chromium
-  yang dipin. Jauh sebelumnya,
+  dan aplikasi menerima origin `moz-extension://<uuid>` di samping Chromium.
+  Sejak 0.23.2 origin Chromium juga divalidasi berdasarkan bentuk ID: Edge
+  Add-ons dan Chrome Web Store menandatangani ulang paket, jadi ID hasil
+  install dari toko tidak bisa dipin (toko Edge memakai
+  `lpfidepmgdmkbkfnlpomnjjhadefgklg`). Jauh sebelumnya,
   0.22.10 menjadikan SwiftDM single-instance: lock file
   per-user (`src/core/instance_lock.*`, `flock`/`LockFileEx`, lokasi di
   `$XDG_RUNTIME_DIR` atau `%LOCALAPPDATA%\SwiftDM`) diambil sebelum settings

@@ -22,6 +22,9 @@ namespace {
 constexpr qsizetype kMaxFrameBytes = 1024 * 1024;
 constexpr int kMaxClients = 32;
 constexpr int kHandshakeTimeoutMs = 5000;
+// ID of the checked-in Chromium manifest; `tools/extension_pack.mjs` verifies
+// that its public key still hashes to this value. Store installs differ, so it
+// is only used to keep that check meaningful and to spot them in the log.
 constexpr char kExtensionId[] = "hagednkleljjijmjonpeiokknhngknbb";
 const QByteArray kWebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const QString kSubprotocol = QStringLiteral("swiftdm.v1");
@@ -29,23 +32,32 @@ const QString kSubprotocol = QStringLiteral("swiftdm.v1");
 static_assert(sizeof(kExtensionId) - 1 == 32,
               "extension ID must match Chromium's 32-character ID format");
 
-// The checked-in Chromium manifest has a fixed public key, so its extension ID
-// is stable across load locations. Only the app's own ID is allowed; a
-// shape-only check would accept any extension installed in the browser. Edge may
-// report the same ID with either of its extension schemes.
+// Both browser families get their origin validated by shape, not by pinned ID.
 //
-// Firefox cannot pin a Chromium-style ID: `moz-extension://` carries a UUID that
-// Firefox generates per profile and per installation, and the `key` manifest
-// field is unsupported there (`browser_specific_settings.gecko.id` names the
-// add-on but does not appear in the Origin header). The Firefox origin is
-// therefore validated by shape only, and the accepted origin is logged and shown
-// in the Extensions dialog so a handoff from an unexpected add-on is visible.
+// Chromium: the checked-in manifest's fixed public key only decides the ID of a
+// load-unpacked install. Edge Add-ons and the Chrome Web Store re-sign the
+// package with their own key, so a published install reports an ID that cannot
+// be known before the listing exists (Edge: lpfidepmgdmkbkfnlpomnjjhadefgklg).
+// Pinning would mean one app release per store, per listing, so any
+// `<a-p>{32}` ID is accepted; a handoff still passes the download confirmation
+// dialog (unless the user turned it off) and the origin is logged.
+//
+// Firefox: `moz-extension://` carries a UUID that Firefox generates per profile
+// and per installation, and the `key` manifest field is unsupported there
+// (`browser_specific_settings.gecko.id` names the add-on but does not appear in
+// the Origin header).
 bool is_allowed_extension_origin(const QByteArray& origin) {
     static const QRegularExpression chromium_pattern(
         QStringLiteral("^(chrome-extension|extensions|extension)://([a-p]{32})$"));
     const QRegularExpressionMatch chromium =
         chromium_pattern.match(QString::fromLatin1(origin));
-    if (chromium.hasMatch()) return chromium.captured(2) == QLatin1String(kExtensionId);
+    if (chromium.hasMatch()) {
+        const QString id = chromium.captured(2);
+        if (id != QLatin1String(kExtensionId)) {
+            qInfo() << "browser integration: accepting store-signed extension id" << id;
+        }
+        return true;
+    }
 
     static const QRegularExpression firefox_pattern(QStringLiteral(
         "^moz-extension://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));

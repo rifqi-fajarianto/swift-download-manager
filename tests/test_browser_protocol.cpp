@@ -315,13 +315,24 @@ int main(int argc, char** argv) {
         server.set_status(true, 0);
     }
 
-    // Only the ID derived from the repository manifest's public key is
-    // accepted; another Chromium extension cannot use the loopback command
-    // server even though its origin has the right shape.
-    QTcpSocket other_extension;
-    check(reject_origin(other_extension, server.port(),
-                        "chrome-extension://abcdefghijklmnopabcdefghijklmnop"),
-          "a different extension ID is rejected");
+    // A published install carries an ID the app cannot predict: Edge Add-ons and
+    // the Chrome Web Store re-sign the package with their own key, so only a
+    // load-unpacked install reports the ID derived from the manifest key. Any
+    // well-formed Chromium extension origin is accepted; the download still
+    // passes the confirmation dialog.
+    for (const QByteArray& origin : {
+             QByteArray("chrome-extension://lpfidepmgdmkbkfnlpomnjjhadefgklg"),
+             QByteArray("chrome-extension://abcdefghijklmnopabcdefghijklmnop")}) {
+        QTcpSocket store_signed;
+        check(connect_with_origin(store_signed, server.port(), origin),
+              "a store-signed extension ID is accepted");
+        if (store_signed.state() == QAbstractSocket::ConnectedState) {
+            const QJsonObject ping =
+                command(store_signed, QStringLiteral("ping"), {}, QStringLiteral("store-ping"));
+            check(ping.value(QStringLiteral("ok")).toBool(),
+                  "ping works from a store-signed extension ID");
+        }
+    }
 
     // Edge displays extension pages as extensions:// in DevTools and can use
     // that scheme in the WebSocket Origin header.
@@ -434,10 +445,16 @@ int main(int argc, char** argv) {
         check(false, "untrusted client can connect to loopback for handshake test");
     }
 
-    QTcpSocket other_scheme;
-    check(reject_origin(other_scheme, server.port(),
-                        "extensions://abcdefghijklmnopabcdefghijklmnop"),
-          "alternate extension scheme with an untrusted ID is rejected");
+    // Relaxing the ID check must not relax the ID's shape: a truncated,
+    // uppercase, or over-long ID is not something a browser issues.
+    for (const QByteArray& origin : {
+             QByteArray("extensions://hagednkleljjijmjonpeiokknhngknb"),
+             QByteArray("extension://HAGEDNKLELJJIJMJONPEIOKKNHNGKNBB"),
+             QByteArray("chrome-extension://hagednkleljjijmjonpeiokknhngknbbz")}) {
+        QTcpSocket malformed_chromium;
+        check(reject_origin(malformed_chromium, server.port(), origin),
+              "a malformed Chromium extension ID is rejected");
+    }
 
     // A client that opens a loopback connection but never sends the upgrade
     // request must not retain one of the bounded client slots indefinitely.

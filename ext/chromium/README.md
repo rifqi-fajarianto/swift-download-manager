@@ -128,6 +128,12 @@ require a top-level-site context that the downloader does not retain.
 - **Edge DevTools shows `extensions://...`.** That is Edge's extension-page
   scheme label; the server accepts `extensions://`, `extension://`, and
   `chrome-extension://` origins with a valid extension ID.
+- **A store-installed copy has an ID that differs from `manifest.json`'s key.**
+  Edge Add-ons and the Chrome Web Store re-sign the submitted package with their
+  own key (`hagednkleljjijmjonpeiokknhngknbb` only applies to a load-unpacked
+  install; the Edge listing reports `lpfidepmgdmkbkfnlpomnjjhadefgklg`). SwiftDM
+  validates the origin's shape for this reason — app 0.23.2 and newer accepts a
+  store copy, older builds reject it and log the mismatched ID.
 - **Port 10007 is already in use.** A previous SwiftDM window may still be
   running in the notification tray. Quit it from the tray (or check with
   `ss -ltnp | grep 10007`), then start SwiftDM again. Closing the window only

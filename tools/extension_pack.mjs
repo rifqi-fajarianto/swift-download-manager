@@ -312,10 +312,12 @@ function main() {
       if (derived !== pinned) {
         fail(
           `extension ID mismatch: manifest derives ${derived} but ` +
-            `${options.source ?? defaultSource} pins ${pinned}`,
+            `${options.source ?? defaultSource} declares ${pinned}`,
         );
       }
-      console.log(`extension ID ${derived} matches the app allowlist`);
+      // The app accepts any well-formed origin (store packages are re-signed),
+      // so this guards against shipping a manifest whose key silently changed.
+      console.log(`extension ID ${derived} matches kExtensionId in the app`);
       return;
     }
     case "zip": {

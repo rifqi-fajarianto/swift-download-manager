@@ -110,9 +110,16 @@ Port defaults to 10007. The current implementation binds IPv4 loopback only and
 accepts two kinds of extension origin, together with the `swiftdm.v1`
 subprotocol during the handshake:
 
-- **Chromium:** only the extension ID derived from the checked-in manifest's
-  fixed public key (`hagednkleljjijmjonpeiokknhngknbb`), using Chromium's
-  `chrome-extension://` or Edge's `extensions://`/`extension://` scheme (0.19.7).
+- **Chromium:** any `chrome-extension://<a-p>{32}` origin, plus Edge's
+  `extensions://`/`extension://` schemes (0.19.7), matched by shape only
+  (0.23.2). The checked-in manifest's fixed public key
+  (`hagednkleljjijmjonpeiokknhngknbb`) only decides the ID of a load-unpacked
+  install: Edge Add-ons and the Chrome Web Store re-sign the package with their
+  own key, so a published install reports an ID that does not exist until the
+  listing does (the Edge listing is `lpfidepmgdmkbkfnlpomnjjhadefgklg`). Pinning
+  would need one app release per store and listing; instead the shape is
+  validated, a non-manifest ID is logged, and every handoff still passes the
+  download confirmation dialog unless the user disabled it.
 - **Firefox:** any `moz-extension://<uuid>` origin, matched by shape only
   (0.23.0). Firefox generates that UUID per profile and ignores the `key`
   manifest field, so an ID cannot be pinned; `browser_specific_settings.gecko.id`
@@ -120,8 +127,8 @@ subprotocol during the handshake:
   logged and shown in the Extensions dialog, so a handoff from an unexpected
   add-on is visible.
 
-Ordinary web origins and Chromium extensions with another ID are rejected, the
-rejection is logged, and the reason is shown in the Extensions dialog. An
+Ordinary web origins and malformed extension origins are rejected, the rejection
+is logged, and the reason is shown in the Extensions dialog. An
 incomplete WebSocket handshake is closed after five seconds so it cannot occupy
 one of the bounded client slots indefinitely. Both extensions send downloads
 either from an explicit context-menu/popup action or by intercepting HTTP(S)
