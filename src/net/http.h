@@ -148,7 +148,7 @@ class SegmentDownloader {
     // connection per planned segment), which also caps a resumed plan that has
     // more segments than the user allows connections.
     void set_max_connections(int connections);
-    // Splits a slow running segment when a slot is free (docs/dynamic-split.md).
+    // Splits a slow running segment when a slot is free (CHANGELOG.md 0.25.0).
     // Off by default so callers that do not opt in keep the old behaviour.
     void set_dynamic_split(bool on);
     // Receives one line per split decision, for the per-download log.

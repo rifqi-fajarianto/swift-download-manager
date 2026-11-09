@@ -79,7 +79,7 @@ struct SegmentDownloader::Impl {
     // refuses one more connection (docs/spec/03-engine.md §5).
     AdaptiveConcurrency concurrency{1};
 
-    // Dynamic split (docs/dynamic-split.md). Off unless the caller opts in.
+    // Dynamic split (CHANGELOG.md 0.25.0). Off unless the caller opts in.
     bool dynamic_split = false;
     int max_connections = 0;  // 0 = one connection per planned segment
     int initial_limit = 0;

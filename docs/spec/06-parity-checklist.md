@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.20.0 (Windows port is experimental and not yet release-validated).
+Status as of 0.25.0 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 

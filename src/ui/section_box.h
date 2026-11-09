@@ -4,6 +4,8 @@
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QStyleOption>
 #include <QStylePainter>
 #include <QVBoxLayout>
@@ -61,6 +63,40 @@ inline QFormLayout* add_form_section(QVBoxLayout* page, QWidget* parent,
     form->setVerticalSpacing(6);
     page->addWidget(box);
     return form;
+}
+
+// Adds a read-only value row to a form section and returns the label so the
+// caller can set an object name (the offscreen tests look the fields up by it).
+inline QLabel* add_value_row(QFormLayout* form, const QString& label, const QString& value,
+                             const char* object_name) {
+    auto* widget = new QLabel(value, form->parentWidget());
+    widget->setObjectName(QString::fromLatin1(object_name));
+    widget->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    widget->setWordWrap(false);
+    form->addRow(label, widget);
+    return widget;
+}
+
+// Variant that creates the value label empty and hands it back through
+// `value`, for the fields a window keeps updating in place.
+inline QLabel* add_value_row(QFormLayout* form, const QString& label, QLabel*& value) {
+    value = new QLabel(form->parentWidget());
+    value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    form->addRow(label, value);
+    return value;
+}
+
+// Adds a read-only line edit row (selectable text, tooltip carrying the full
+// value when the field is too narrow to show it).
+inline QLineEdit* add_read_only_row(QFormLayout* form, const QString& label,
+                                    const QString& value, const char* object_name) {
+    auto* edit = new QLineEdit(value, form->parentWidget());
+    edit->setObjectName(QString::fromLatin1(object_name));
+    edit->setReadOnly(true);
+    edit->setCursorPosition(0);
+    if (!value.isEmpty()) edit->setToolTip(value);
+    form->addRow(label, edit);
+    return edit;
 }
 
 }  // namespace swiftdm::ui

@@ -18,6 +18,7 @@
 #include "engine/download_engine.h"
 #include "store/settings.h"
 #include "ui/download_task.h"
+#include "ui/format.h"
 #include "ui/icons.h"
 #include "ui/section_box.h"
 
@@ -29,31 +30,6 @@ namespace {
 // The file name gets what is left of the window width.
 constexpr int kNameChrome = 2 * 12 + 28 + 8;
 constexpr int kMinNameWidth = 160;
-
-QLabel* add_value_row(QFormLayout* form, const QString& label, const QString& value,
-                      const char* object_name) {
-    auto* widget = new QLabel(value, form->parentWidget());
-    widget->setObjectName(QString::fromLatin1(object_name));
-    widget->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    widget->setWordWrap(false);
-    form->addRow(label, widget);
-    return widget;
-}
-
-QLineEdit* add_read_only_row(QFormLayout* form, const QString& label,
-                             const QString& value, const char* object_name) {
-    auto* edit = new QLineEdit(value, form->parentWidget());
-    edit->setObjectName(QString::fromLatin1(object_name));
-    edit->setReadOnly(true);
-    edit->setCursorPosition(0);
-    if (!value.isEmpty()) edit->setToolTip(value);
-    form->addRow(label, edit);
-    return edit;
-}
-
-QString format_bytes_q(quint64 bytes) {
-    return QString::fromStdString(swiftdm::format_bytes(bytes, 3));
-}
 
 }  // namespace
 

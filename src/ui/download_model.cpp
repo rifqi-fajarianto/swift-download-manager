@@ -7,6 +7,7 @@
 #include "core/util.h"
 #include "engine/categories.h"
 #include "ui/download_task.h"
+#include "ui/format.h"
 #include "ui/theme.h"
 
 namespace swiftdm::ui {
@@ -88,11 +89,10 @@ QVariant DownloadModel::data(const QModelIndex& index, int role) const {
                 return download_status_text(item);
             case ColBandwidth:
                 if (item.speed_bps <= 0.0) return QString();
-                return QString::fromStdString(swiftdm::format_speed(item.speed_bps, 3));
+                return format_speed_q(item.speed_bps);
             case ColRemaining:
                 if (item.remaining_sec < 0) return QString();
-                return QString::fromStdString(
-                    swiftdm::format_duration(item.remaining_sec));
+                return format_duration_q(item.remaining_sec);
             case ColLastTry:
                 return item.last_try;
             default:

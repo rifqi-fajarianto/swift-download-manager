@@ -666,7 +666,7 @@ void test_retry_after_503(const std::string& dir, testutil::TestHttpServer& serv
 }
 
 // ---------------------------------------------------------------------------
-// Dynamic segment split (docs/dynamic-split.md)
+// Dynamic segment split (CHANGELOG.md 0.25.0)
 // ---------------------------------------------------------------------------
 
 // 16 MiB over 4 connections -> four 4 MiB ranges; the last one starts at

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.25.0" date="2026-11-09">
+      <description>
+        <p>Splits the slowest running segment when a connection slot is free, so the last connection no longer drags the end of a segmented download. The number of active connections never exceeds the configured limit, the segments.json format is unchanged, and a new DynamicSplit key in the download section turns it off.</p>
+      </description>
+    </release>
     <release version="0.24.0" date="2026-11-08">
       <description>
         <p>Adds a Download Later button to the download confirmation window: the link is added to the list already paused, and the transfer starts only when the user starts it from the list.</p>

@@ -126,7 +126,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.24.0_amd64.deb
+sudo apt install ./swiftdm_0.25.0_amd64.deb
 ```
 
 ```sh
@@ -229,9 +229,10 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.24.0 is the port tracking `main` (a Windows installer that
+full list. Version 0.25.0 is the port tracking `main` (a Windows installer that
 asks whether to install for the current user or all users, speed for downloads of
-unknown size, FTP and HLS, the Chromium and Firefox extensions as release assets,
+unknown size, FTP and HLS, dynamic segment split when a connection slot is free,
+the Chromium and Firefox extensions as release assets,
 the single-instance guard for the shortcut, terminal start and
 login entry, connection-limit aware parallel plan, redownload from the item
 context menu, the context-menu dismissal fix, refresh download address, a 50 ms

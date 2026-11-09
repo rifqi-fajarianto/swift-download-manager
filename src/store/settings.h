@@ -49,7 +49,7 @@ struct Settings {
     std::string temp_dir;           // TempDirectory
     bool server_creation_date = false;  // ServerCreationDate
     // Split the slowest running range when a connection slot is free
-    // (docs/dynamic-split.md). [design]
+    // (CHANGELOG.md 0.25.0). [design]
     bool dynamic_split = true;      // DynamicSplit
 
     // [interface] — appearance. The allowed values are checked by the
