@@ -140,7 +140,9 @@ add_library(swiftdm_core STATIC
     src/core/log.cpp
     src/core/file_io.cpp
     src/core/instance_lock.cpp
-    src/core/util.cpp
+    src/core/paths.cpp
+    src/core/strings.cpp
+    src/core/names.cpp
     src/engine/categories.cpp
     src/engine/download_engine.cpp
     src/engine/hls.cpp
