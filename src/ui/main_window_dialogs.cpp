@@ -1,44 +1,18 @@
 #include "ui/main_window.h"
 #include "ui/refresh_waiting_dialog.h"
 
-#include <QAbstractButton>
-#include <QAction>
 #include <QApplication>
-#include <QCloseEvent>
-#include <QDateTime>
-#include <QDebug>
 #include <QDesktopServices>
-#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QFontMetrics>
-#include <QGuiApplication>
-#include <QHeaderView>
-#include <QInputDialog>
-#include <QItemSelectionModel>
-#include <QJsonArray>
-#include <QLabel>
-#include <QJsonObject>
-#include <QListWidget>
-#include <QMenu>
 #include <QMessageBox>
 #ifndef _WIN32
 #include <QProcess>
 #endif
 #include <QPushButton>
-#include <QSplitter>
-#include <QStackedWidget>
-#include <QStatusBar>
-#include <QStyleHints>
-#include <QSystemTrayIcon>
-#include <QTableView>
-#include <QTimer>
-#include <QToolBar>
-#include <QToolButton>
-#include <QTreeWidget>
 #include <QUrl>
-#include <QVBoxLayout>
 
 #include <algorithm>
 #include <functional>
