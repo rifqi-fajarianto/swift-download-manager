@@ -8,6 +8,10 @@ add_executable(test_plan test_plan.cpp)
 target_link_libraries(test_plan PRIVATE swiftdm_core)
 add_test(NAME plan COMMAND test_plan)
 
+add_executable(test_split_policy test_split_policy.cpp)
+target_link_libraries(test_split_policy PRIVATE swiftdm_core)
+add_test(NAME split_policy COMMAND test_split_policy)
+
 add_executable(test_settings test_settings.cpp)
 target_link_libraries(test_settings PRIVATE swiftdm_core)
 add_test(NAME settings COMMAND test_settings)

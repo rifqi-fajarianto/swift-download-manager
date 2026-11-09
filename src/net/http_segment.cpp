@@ -19,6 +19,7 @@
 #include "core/file_io.h"
 #include "core/log.h"
 #include "core/util.h"
+#include "engine/split_policy.h"
 #include "net/interstitial.h"
 #include "net/retry_policy.h"
 
@@ -78,6 +79,16 @@ struct SegmentDownloader::Impl {
     // refuses one more connection (docs/spec/03-engine.md §5).
     AdaptiveConcurrency concurrency{1};
 
+    // Dynamic split (docs/dynamic-split.md). Off unless the caller opts in.
+    bool dynamic_split = false;
+    int max_connections = 0;  // 0 = one connection per planned segment
+    int initial_limit = 0;
+    // Sticky: a host that refused one more range keeps the split off for the
+    // rest of this run even after AdaptiveConcurrency resets its deferrals.
+    bool host_refused = false;
+    SplitPolicy split_policy;
+    std::function<void(const std::string&)> event_log;
+
     struct SegRuntime {
         int attempts = 0;
         int64_t next_try_ms = 0;
@@ -94,6 +105,9 @@ struct SegmentDownloader::Impl {
     struct Worker {
         HandleCtx ctx;
         SegRuntime rt;
+        uint64_t last_done = 0;      // bytes counted by the previous speed sample
+        double speed_ema = 0;        // per-segment speed, bytes/s
+        int64_t last_split_ms = 0;   // 0 = never split (or created by run())
     };
     std::map<uint64_t, std::unique_ptr<Worker>> workers;
 
@@ -115,8 +129,68 @@ struct SegmentDownloader::Impl {
             auto w = std::make_unique<Worker>();
             w->ctx.impl = this;
             w->ctx.seg_start = s.start;
+            w->last_done = s.done;
             workers.emplace(s.start, std::move(w));
         }
+    }
+
+    // The host tolerates fewer parallel ranges than we planned: splitting more
+    // would only produce more refusals.
+    bool narrowed() const { return host_refused || concurrency.limit() < initial_limit; }
+
+    // True while a segment is neither finished nor running (waiting for a retry
+    // or for a slot). A split must wait until every planned range is running.
+    bool has_pending() const {
+        for (const Segment& s : state.segments) {
+            if (s.finished()) continue;
+            auto it = workers.find(s.start);
+            if (it == workers.end() || !it->second->rt.active) return true;
+        }
+        return false;
+    }
+
+    // Splits the slowest running segment so the new range can use a free slot.
+    // Runs on the run() thread between loop iterations, never inside a callback.
+    bool try_split(int64_t now, double best_conn_bps) {
+        std::vector<SplitView> views;
+        views.reserve(state.segments.size());
+        for (size_t i = 0; i < state.segments.size(); ++i) {
+            const Segment& s = state.segments[i];
+            auto it = workers.find(s.start);
+            if (it == workers.end()) continue;
+            const Worker& w = *it->second;
+            if (!w.rt.active || s.finished()) continue;
+            // Only a range that already streams can be split: a request whose
+            // header is still in flight would fail the Content-Range check.
+            const bool streaming =
+                w.ctx.status == 206 && w.ctx.content_range_valid && w.ctx.first_byte_ms != 0;
+            views.push_back({i, s.length() - s.done, w.speed_ema,
+                             streaming ? now - w.ctx.first_byte_ms : -1,
+                             now - w.last_split_ms});
+        }
+        const std::optional<SplitChoice> choice =
+            pick_split(views, best_conn_bps, split_policy);
+        if (!choice) return false;
+
+        const uint64_t victim_start = state.segments[choice->index].start;
+        const uint64_t mid = state.segments[choice->index].next_offset() + choice->keep;
+        const uint64_t old_end = state.segments[choice->index].end;
+        if (!split_segment(state.segments, choice->index, mid)) return false;
+
+        auto thief = std::make_unique<Worker>();
+        thief->ctx.impl = this;
+        thief->ctx.seg_start = mid;
+        thief->last_split_ms = now;
+        workers.emplace(mid, std::move(thief));
+        auto victim = workers.find(victim_start);
+        if (victim != workers.end()) victim->second->last_split_ms = now;
+
+        if (event_log) {
+            event_log("split: segment @" + std::to_string(victim_start) + " keeps " +
+                      std::to_string(choice->keep) + " B, new segment @" +
+                      std::to_string(mid) + ".." + std::to_string(old_end));
+        }
+        return true;
     }
 
     explicit Impl(const HttpOptions& o, TransferState& s, int fd_)
@@ -250,6 +324,10 @@ struct SegmentDownloader::Impl {
         ctx.split_stop = false;
         ctx.first_byte_ms = 0;
         ctx.validator_changed = false;
+        // Speed sampling restarts per attempt: a retry after a long backoff
+        // must not report the bytes it received before as an instant burst.
+        w.last_done = seg.done;
+        w.speed_ema = 0;
         ctx.interrupted = false;
         ctx.retry_after = 0;
         ctx.content_type.clear();
@@ -385,6 +463,8 @@ struct SegmentDownloader::Impl {
             }
             if (concurrency.limit() > 1) concurrency.on_refusal();
             concurrency.on_deferral();
+            // The host told us its limit: no new range until the plan settles.
+            host_refused = true;
             // The refused request never had a fair chance, so it does not spend
             // a retry. Deferrals have their own (larger) cap.
             if (rt.attempts > 0) --rt.attempts;
@@ -478,6 +558,16 @@ void SegmentDownloader::set_one_by_one(bool one_by_one) { impl_->one_by_one = on
 
 void SegmentDownloader::set_max_retries(int retries) { impl_->max_retries = retries; }
 
+void SegmentDownloader::set_max_connections(int connections) {
+    impl_->max_connections = connections;
+}
+
+void SegmentDownloader::set_dynamic_split(bool on) { impl_->dynamic_split = on; }
+
+void SegmentDownloader::set_event_log(std::function<void(const std::string&)> sink) {
+    impl_->event_log = std::move(sink);
+}
+
 TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::string* error) {
     ensure_curl_global();
     Impl& impl = *impl_;
@@ -494,13 +584,19 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
     }
     impl.build_workers();
 
-    // The parallel budget starts at the plan size and only narrows from there
-    // (docs/spec/03-engine.md §5). A resumed download therefore re-learns the
-    // host's limit: the refusals cost one deferral round (a few seconds), not a
-    // failed download.
-    impl.concurrency = AdaptiveConcurrency(impl.one_by_one
-                                               ? 1
-                                               : static_cast<int>(impl.state.segments.size()));
+    // The parallel budget starts at the configured limit (or the plan size when
+    // none was given) and only narrows from there (docs/spec/03-engine.md §5). A
+    // resumed download therefore re-learns the host's limit: the refusals cost
+    // one deferral round (a few seconds), not a failed download.
+    impl.initial_limit = impl.one_by_one
+                             ? 1
+                             : (impl.max_connections > 0
+                                    ? impl.max_connections
+                                    : static_cast<int>(impl.state.segments.size()));
+    impl.concurrency = AdaptiveConcurrency(impl.initial_limit);
+    // Peak per-connection speed, decayed once per sample. Used as the reference
+    // for how much of a split victim to keep.
+    double best_conn_bps = 0.0;
 
     TransferOutcome outcome = TransferOutcome::Failed;
     std::string failure;
@@ -534,6 +630,13 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                 outcome = TransferOutcome::Failed;
                 goto finish;
             }
+        }
+        // A free slot with every planned range already running: take the tail of
+        // the slowest one. The new segment is started by the loop above on the
+        // next iteration.
+        if (impl.dynamic_split && !impl.one_by_one && active < parallel_limit &&
+            !impl.has_pending() && !impl.narrowed()) {
+            impl.try_split(now, best_conn_bps);
         }
         // Finished everything?
         if (impl.state.finished()) {
@@ -603,6 +706,18 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
             if (dt > 0) {
                 const double inst = static_cast<double>(done - last_done) / dt;
                 speed = (speed == 0.0) ? inst : (0.6 * speed + 0.4 * inst);
+                best_conn_bps *= 0.98;  // forget connections that already finished
+                for (auto& entry : impl.workers) {
+                    Impl::Worker& w = *entry.second;
+                    if (!w.rt.active) continue;
+                    const Segment& s = impl.seg_of(w.ctx.seg_start);
+                    const double seg_inst =
+                        static_cast<double>(s.done - w.last_done) / dt;
+                    w.speed_ema = (w.speed_ema == 0.0) ? seg_inst
+                                                       : (0.6 * w.speed_ema + 0.4 * seg_inst);
+                    w.last_done = s.done;
+                    best_conn_bps = std::max(best_conn_bps, w.speed_ema);
+                }
             }
             last_done = done;
             last_sample = t;

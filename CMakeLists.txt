@@ -145,6 +145,7 @@ add_library(swiftdm_core STATIC
     src/engine/download_engine.cpp
     src/engine/hls.cpp
     src/engine/segment_plan.cpp
+    src/engine/split_policy.cpp
     src/net/http.cpp
     src/net/http_request.cpp
     src/net/http_error.cpp
