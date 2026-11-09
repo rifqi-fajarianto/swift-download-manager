@@ -990,6 +990,10 @@ DownloadResult DownloadEngine::run(
     SegmentDownloader downloader(options, state, fd);
     downloader.set_one_by_one(settings_.connections_at_once != 0);
     downloader.set_bandwidth_limit(bandwidth_limit);
+    downloader.set_max_connections(can_resume ? connections : 1);
+    downloader.set_dynamic_split(settings_.dynamic_split);
+    downloader.set_event_log(
+        [&](const std::string& message) { append_download_log(reporter.log_path, message); });
     std::string transfer_error;
     TransferOutcome outcome = downloader.run(progress, &transfer_error);
 

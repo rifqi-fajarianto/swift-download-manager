@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.25.0 — 2026-11-09
+
+Splits the slowest running segment when a connection slot is free, so the last
+connection no longer drags the end of a segmented download.
+
+- When fewer connections are active than the configured limit and no segment is
+  waiting to start, the active segment with the longest estimated remaining
+  time is split: it keeps the front part and a new range request takes the
+  tail. The number of active connections never exceeds the setting.
+- `segments.json` format is unchanged; a resumed download with more segments
+  than connections queues the extra ranges.
+- A new `DynamicSplit` key in the `[download]` section turns it off.
+- Each split is written to the per-download log.
+- `test_plan` covers the split primitive, the new `test_split_policy` covers
+  the victim choice, and `test_http` covers a throttled straggler, the kill
+  switch, resume from a split plan, and a host that limits parallel ranges.
+
 ## 0.24.0 — 2026-11-08
 
 Adds `Download Later` to the download confirmation window: queue the link now,

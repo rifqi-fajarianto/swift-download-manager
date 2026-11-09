@@ -42,7 +42,9 @@ Neat Download Manager.
 
 - Download over HTTP, HTTPS, FTP, FTPS, and HLS playlists (`.m3u8`).
 - Split HTTP/HTTPS downloads across multiple connections; configure the
-  connection count.
+  connection count. When one connection is much slower than the others, a free
+  slot splits its remaining range so the tail is fetched in parallel too,
+  without ever exceeding the configured connection count.
 - Pause, resume, and restore downloads after restarting the application.
 - Refresh an expired download address: right-click a paused or failed download,
   let SwiftDM reopen the page it came from, start the file again in the browser,

@@ -88,6 +88,11 @@ struct SegmentDownloader::Impl {
     bool host_refused = false;
     SplitPolicy split_policy;
     std::function<void(const std::string&)> event_log;
+    // Fastest connection seen so far, decayed once per speed sample. A range
+    // that finishes before the first sample still reports its average here, so
+    // the split ratio compares the victim against a real connection and not
+    // against itself.
+    double peak_conn_bps = 0.0;
 
     struct SegRuntime {
         int attempts = 0;
@@ -106,13 +111,11 @@ struct SegmentDownloader::Impl {
         HandleCtx ctx;
         SegRuntime rt;
         uint64_t last_done = 0;      // bytes counted by the previous speed sample
+        uint64_t attempt_start_done = 0;  // bytes on disk when this attempt began
         double speed_ema = 0;        // per-segment speed, bytes/s
         int64_t last_split_ms = 0;   // 0 = never split (or created by run())
     };
     std::map<uint64_t, std::unique_ptr<Worker>> workers;
-
-    Worker& worker_at(uint64_t start) { return *workers.at(start); }
-    const Worker& worker_at(uint64_t start) const { return *workers.at(start); }
 
     Segment& seg_of(uint64_t start) {
         auto it = std::lower_bound(
@@ -134,6 +137,18 @@ struct SegmentDownloader::Impl {
         }
     }
 
+    // A finished range is the most reliable speed sample: a short range can
+    // complete before the 200 ms sampler ever runs, and then the split ratio
+    // would compare the victim against itself.
+    void note_attempt_speed(const Worker& w, uint64_t done) {
+        if (w.ctx.first_byte_ms == 0) return;
+        const int64_t elapsed_ms = now_ms() - w.ctx.first_byte_ms;
+        if (elapsed_ms <= 0 || done <= w.attempt_start_done) return;
+        const double bps = static_cast<double>(done - w.attempt_start_done) * 1000.0 /
+                           static_cast<double>(elapsed_ms);
+        peak_conn_bps = std::max(peak_conn_bps, bps);
+    }
+
     // The host tolerates fewer parallel ranges than we planned: splitting more
     // would only produce more refusals.
     bool narrowed() const { return host_refused || concurrency.limit() < initial_limit; }
@@ -151,7 +166,7 @@ struct SegmentDownloader::Impl {
 
     // Splits the slowest running segment so the new range can use a free slot.
     // Runs on the run() thread between loop iterations, never inside a callback.
-    bool try_split(int64_t now, double best_conn_bps) {
+    bool try_split(int64_t now) {
         std::vector<SplitView> views;
         views.reserve(state.segments.size());
         for (size_t i = 0; i < state.segments.size(); ++i) {
@@ -169,7 +184,7 @@ struct SegmentDownloader::Impl {
                              now - w.last_split_ms});
         }
         const std::optional<SplitChoice> choice =
-            pick_split(views, best_conn_bps, split_policy);
+            pick_split(views, peak_conn_bps, split_policy);
         if (!choice) return false;
 
         const uint64_t victim_start = state.segments[choice->index].start;
@@ -327,6 +342,7 @@ struct SegmentDownloader::Impl {
         // Speed sampling restarts per attempt: a retry after a long backoff
         // must not report the bytes it received before as an instant burst.
         w.last_done = seg.done;
+        w.attempt_start_done = seg.done;
         w.speed_ema = 0;
         ctx.interrupted = false;
         ctx.retry_after = 0;
@@ -415,6 +431,7 @@ struct SegmentDownloader::Impl {
         // A split shrank this segment while the request was already running; the
         // write callback ended the transfer on purpose, so this is success.
         if (w.ctx.split_stop && seg.finished()) {
+            note_attempt_speed(w, seg.done);
             rt.done = true;
             concurrency.on_success();
             return 0;
@@ -434,6 +451,7 @@ struct SegmentDownloader::Impl {
             return 1;
         }
         if (rc == CURLE_OK && code >= 200 && code < 300 && seg.finished()) {
+            note_attempt_speed(w, seg.done);
             rt.done = true;
             concurrency.on_success();
             return 0;
@@ -594,9 +612,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                                     ? impl.max_connections
                                     : static_cast<int>(impl.state.segments.size()));
     impl.concurrency = AdaptiveConcurrency(impl.initial_limit);
-    // Peak per-connection speed, decayed once per sample. Used as the reference
-    // for how much of a split victim to keep.
-    double best_conn_bps = 0.0;
+    impl.peak_conn_bps = 0.0;
 
     TransferOutcome outcome = TransferOutcome::Failed;
     std::string failure;
@@ -636,7 +652,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
         // next iteration.
         if (impl.dynamic_split && !impl.one_by_one && active < parallel_limit &&
             !impl.has_pending() && !impl.narrowed()) {
-            impl.try_split(now, best_conn_bps);
+            impl.try_split(now);
         }
         // Finished everything?
         if (impl.state.finished()) {
@@ -706,7 +722,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
             if (dt > 0) {
                 const double inst = static_cast<double>(done - last_done) / dt;
                 speed = (speed == 0.0) ? inst : (0.6 * speed + 0.4 * inst);
-                best_conn_bps *= 0.98;  // forget connections that already finished
+                impl.peak_conn_bps *= 0.98;  // forget connections that already finished
                 for (auto& entry : impl.workers) {
                     Impl::Worker& w = *entry.second;
                     if (!w.rt.active) continue;
@@ -716,7 +732,7 @@ TransferOutcome SegmentDownloader::run(const ProgressFn& on_progress, std::strin
                     w.speed_ema = (w.speed_ema == 0.0) ? seg_inst
                                                        : (0.6 * w.speed_ema + 0.4 * seg_inst);
                     w.last_done = s.done;
-                    best_conn_bps = std::max(best_conn_bps, w.speed_ema);
+                    impl.peak_conn_bps = std::max(impl.peak_conn_bps, w.speed_ema);
                 }
             }
             last_done = done;

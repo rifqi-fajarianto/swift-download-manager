@@ -49,6 +49,15 @@ are our own choices where the original is UNKNOWN (E23).
 - **ConnectionsAtOnce = 1** adds one connection when the previous one either
   finishes or proves too slow (original setting "Create Additional Connections
   One by One"); **0** starts all connections immediately (E8).
+- **Dynamic segment split [design: 0.25.0]**: the parallel limit comes from the
+  `connections` setting, not from the number of segments, so a resumed plan
+  with more segments than connections queues the extra ranges. While a slot is
+  free and every planned range is already running, the range with the longest
+  estimated remaining time is split at a point chosen from its measured speed:
+  it keeps the front part and a new range request takes the tail. The number of
+  active connections never exceeds the setting, and the split stops as soon as
+  the host refuses a parallel range. `DynamicSplit = 0` in `[download]` turns it
+  off; each decision is written to the per-download log.
 - Segment progress is persisted periodically and on pause/stop so a crash
   loses at most a few seconds of accounting; `.bak` fallback mirrors E14.
 

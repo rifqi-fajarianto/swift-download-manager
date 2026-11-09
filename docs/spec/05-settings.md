@@ -30,6 +30,7 @@ DownloadDirectory = ~/Downloads
 CategoryFolders = 1
 TempDirectory = ~/.local/share/swiftdm/tmp
 ServerCreationDate = 0
+DynamicSplit = 1                 ; [design] 0 = never split a running range
 
 [categories]                   ; optional: custom folder per category
 Video = ~/Videos/Incoming      ; replaces DownloadDirectory/Video, applies even
