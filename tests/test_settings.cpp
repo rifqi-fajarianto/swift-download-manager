@@ -28,6 +28,7 @@ void test_defaults() {
     CHECK(s.show_download_confirmation);
     CHECK(!s.confirm_dialog_on_top);
     CHECK(!s.completion_dialog_on_top);
+    CHECK(s.dynamic_split);  // DynamicSplit is new and defaults on
     CHECK_EQ(s.theme, std::string("dark"));
     CHECK_EQ(s.toolbar_size, std::string("normal"));
     CHECK(s.show_toolbar_text);
@@ -55,6 +56,7 @@ void test_roundtrip(const std::string& dir) {
     s.category_folders = false;
     s.temp_dir = dir + "/tmp";
     s.server_creation_date = true;
+    s.dynamic_split = false;
     s.completion_dialog = false;
     s.autostart = true;
     s.show_tray_icon = false;
@@ -89,6 +91,7 @@ void test_roundtrip(const std::string& dir) {
     CHECK(!loaded.category_folders);
     CHECK_EQ(loaded.temp_dir, s.temp_dir);
     CHECK(loaded.server_creation_date);
+    CHECK(!loaded.dynamic_split);
     CHECK(!loaded.completion_dialog);
     CHECK(loaded.autostart);
     CHECK(!loaded.show_tray_icon);

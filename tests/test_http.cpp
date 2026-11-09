@@ -665,6 +665,152 @@ void test_retry_after_503(const std::string& dir, testutil::TestHttpServer& serv
     CHECK(elapsed >= std::chrono::milliseconds(900));
 }
 
+// ---------------------------------------------------------------------------
+// Dynamic segment split (CHANGELOG.md 0.25.0)
+// ---------------------------------------------------------------------------
+
+// 16 MiB over 4 connections -> four 4 MiB ranges; the last one starts at
+// 12582912 and is the only range the server throttles.
+constexpr uint64_t kSplitSize = 16u << 20;
+constexpr uint64_t kSplitStragglerStart = 12582912;
+constexpr int kSplitSlowMs = 240;  // ~0.27 MB/s for the throttled range
+
+std::string split_url(const testutil::TestHttpServer& server) {
+    return server.base_url() + "/file/" + std::to_string(kSplitSize) + "?slowfrom=" +
+           std::to_string(kSplitStragglerStart) + "&slowms=" + std::to_string(kSplitSlowMs);
+}
+
+// Splitting the straggler must finish the download in clearly less time than
+// waiting for it on one connection, without ever exceeding the connection limit.
+void test_dynamic_split_straggler(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings baseline_settings = test_settings(dir + "/baseline");
+    baseline_settings.dynamic_split = false;
+    {
+        DownloadEngine baseline_engine(baseline_settings);
+        DownloadRequest baseline_req;
+        baseline_req.url = split_url(server);
+        baseline_req.connections = 4;
+        const auto started = std::chrono::steady_clock::now();
+        const auto result = baseline_engine.run(baseline_req);
+        const auto elapsed = std::chrono::steady_clock::now() - started;
+        CHECK(result.status == DownloadResult::Status::Completed);
+        CHECK(file_matches(result.path, kSplitSize));
+
+        Settings settings = test_settings(dir + "/split");
+        settings.dynamic_split = true;
+        DownloadEngine engine(settings);
+        DownloadRequest req;
+        req.url = split_url(server);
+        req.connections = 4;
+        // A history row gives the run a per-download log; the split decision
+        // must land there for tuning against a real download.
+        req.history_id = 77;
+#ifdef _WIN32
+        _putenv_s("LOCALAPPDATA", dir.c_str());
+#else
+        setenv("XDG_DATA_HOME", dir.c_str(), 1);
+#endif
+        const std::string log_path =
+            download_log_path(default_log_dir(), req.history_id,
+                              "sample-" + std::to_string(kSplitSize) + ".bin");
+        std::filesystem::remove(path_from_utf8(log_path));
+        size_t max_segments = 0;
+        const auto split_started = std::chrono::steady_clock::now();
+        const auto split_result = engine.run(req, [&](const ProgressInfo& info) {
+            max_segments = std::max(max_segments, info.segments.size());
+            return true;
+        });
+        const auto split_elapsed = std::chrono::steady_clock::now() - split_started;
+
+        CHECK(split_result.status == DownloadResult::Status::Completed);
+        CHECK(file_matches(split_result.path, kSplitSize));
+        CHECK(max_segments > 4);  // the plan really grew
+        {
+            std::ifstream log(path_from_utf8(log_path));
+            CHECK(log.good());
+            const std::string text((std::istreambuf_iterator<char>(log)),
+                                   std::istreambuf_iterator<char>());
+            CHECK(text.find("split: segment @") != std::string::npos);
+        }
+        // Loose relative bound: a sanitizer build and a loaded CI box are slower,
+        // but the split must still win by a wide margin.
+        CHECK(split_elapsed < elapsed * 0.75);
+    }
+}
+
+// With the kill switch off the plan never grows.
+void test_dynamic_split_disabled(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    settings.dynamic_split = false;
+    DownloadEngine engine(settings);
+
+    DownloadRequest req;
+    req.url = split_url(server);
+    req.connections = 4;
+
+    const auto started = std::chrono::steady_clock::now();
+    size_t max_segments = 0;
+    const auto result = engine.run(req, [&](const ProgressInfo& info) {
+        max_segments = std::max(max_segments, info.segments.size());
+        // Stop early: the throttled range alone would take ~15 s.
+        return std::chrono::steady_clock::now() - started < std::chrono::milliseconds(3500);
+    });
+    CHECK(result.status == DownloadResult::Status::Paused);
+    CHECK_EQ(max_segments, size_t(4));
+}
+
+// A plan that grew through a split must resume from segments.json.
+void test_dynamic_split_resume(const std::string& dir, testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    settings.dynamic_split = true;
+    DownloadEngine engine(settings);
+
+    DownloadRequest req;
+    req.url = split_url(server);
+    req.connections = 4;
+
+    const auto first = engine.run(req, [&](const ProgressInfo& info) {
+        return info.segments.size() <= 4;  // pause right after the first split
+    });
+    CHECK(first.status == DownloadResult::Status::Paused);
+    CHECK(!first.path.empty());
+
+    const DownloadWorkspace ws =
+        make_workspace(settings, req.url, "sample-" + std::to_string(kSplitSize) + ".bin");
+    TransferState state;
+    CHECK(load_transfer_state(ws.state_path, state, nullptr));
+    CHECK(state.segments.size() > 4);
+
+    const auto second = engine.run(req);
+    CHECK(second.status == DownloadResult::Status::Completed);
+    CHECK(file_matches(second.path, kSplitSize));
+}
+
+// A host that refuses more than two parallel ranges turns the split off: the
+// plan must never grow past what it was planned with.
+void test_dynamic_split_respects_host_limit(const std::string& dir,
+                                            testutil::TestHttpServer& server) {
+    Settings settings = test_settings(dir);
+    settings.dynamic_split = true;
+    DownloadEngine engine(settings);
+    server.reset_limited_503();
+
+    DownloadRequest req;
+    req.url = server.base_url() + "/limit-connections-503/" + std::to_string(kSplitSize) +
+              "?max=2";
+    req.connections = 4;
+
+    size_t max_segments = 0;
+    const auto result = engine.run(req, [&](const ProgressInfo& info) {
+        max_segments = std::max(max_segments, info.segments.size());
+        return true;
+    });
+    CHECK(result.status == DownloadResult::Status::Completed);
+    CHECK(file_matches(result.path, kSplitSize));
+    CHECK(server.limited_503_refusals() > 0);
+    CHECK_EQ(max_segments, size_t(4));
+}
+
 // HTML error pages (Cloudflare style) are summarized without their markup.
 void test_html_error_detail(testutil::TestHttpServer& server) {
     HttpOptions opts;
@@ -1262,6 +1408,10 @@ int main() {
     test_single_connection_fallback(dir + "/fallback", server);
     test_retry_policy();
     test_connection_limit_refusal_503(dir + "/limit-503", server);
+    test_dynamic_split_straggler(dir + "/split-straggler", server);
+    test_dynamic_split_disabled(dir + "/split-disabled", server);
+    test_dynamic_split_resume(dir + "/split-resume", server);
+    test_dynamic_split_respects_host_limit(dir + "/split-host-limit", server);
     test_retry_after_503(dir + "/retry-after", server);
     test_html_error_detail(server);
     test_chunked_unknown_size(dir + "/chunked", server);

@@ -1,6 +1,5 @@
 #include "ui/download_window.h"
 
-#include <QFileDialog>
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QFrame>
@@ -25,6 +24,7 @@
 #include "ui/confirm_download_dialog.h"
 #include "ui/download_model.h"
 #include "ui/download_task.h"
+#include "ui/format.h"
 #include "ui/icons.h"
 #include "ui/speed_limit_editor.h"
 #include "ui/section_box.h"
@@ -43,25 +43,6 @@ constexpr int kMinWindowHeight = 400;
 constexpr int kMinUrlLabelWidth = 120;
 // Dialog chrome around the link row (window/tab margins, icon, spacings).
 constexpr int kUrlLabelChrome = 80;
-
-QLabel* add_value_row(QFormLayout* form, const QString& label, QLabel*& value) {
-    value = new QLabel(form->parentWidget());
-    value->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    form->addRow(label, value);
-    return value;
-}
-
-QString format_bytes_q(quint64 bytes) {
-    return QString::fromStdString(swiftdm::format_bytes(bytes, 3));
-}
-
-QString format_speed_q(double bps) {
-    return QString::fromStdString(swiftdm::format_speed(bps, 3));
-}
-
-QString format_duration_q(qint64 seconds) {
-    return QString::fromStdString(swiftdm::format_duration(seconds));
-}
 
 }  // namespace
 

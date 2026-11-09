@@ -134,13 +134,14 @@ Menjalankan aplikasi:
 ./build/swiftdm get <url>        # CLI headless
 ```
 
-Test yang tersedia: `core_version`, `plan`, `settings`, `history`, `restore`,
-`media`, `filenames`, `file_io`, `ca_bundle`, `http`, `extension_logic` dan
-`extension_popup` (butuh Node), `icons` (offscreen), `confirm_dialog`
-(offscreen), `settings_dialog` (offscreen), `properties_dialog` (offscreen),
-`download_window` (offscreen), `queue_logic`, `queue_dialog` dan `queue_picker`
-(offscreen), `action_state`, `menu_action`, `refresh_logic`, `theme` (offscreen), dan
-`browser_protocol` (tanpa GUI). Seluruh
+Test yang tersedia: `core_version`, `plan`, `split_policy`, `settings`, `history`,
+`restore`, `media`, `filenames`, `file_io`, `ca_bundle`, `http`, `extension_logic`,
+`extension_popup` dan `extension_package` (butuh Node), `icons` (offscreen),
+`confirm_dialog` (offscreen), `settings_dialog` (offscreen), `properties_dialog`
+(offscreen), `download_window` (offscreen), `queue_logic`, `queue_dialog` dan
+`queue_picker` (offscreen), `action_state`, `menu_action`, `refresh_logic`,
+`theme` (offscreen), `single_instance` (tanpa GUI), dan `browser_protocol`
+(tanpa GUI). Seluruh
 test berjalan di Linux dan Windows; test HTTP/FTP memakai server lokal di
 `tests/http_test_server.h` dan `tests/ftp_test_server.h` yang memakai Winsock di
 Windows. Di Windows, jalankan dengan `$env:QT_QPA_PLATFORM = "offscreen"`.

@@ -144,6 +144,15 @@ class SegmentDownloader {
     void set_bandwidth_limit(std::shared_ptr<BandwidthLimit> bandwidth_limit);
     void set_one_by_one(bool one_by_one);                   // ConnectionsAtOnce
     void set_max_retries(int retries);
+    // Upper bound for parallel ranges. 0 keeps the legacy behaviour (one
+    // connection per planned segment), which also caps a resumed plan that has
+    // more segments than the user allows connections.
+    void set_max_connections(int connections);
+    // Splits a slow running segment when a slot is free (CHANGELOG.md 0.25.0).
+    // Off by default so callers that do not opt in keep the old behaviour.
+    void set_dynamic_split(bool on);
+    // Receives one line per split decision, for the per-download log.
+    void set_event_log(std::function<void(const std::string&)> sink);
 
     TransferOutcome run(const ProgressFn& on_progress, std::string* error);
 

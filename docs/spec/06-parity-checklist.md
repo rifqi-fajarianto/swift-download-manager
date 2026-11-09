@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.20.0 (Windows port is experimental and not yet release-validated).
+Status as of 0.25.0 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -50,6 +50,7 @@ Windows notes:
 | Feature | Status | Notes |
 |---|---|---|
 | Segmented HTTP/HTTPS downloads | Replicated | libcurl multi, Range segments |
+| Dynamic segment split | Implemented ([design], not in the original) | While a connection slot is free and every planned range runs, the range with the longest estimated remaining time is split; the active count never exceeds the `connections` setting, the plan may hold more segments than connections, and `DynamicSplit = 0` disables it (0.25.0) |
 | Pause / resume / restart | Replicated | JSON state + probe validation; Pause/Resume toggle in the download window |
 | Resume after app restart | Replicated | GUI list restores from SQLite at startup; unfinished main-list rows stay Paused until the user resumes, while unfinished queue rows return as Queued and start only when their queue is running or autostart is on (0.19.0) |
 | Queue & status table | Replicated | columns per 01-product.md; rows persist across restarts. Named queues and scheduling are implemented in 0.19.0 (see the v1.1 rows below) |

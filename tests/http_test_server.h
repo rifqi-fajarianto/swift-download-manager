@@ -2,7 +2,10 @@
 
 // Minimal HTTP/1.1 test server for CLI/backend integration tests.
 // Routes:
-//   GET/HEAD /file/<size>[?slow=1]  ranges supported, deterministic content
+//   GET/HEAD /file/<size>[?slow=1][&slowfrom=<offset>&slowms=<ms>]
+//                                   ranges supported, deterministic content;
+//                                   slowfrom throttles only the range that
+//                                   starts at that offset
 //   GET/HEAD /if-range-changed/<size> returns a new ETag for If-Range tests
 //   GET/HEAD /space-file/<name>     fixed file; exercises escaped path spaces
 //   GET/HEAD /chunked/<size>        chunked transfer, no ranges
@@ -114,6 +117,9 @@ inline uint8_t content_byte(uint64_t i) {
 
 // HLS fixtures: every segment is 16 KiB and distinguishable by variant/index.
 inline constexpr uint64_t kHlsSegmentSize = 16 * 1024;
+
+// `slowfrom` sentinel: throttle nothing unless a test asks for a specific range.
+inline constexpr uint64_t kNoSlowFrom = ~static_cast<uint64_t>(0);
 
 inline uint8_t hls_segment_byte(int variant, int segment, uint64_t i) {
     return content_byte(static_cast<uint64_t>(variant) * 1000000u +
@@ -332,6 +338,22 @@ class TestHttpServer {
             query = target.substr(q + 1);
         }
         const bool slow = query.find("slow=1") != std::string::npos;
+        // Throttle only the request whose range starts exactly at `slowfrom`, so
+        // a test can make one segment (the straggler) slow while a split thief
+        // that starts elsewhere still runs at full speed.
+        uint64_t slow_from = kNoSlowFrom;
+        int slow_ms = 60;
+        {
+            const size_t from_pos = query.find("slowfrom=");
+            if (from_pos != std::string::npos) {
+                slow_from = std::strtoull(query.c_str() + from_pos + 9, nullptr, 10);
+            }
+            const size_t ms_pos = query.find("slowms=");
+            if (ms_pos != std::string::npos) {
+                const int value = std::atoi(query.c_str() + ms_pos + 7);
+                if (value > 0) slow_ms = value;
+            }
+        }
 
         const std::string lower_request = lower_copy(request);
         const size_t cookie_pos = lower_request.find("\r\ncookie:");
@@ -361,7 +383,8 @@ class TestHttpServer {
             if (lower_request.find("\r\nhost: localhost:") != std::string::npos) {
                 g_cross_origin_redirect_targets.fetch_add(1);
             }
-            serve_file(fd, method, path.substr(6), range, slow, if_range);
+            serve_file(fd, method, path.substr(6), range, slow, if_range, false, slow_from,
+                       slow_ms);
         } else if (path.rfind("/if-range-changed/", 0) == 0) {
             serve_file(fd, method, path.substr(18), range, slow, if_range,
                        method != "HEAD");
@@ -598,7 +621,8 @@ class TestHttpServer {
 
     static void serve_file(socket_t fd, const std::string& method, const std::string& size_text,
                            const std::string& range_header, bool slow,
-                           const std::string& if_range = {}, bool force_changed = false) {
+                           const std::string& if_range = {}, bool force_changed = false,
+                           uint64_t slow_from = kNoSlowFrom, int slow_ms = 60) {
         const uint64_t total = std::strtoull(size_text.c_str(), nullptr, 10);
         uint64_t start = 0;
         uint64_t end = total == 0 ? 0 : total - 1;
@@ -606,6 +630,9 @@ class TestHttpServer {
         if (method != "HEAD" && !range_header.empty() && total > 0) {
             partial = parse_ranges(range_header, total, start, end);
         }
+        // Throttle only the range that starts at slow_from, so a test can slow
+        // one planned segment while a split thief elsewhere runs at full speed.
+        const bool throttle = slow || (slow_from != kNoSlowFrom && start == slow_from);
         const bool validators_mismatch = force_changed ||
                                         (!if_range.empty() &&
                                          if_range != "\"etag-" + std::to_string(total) + "\"" &&
@@ -629,7 +656,7 @@ class TestHttpServer {
                 }
             } else {
                 send_file_response(fd, method, total, 0, total == 0 ? 0 : total - 1, false,
-                                   slow, if_range, force_changed);
+                                   throttle, if_range, force_changed, slow_ms);
             }
             return;  // validator mismatch returns the complete current entity.
         }
@@ -639,8 +666,8 @@ class TestHttpServer {
                                         if_range);
             return;
         }
-        send_file_response(fd, method, total, start, end, partial, slow, if_range,
-                           force_changed);
+        send_file_response(fd, method, total, start, end, partial, throttle, if_range,
+                           force_changed, slow_ms);
     }
 
     static void send_invalid_range_response(socket_t fd, const std::string& method, uint64_t total,
@@ -670,8 +697,8 @@ class TestHttpServer {
 
     static void send_file_response(socket_t fd, const std::string& method, uint64_t total,
                                    uint64_t start, uint64_t end, bool partial, bool slow,
-                                   const std::string& if_range = {},
-                                   bool force_changed = false) {
+                                   const std::string& if_range = {}, bool force_changed = false,
+                                   int slow_ms = 60) {
         std::string head;
         if (partial) {
             head = "HTTP/1.1 206 Partial Content\r\nContent-Length: " +
@@ -698,7 +725,7 @@ class TestHttpServer {
             }
             if (!send_all(fd, buf.data(), static_cast<size_t>(chunk))) return;
             offset += chunk;
-            if (slow) sleep_ms(60);  // ~1 MB/s per connection
+            if (slow) sleep_ms(slow_ms);
         }
     }
 

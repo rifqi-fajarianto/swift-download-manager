@@ -48,6 +48,9 @@ struct Settings {
     bool category_folders = true;   // CategoryFolders
     std::string temp_dir;           // TempDirectory
     bool server_creation_date = false;  // ServerCreationDate
+    // Split the slowest running range when a connection slot is free
+    // (CHANGELOG.md 0.25.0). [design]
+    bool dynamic_split = true;      // DynamicSplit
 
     // [interface] — appearance. The allowed values are checked by the
     // is_valid_* helpers below; an unknown value keeps the default.

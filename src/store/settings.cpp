@@ -143,6 +143,8 @@ void apply_section(Settings& s, const std::string& section,
             else if (k == "categoryfolders") s.category_folders = parse_bool(value, s.category_folders);
             else if (k == "tempdirectory") s.temp_dir = expand_tilde(value);
             else if (k == "servercreationdate") s.server_creation_date = parse_bool(value, s.server_creation_date);
+            // New key: no legacy location, so only [download] is read.
+            else if (k == "dynamicsplit") s.dynamic_split = parse_bool(value, s.dynamic_split);
         } else if (section == "interface") {
             if (k == "theme") {
                 s.theme = pick_choice(value, {"system", "light", "dark"}, s.theme);
@@ -436,6 +438,7 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "CategoryFolders = " << (settings.category_folders ? 1 : 0) << "\n"
         << "TempDirectory = " << ini_value(settings.temp_dir) << "\n"
         << "ServerCreationDate = " << (settings.server_creation_date ? 1 : 0) << "\n"
+        << "DynamicSplit = " << (settings.dynamic_split ? 1 : 0) << "\n"
         << "\n[interface]\n"
         << "Theme = " << ini_value(settings.theme) << "\n"
         << "ToolbarSize = " << ini_value(settings.toolbar_size) << "\n"

@@ -1,29 +1,16 @@
 #include "ui/main_window.h"
 
-#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
-#include <QDateTime>
-#include <QDebug>
-#include <QDesktopServices>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QFont>
-#include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHeaderView>
-#include <QInputDialog>
 #include <QItemSelectionModel>
-#include <QJsonArray>
 #include <QLabel>
-#include <QJsonObject>
 #include <QListWidget>
 #include <QMenu>
-#include <QMessageBox>
 #include <QMoveEvent>
-#include <QProcess>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScreen>
@@ -38,7 +25,6 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
-#include <QUrl>
 #include <QVBoxLayout>
 
 #include <algorithm>

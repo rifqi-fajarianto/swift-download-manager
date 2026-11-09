@@ -219,6 +219,10 @@ not required for a clean-room implementation and stays UNKNOWN.
   "segments": [ { "start": 0, "end": 999, "done": 999, "fileIndex": 0 } ] }
 ```
 
+The schema does not change when a running range is split (0.25.0): the plan may
+simply hold more segments than the configured connection count, and a resume
+starts the extra ranges as slots free up.
+
 ## 3. Logging
 
 Per-download `Log File` buttons imply a per-download log; extension/name is
