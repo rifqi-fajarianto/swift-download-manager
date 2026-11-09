@@ -48,6 +48,15 @@ struct SegmentDownloader::Impl {
         uint64_t content_range_start = 0;
         uint64_t content_range_end = 0;
         uint64_t content_range_total = 0;
+        // Range end actually requested in this attempt. A running segment can be
+        // split behind its back, which shrinks seg.end; comparing the response
+        // against this value keeps the Content-Range check honest, and the
+        // mismatch tells write_cb to stop the connection on purpose.
+        uint64_t requested_end = 0;
+        bool split_stop = false;
+        // First body byte of the current attempt; 0 = no byte yet. The split
+        // policy measures warm-up from here, not from the request start.
+        int64_t first_byte_ms = 0;
         bool validator_changed = false;
         bool interrupted = false;
         int64_t retry_after = 0;  // seconds advertised by the host, 0 = none
@@ -133,8 +142,18 @@ struct SegmentDownloader::Impl {
             ctx->interrupted = true;
             return 0;
         }
+        if (ctx->first_byte_ms == 0) ctx->first_byte_ms = now_ms();
         Segment& seg = impl->seg_of(ctx->seg_start);
-        if (seg.done >= seg.length()) return total;  // nothing left; discard
+        if (seg.done >= seg.length()) {
+            // The range is complete for this segment. When the plan shrank
+            // behind this request (a split), the rest of the body belongs to the
+            // new segment: stop the connection on purpose.
+            if (seg.end < ctx->requested_end) {
+                ctx->split_stop = true;
+                return 0;
+            }
+            return total;  // nothing left; discard
+        }
         uint64_t to_write = total;
         const uint64_t remaining = seg.length() - seg.done;
         if (to_write > remaining) to_write = remaining;
@@ -144,6 +163,10 @@ struct SegmentDownloader::Impl {
         const std::ptrdiff_t written = write_file_at(impl->fd, ptr, to_write, offset);
         if (written < 0 || static_cast<uint64_t>(written) != to_write) return 0;
         seg.done += to_write;
+        if (seg.finished() && seg.end < ctx->requested_end) {
+            ctx->split_stop = true;  // tail now belongs to another segment
+            return 0;                // curl reports CURLE_WRITE_ERROR
+        }
         return total;
     }
 
@@ -195,7 +218,7 @@ struct SegmentDownloader::Impl {
                 if (ctx->status == 206 &&
                     (!ctx->content_range_valid ||
                      ctx->content_range_start != expected_start ||
-                     ctx->content_range_end != seg.end ||
+                     ctx->content_range_end != ctx->requested_end ||
                      ctx->content_range_total != ctx->impl->state.file_size)) {
                     ctx->content_range_bad = true;
                 }
@@ -223,6 +246,9 @@ struct SegmentDownloader::Impl {
         ctx.content_range_start = 0;
         ctx.content_range_end = 0;
         ctx.content_range_total = 0;
+        ctx.requested_end = seg.end;
+        ctx.split_stop = false;
+        ctx.first_byte_ms = 0;
         ctx.validator_changed = false;
         ctx.interrupted = false;
         ctx.retry_after = 0;
@@ -307,6 +333,13 @@ struct SegmentDownloader::Impl {
         if (w.ctx.interrupted) {
             error = "transfer interrupted";
             return 2;
+        }
+        // A split shrank this segment while the request was already running; the
+        // write callback ended the transfer on purpose, so this is success.
+        if (w.ctx.split_stop && seg.finished()) {
+            rt.done = true;
+            concurrency.on_success();
+            return 0;
         }
         if (w.ctx.content_range_bad) {
             error = "server returned an invalid Content-Range for a segment";

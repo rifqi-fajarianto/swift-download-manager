@@ -61,6 +61,17 @@ std::vector<Segment> plan_segments(uint64_t file_size, int connections,
     return out;
 }
 
+bool split_segment(std::vector<Segment>& segs, size_t index, uint64_t mid) {
+    if (index >= segs.size()) return false;
+    Segment& s = segs[index];
+    if (mid <= s.next_offset() || mid > s.end) return false;
+    const Segment tail{mid, s.end, 0};
+    s.end = mid - 1;
+    // `s` dangles after the insert; the caller must re-fetch by start offset.
+    segs.insert(segs.begin() + static_cast<std::ptrdiff_t>(index) + 1, tail);
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // JSON state file (see docs/spec/02-data-model.md)
 // ---------------------------------------------------------------------------

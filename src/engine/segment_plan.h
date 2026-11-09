@@ -39,6 +39,13 @@ struct TransferState {
 std::vector<Segment> plan_segments(uint64_t file_size, int connections,
                                    uint64_t min_chunk = 1u << 20);
 
+// Splits segment `index` at absolute offset `mid`: the segment becomes
+// [start, mid-1] and a new segment [mid, end] with done = 0 is inserted right
+// after it. Requires next_offset() < mid <= end. The total done_bytes() and the
+// contiguity of the plan are preserved. Returns false (and changes nothing)
+// when the arguments are out of range. References into `segs` are invalidated.
+bool split_segment(std::vector<Segment>& segs, size_t index, uint64_t mid);
+
 // JSON state persistence. save_* writes atomically (tmp + rename) and rotates
 // the previous good file to `<path>.bak`. load_* falls back to the .bak copy
 // when the primary file is missing or corrupt.

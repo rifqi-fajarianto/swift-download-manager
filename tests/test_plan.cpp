@@ -69,6 +69,102 @@ void test_plan_edge_cases() {
     CHECK_EQ(cov, uint64_t(99991));
 }
 
+void test_split_segment_basic() {
+    // 10 MiB over 4 segments -> 4 ranges of 2.5 MiB.
+    auto segs = plan_segments(10u << 20, 4);
+    CHECK_EQ(segs.size(), size_t(4));
+    const uint64_t old_end = segs[3].end;
+    const uint64_t mid = segs[3].start + segs[3].length() / 2;
+
+    CHECK(split_segment(segs, 3, mid));
+    CHECK_EQ(segs.size(), size_t(5));
+    CHECK_EQ(segs[3].start, (10u << 20) * 3 / 4);
+    CHECK_EQ(segs[3].end, mid - 1);
+    CHECK_EQ(segs[4].start, mid);
+    CHECK_EQ(segs[4].end, old_end);
+    CHECK_EQ(segs[4].done, uint64_t(0));
+
+    // The plan stays contiguous from 0 to file_size.
+    uint64_t expect_start = 0;
+    for (const auto& s : segs) {
+        CHECK_EQ(s.start, expect_start);
+        expect_start = s.end + 1;
+    }
+    CHECK_EQ(expect_start, uint64_t(10u << 20));
+}
+
+void test_split_segment_preserves_done_bytes() {
+    TransferState st;
+    st.file_size = 10u << 20;
+    st.segments = plan_segments(st.file_size, 4);
+    st.segments[3].done = 700000;  // part of the victim already on disk
+    st.segments[0].done = st.segments[0].length();
+    const uint64_t before = st.done_bytes();
+
+    const Segment& victim = st.segments[3];
+    CHECK(split_segment(st.segments, 3, victim.next_offset() + 500000));
+    CHECK_EQ(st.done_bytes(), before);
+    CHECK_EQ(st.segments[3].done, uint64_t(700000));
+}
+
+void test_split_segment_rejects_invalid_mid() {
+    auto segs = plan_segments(10u << 20, 4);
+    const std::vector<Segment> original = segs;
+    const Segment& s = segs[2];
+
+    CHECK(!split_segment(segs, 2, s.start));              // mid <= next_offset()
+    CHECK(!split_segment(segs, 2, s.end + 1));            // mid > end
+    CHECK(!split_segment(segs, segs.size(), s.start + 1));  // index out of range
+    CHECK_EQ(segs.size(), original.size());
+    for (size_t i = 0; i < segs.size(); ++i) {
+        CHECK_EQ(segs[i].start, original[i].start);
+        CHECK_EQ(segs[i].end, original[i].end);
+    }
+}
+
+void test_split_segment_roundtrip(const std::string& dir) {
+    const std::string path = dir + "/split.json";
+    // Deterministic pseudo-random splits with a fixed seed.
+    uint64_t seed = 0x9E3779B97F4A7C15ull;
+    auto next = [&seed] {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        return seed;
+    };
+
+    TransferState st;
+    st.url = "https://example.com/split";
+    st.file_size = 64u << 20;
+    st.segments = plan_segments(st.file_size, 8);
+
+    for (int i = 0; i < 20; ++i) {
+        // Pick a segment that still has room and split it somewhere inside.
+        bool split = false;
+        for (size_t attempt = 0; attempt < st.segments.size() && !split; ++attempt) {
+            const size_t index = static_cast<size_t>(next() % st.segments.size());
+            Segment& s = st.segments[index];
+            if (s.length() < 2) continue;
+            const uint64_t mid = s.next_offset() + 1 + next() % (s.length() - s.done - 1);
+            split = split_segment(st.segments, index, mid);
+        }
+        CHECK(split);
+    }
+    CHECK_EQ(st.segments.size(), size_t(28));
+
+    std::string err;
+    CHECK(save_transfer_state(path, st, &err));
+    TransferState loaded;
+    CHECK(load_transfer_state(path, loaded, &err));  // load() re-validates the plan
+    CHECK_EQ(loaded.segments.size(), st.segments.size());
+    CHECK_EQ(loaded.done_bytes(), st.done_bytes());
+    for (size_t i = 0; i < st.segments.size(); ++i) {
+        CHECK_EQ(loaded.segments[i].start, st.segments[i].start);
+        CHECK_EQ(loaded.segments[i].end, st.segments[i].end);
+        CHECK_EQ(loaded.segments[i].done, st.segments[i].done);
+    }
+}
+
 void test_state_accounting() {
     TransferState st;
     st.file_size = 100;
@@ -202,6 +298,10 @@ int main() {
     test_plan_basic();
     test_plan_min_chunk();
     test_plan_edge_cases();
+    test_split_segment_basic();
+    test_split_segment_preserves_done_bytes();
+    test_split_segment_rejects_invalid_mid();
+    test_split_segment_roundtrip(dir);
     test_state_accounting();
     test_state_roundtrip(dir);
     test_state_unicode_escape(dir);
