@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.1**. Status ini cepat
+> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.2**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,7 +8,11 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.26.1 — memperbaiki handoff media yang
+- **Rilis terakhir di jalur `main`**: 0.26.2 — popup ekstensi tidak lagi
+  menampilkan versi aplikasi dua kali: header di bawah nama SwiftDM kini berisi
+  versi ekstensi, sedangkan versi aplikasi hanya muncul di baris status hijau
+  setelah koneksi terkonfirmasi (popup offline tidak menampilkan versi
+  aplikasi sama sekali). Sebelumnya 0.26.1 — memperbaiki handoff media yang
   selalu gagal: ekstensi mengirim `group: ""` sehingga aplikasi menolak dengan
   "invalid media request", dan tombol di atas player tidak melakukan apa pun.
   Field `group` kini hanya dikirim kalau ada pasangan video+audio; tombol
@@ -54,7 +58,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.26.1. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.26.2. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang

@@ -6,7 +6,7 @@ const autoIntercept = document.querySelector("#auto-intercept");
 const cookies = document.querySelector("#cookies");
 const media = document.querySelector("#media");
 const mediaHint = document.querySelector("#media-hint");
-const appVersion = document.querySelector("#app-version");
+const extensionVersionLabel = document.querySelector("#extension-version");
 const connection = document.querySelector("#connection");
 const connectionLabel = document.querySelector("#connection-label");
 
@@ -109,16 +109,16 @@ async function checkConnection() {
     return;
   }
   setConnection("ok", "Connected");
+  // The only place the app version appears: confirmed by a live connection.
   setStatus(`Connected to SwiftDM ${response.version}.`, "ok");
-  appVersion.textContent = `v${response.version}`;
-  appVersion.title = "SwiftDM app version";
   download.disabled = false;
 }
 
-// Without a running app there is no app version to show; fall back to the
-// extension version so the header never shows a stale number.
-appVersion.textContent = `v${extensionVersion()}`;
-appVersion.title = "SwiftDM extension version";
+// The header always shows the extension's own version; the app version only
+// appears in the status line once a connection has been confirmed, so the
+// popup never shows a number it has not verified.
+extensionVersionLabel.textContent = `v${extensionVersion()}`;
+extensionVersionLabel.title = "SwiftDM extension version";
 
 void checkConnection();
 retry.addEventListener("click", () => void checkConnection());

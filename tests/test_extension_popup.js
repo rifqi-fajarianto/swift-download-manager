@@ -40,7 +40,7 @@ for (const id of [
   "cookies",
   "media",
   "media-hint",
-  "app-version",
+  "extension-version",
   "connection",
 ]) {
   check(html.includes(`id="${id}"`), `popup.html defines #${id}`);
@@ -128,6 +128,22 @@ check(script.includes("buildMediaItems"),
   "popup.js counts streams with the shared row builder");
 check(!script.includes("download-media"),
   "popup.js no longer hands streams off (the overlay does)");
+
+// Two versions exist and they must not be confused: the header shows the
+// extension's own version, the app version only appears once a connection is
+// confirmed (so the popup never displays a number it has not verified).
+check(html.includes('id="extension-version"'),
+  "the header carries the extension version");
+check(script.includes("extensionVersion()"),
+  "popup.js fills the header from the extension manifest");
+check(script.includes("Connected to SwiftDM ${response.version}"),
+  "the app version appears in the connected status line");
+check(!script.includes("appVersion"),
+  "popup.js no longer rewrites the header with the app version");
+const headerAssignments =
+  script.split("extensionVersionLabel.textContent").length - 1;
+check(headerAssignments === 1,
+  "popup.js writes the header version exactly once, outside checkConnection()");
 
 // Both manifests must describe a Manifest V3 extension with the same version,
 // the same popup and the icons the popup references.

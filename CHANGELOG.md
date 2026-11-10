@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.26.2 — 2026-11-10
+
+The extension popup showed the SwiftDM version twice: once in the header under
+the app name and again in the green "Connected to SwiftDM 0.x.y" line.
+
+- The header now shows the **extension's** version, which is what a version
+  under the extension's own name means.
+- The app version appears only in the connected status line, so the popup never
+  displays a number it has not verified. An offline popup shows no app version
+  at all instead of the extension version standing in for it.
+- Extension `manifest` 0.7.2. `extension_popup` now guards the split: the
+  header is written from the manifest once, and the app version only in the
+  connected line.
+
 ## 0.26.1 — 2026-11-10
 
 Fixes the media handoff, which failed for every stream: clicking a detected

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.26.2" date="2026-11-10">
+      <description>
+        <p>The extension popup no longer shows the app version twice. The header under the SwiftDM name now carries the extension's own version, and the app version appears only in the green connected status line, so an offline popup does not display a number it has not verified.</p>
+      </description>
+    </release>
     <release version="0.26.1" date="2026-11-10">
       <description>
         <p>Fixes the browser media handoff, which failed for every stream with "invalid media request" and left the button over the player doing nothing. The extension no longer sends an empty pair token, the button now opens a stream chooser itself (HLS, DASH, paired video+audio, the playing element, recorded blob: streams) instead of sending one URL, a refused handoff says why on its row, and blob: playback is resolved to the segments recorded for that tab.</p>

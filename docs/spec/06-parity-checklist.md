@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.26.1 (Windows port is experimental and not yet release-validated).
+Status as of 0.26.2 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -111,7 +111,7 @@ kept here as the completion history of the release line.
 | Feature | Status |
 |---|---|
 | WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin by shape (0.23.2: Edge Add-ons and the Chrome Web Store re-sign the package, so the store ID cannot be pinned), Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `addMedia`, `subscribe` (status push); first contact needs an Allow/Deny pairing prompt and a 32-byte token in `$XDG_CONFIG_HOME/swiftdm/browser-token` (0600) since 0.26.0 |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0); `content.js`/`page-hook.js` add the floating media button and MSE tap (0.26.0) |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill, header extension version, auto-intercept switch, browser cookies switch, stream-count hint, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0); `content.js`/`page-hook.js` add the floating media button and MSE tap (0.26.0) |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
 | Media detection in the popup and overlay | Implemented (preview, 0.26.0; chooser in the overlay since 0.26.1) | The floating button over a playing video opens a chooser listing direct files, HLS variants, DASH representations, same-tab video/audio pairs (shared `group` token) and recorded `blob:` (MSE) segments. DRM (`protected`) rows are disabled with the reason; the confirmation window shows a quality selector for HLS/DASH. The popup only reports how many streams were found and points at the overlay |
 | Firefox extension | Development preview (0.23.0) | Firefox build in `ext/firefox/` (Manifest V3 event page) assembled from the same `ext/shared/` sources as the Chromium build behind an `api.js` adapter; `moz-extension://<uuid>` origins accepted by shape; a permanent install needs a signed XPI |
