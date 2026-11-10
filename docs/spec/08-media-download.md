@@ -179,28 +179,51 @@ When a media element passes the scan, a small button is positioned over its
 top-left corner: shadow DOM host, `all: initial`, `position: fixed`, pointer
 events only on the button itself, hidden on `fullscreenchange` conflicts, and
 removed when the element leaves the DOM. It appears on hover/focus of the
-element (never always-on, so it cannot obscure player controls) and clicking it
-sends `{type: "download-media"}` to the background.
+element (never always-on, so it cannot obscure player controls).
+
+Clicking it opens the **stream chooser** as a menu under the button. The content
+script asks the worker for `{type: "get-media-streams"}` (the worker fills the
+tab id from the message sender, so the content script never needs to know it)
+and renders one row per candidate:
+
+```
+HLS playlist · master.m3u8    Master playlist is resolved by SwiftDM
+DASH manifest · stream.mpd    Pick the video or the audio rendition in the next window
+Video + audio · video.mp4     Sent to SwiftDM as a pair
+This player · 1920×1080       The element you are watching
+MSE stream · 412 segments     Assembled from recorded segments; may be incomplete
+```
+
+Rules:
+
+* A protected (`mediaKeys`) stream is a disabled row whose hint says
+  "Protected (DRM): cannot be downloaded"; it is never sent.
+* The element in front of the user is always offered, even when the network saw
+  nothing, because its `src` may be the only address available.
+* A `blob:` candidate is handed off as `kind: "mse"` and the worker fills in the
+  segments recorded for that tab. With nothing recorded the row reports
+  "play the video from the start so the segments are recorded".
+* The menu stays open while the pointer is on it (the page's `pointerout` must
+  not hide the overlay), closes on Escape or a click outside, scrolls past
+  280 px, and flips above the button when it would run off screen.
+* A refused or failed handoff is written on the row it belongs to. The button
+  label shows `Scanning…`, then `Sent` for 2.5 s; a failure never leaves the
+  button silently unchanged.
 
 The overlay can be turned off in SwiftDM (Settings → General → *Media overlay
 button*); the app pushes `{event: "config", data: {mediaOverlay: false}}` to
 every subscribed extension socket, and the content script hides the button
 without a reload.
 
-### 4.2 Popup list
+### 4.2 Popup
 
-The popup shows one row per candidate:
+The popup does not list streams: the chooser lives in the overlay, next to the
+player it refers to. It reports `N streams found: use the SwiftDM button over
+the player to pick one.` and hides that section when the page has nothing.
 
-```
-Direct video · 720p           1920×1080 · 84.2 MB
-HLS · 1080p (3 variants)      master playlist
-DASH · 1080p                  video + audio
-MSE · 412 segments            video + audio · may be incomplete
-Audio · 128k                  paired with the video above
-```
-
-A `DRM` badge marks a protected candidate and its send button is disabled with
-the reason on the row. Clicking a row sends `addMedia`.
+Both surfaces build their rows with the same pure helpers
+(`buildMediaItems()` / `mediaCandidate()` in `media-detect.js`), so a change to
+the labels or the payload happens in one place.
 
 ---
 
@@ -254,6 +277,7 @@ rules):
 | `filename` | ≤ 255 chars, sanitised again by the engine |
 | `quality` | ≤ 64 chars, no control characters |
 | `durationSec`, `positionSec`, `candidates[].bandwidth` | finite, ≥ 0 |
+| `group` | optional; when present `^[A-Za-z0-9_-]{1,32}$`. An empty string is **not** "no group" — the extension omits the field entirely, or the request is rejected |
 | `candidates` | ≤ 8 |
 | `segments` | ≤ 2000, total payload ≤ 512 KiB, `role` ∈ `init`/`media`, `order` ascending |
 | `protected` | `true` → rejected with `"protected media cannot be downloaded"` |
@@ -430,10 +454,10 @@ representation is playable on its own.
 
 | Test | Covers |
 |---|---|
-| `media_detect` (Node) | ranking order, aspect/size/occlusion filters, playing beats paused, DRM flag |
+| `media_detect` (Node) | ranking order, aspect/size/occlusion filters, playing beats paused, DRM flag, chooser rows and `addMedia` candidate |
 | `media_mse` (Node) | segment classification, ordering, gap detection, caps/TTL |
-| `extension_logic` (Node) | `download-media`/`scan-media`/`media-segment`, merge+dedupe, `config` push, token in the socket URL |
-| `extension_popup` (Node) | new elements exist and are driven; no inline script |
+| `extension_logic` (Node) | `download-media`/`scan-media`/`media-segment`, merge+dedupe, `config` push, token in the socket URL, empty `group` omitted, `blob:` resolved from the sender's tab, refusal reasons |
+| `extension_popup` (Node) | popup elements exist and are driven; the stream chooser is the overlay's, not the popup's; no inline script |
 | `extension_package` (Node) | new files ship in both archives |
 | `xml_lite` (C++) | attributes, entities, nesting, malformed input |
 | `mp4_boxes` (C++) | `moof`/`mdat` walk, `mfhd`, `tfdt`, `sidx` |

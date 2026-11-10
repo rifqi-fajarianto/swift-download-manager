@@ -345,6 +345,56 @@ function makeDocument(elements, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// The chooser rows shared by the overlay and the popup.
+// ---------------------------------------------------------------------------
+
+{
+  const items = detect.buildMediaItems({
+    hls: ["https://cdn.example/master.m3u8", "https://cdn.example/master.m3u8"],
+    dash: ["https://cdn.example/stream.mpd"],
+    pairs: [{ video: "https://cdn.example/v.mp4", audio: "https://cdn.example/a.mp4",
+      group: "pair-1a2b3c4d" }],
+    dom: [{ url: "https://cdn.example/direct.mp4", videoWidth: 1920, videoHeight: 1080,
+      protected: false }],
+    mse: [{ key: "cdn.example/mse", initUrl: "https://cdn.example/mse/init.mp4",
+      segmentCount: 3, segments: [{ url: "https://cdn.example/mse/init.mp4", role: "init" }],
+      incomplete: true }]
+  });
+  check(items.length === 5, "one row per detected stream, duplicates collapsed");
+  check(items[0].kind === "hls" && items[0].urls[0].endsWith("master.m3u8"),
+    "the HLS row carries the manifest URL");
+  check(items[0].label.includes("master.m3u8"), "the HLS row names the manifest");
+  check(items[1].kind === "dash", "the DASH row is offered");
+  check(items[2].kind === "file" && items[2].urls.length === 2 &&
+        items[2].group === "pair-1a2b3c4d", "the pair row carries both URLs and the group");
+  check(items[3].label.includes("1920×1080"), "the playing element row shows its size");
+  check(items[4].kind === "mse" && items[4].label.includes("3 segments"),
+    "the MSE row reports the segment count");
+  check(items[4].hint.includes("incomplete"), "an incomplete log says so");
+
+  const drm = detect.buildMediaItems({
+    dom: [{ url: "https://cdn.example/drm.mp4", protected: true }]
+  });
+  check(drm[0].disabled === true, "a DRM row cannot be sent");
+  check(/DRM/.test(drm[0].hint), "the DRM row explains why");
+
+  const empty = detect.buildMediaItems({});
+  check(empty.length === 0, "a page without media has no rows");
+
+  const candidate = detect.mediaCandidate(items[0], {
+    url: "https://cdn.example/watch", title: "Episode"
+  });
+  check(candidate.kind === "hls" && candidate.pageUrl === "https://cdn.example/watch",
+    "the candidate takes the page URL from the tab");
+  check(candidate.pageTitle === "Episode", "the candidate takes the page title from the tab");
+
+  const mseCandidate = detect.mediaCandidate(items[4], null);
+  check(mseCandidate.kind === "mse" && mseCandidate.segments.length === 1,
+    "the MSE candidate carries its recorded segments");
+  check(mseCandidate.url.endsWith("init.mp4"), "the MSE candidate starts at the init segment");
+}
+
+// ---------------------------------------------------------------------------
 
 if (failures > 0) {
   console.error(`media_detect: ${failures} check(s) failed`);

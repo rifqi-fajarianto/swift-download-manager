@@ -124,7 +124,10 @@ swiftdmApi.menus.onClicked((info, tab) => {
   }
 });
 
-swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
+swiftdmApi.runtime.onMessage((message, sender, sendResponse) => {
+  // The content script cannot know its own tab id, so the sender is the only
+  // reliable source; the popup passes it explicitly because it *is* a tab.
+  const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : Number(message?.tabId);
   if (message?.type === "download-current-tab") {
     void sendDownload(message.url, "", message.title ?? "", {
       useGrantedCookiePermission: message.cookiesGranted === true
@@ -142,16 +145,17 @@ swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "get-media-streams") {
-    // The popup asks for whatever was observed for its tab: the network
-    // sniffing list merged with an on-demand DOM scan (docs/spec/08 §3).
-    void collectMedia(Number(message.tabId), message.frameId).then(
+    // The overlay and the popup both ask for whatever was observed for their
+    // tab: the network sniffing list merged with an on-demand DOM scan and the
+    // MSE segment log (docs/spec/08-media-download.md §3).
+    void collectMedia(tabId, message.frameId).then(
       (media) => sendResponse({ ok: true, media }),
       () => sendResponse({ ok: true, media: { hls: [], dash: [], pairs: [], dom: [], mse: [] } })
     );
     return true;
   }
   if (message?.type === "download-media") {
-    void sendMedia(message.candidate, message.tabId)
+    void sendMedia(message.candidate, tabId, sender?.tab ?? null)
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: errorText(error) }));
     return true;
@@ -159,7 +163,7 @@ swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
   if (message?.type === "media-segment") {
     // Relay from the page hook (metadata only). The worker decides whether the
     // record belongs to a media stream.
-    rememberSegment(message.tabId ?? -1, message.record, message.pageUrl ?? "");
+    rememberSegment(tabId, message.record, message.pageUrl ?? sender?.tab?.url ?? "");
     sendResponse({ ok: true });
     return false;
   }
@@ -178,8 +182,11 @@ swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "download-url") {
-    void sendDownload(message.url, message.pageUrl ?? "", message.title ?? "", {
-      useGrantedCookiePermission: message.cookiesGranted === true,
+    // A paired handoff from the overlay: the content script knows neither the
+    // page URL nor whether cookies were granted, so both are filled in here.
+    const pageUrl = validHttpUrl(message.pageUrl)?.href ?? sender?.tab?.url ?? "";
+    void sendDownload(message.url, pageUrl, message.title || sender?.tab?.title || "", {
+      useGrantedCookiePermission: true,
       group: message.group
     })
       .then(() => sendResponse({ ok: true }))
@@ -473,21 +480,57 @@ async function collectMedia(tabId, frameId) {
   };
 }
 
-// Builds the addMedia payload from a candidate the popup or the overlay picked.
-// Everything that identifies the request (cookies, referer, UA, x-* headers)
-// travels with it, so the app can re-issue the request itself.
-async function sendMedia(candidate, tabId) {
+// Builds the addMedia payload from a candidate the overlay picked. Everything
+// that identifies the request (cookies, referer, UA, x-* headers) travels with
+// it, so the app can re-issue the request itself.
+//
+// `tab` is the sender's tab: the content script knows neither the page URL nor
+// the tab id, and a blob: candidate can only be resolved to the recorded
+// segments of that tab.
+async function sendMedia(candidate, tabId, tab = null) {
   if (!candidate || typeof candidate !== "object") {
     throw new Error("No media was selected.");
-  }
-  const url = candidate.url || candidate.initUrl || "";
-  if (!validHttpUrl(url)) {
-    throw new Error("This stream has no downloadable address (blob: or DRM playback).");
   }
   if (candidate.protected === true) {
     throw new Error("Protected (DRM) media cannot be downloaded.");
   }
-  const kind = ["file", "hls", "dash", "mse"].includes(candidate.kind) ? candidate.kind : "file";
+  const pageUrl = validHttpUrl(candidate.pageUrl)
+    ? candidate.pageUrl
+    : (validHttpUrl(tab?.url)?.href ?? "");
+  const pageTitle = String(candidate.pageTitle || tab?.title || "").slice(0, 1024);
+
+  let kind = ["file", "hls", "dash", "mse"].includes(candidate.kind) ? candidate.kind : "file";
+  // A chooser row carries the recorded stream under `stream`; the raw candidate
+  // shape carries `segments` directly. Both end up in the same payload.
+  const stream = candidate.stream && typeof candidate.stream === "object"
+    ? candidate.stream
+    : null;
+  let url = candidate.url || stream?.initUrl || candidate.initUrl || "";
+  let segments = Array.isArray(candidate.segments)
+    ? candidate.segments
+    : (Array.isArray(stream?.segments) ? stream.segments : []);
+  // A blob: player has no downloadable URL of its own; what it does have is the
+  // ordered list of segments the page fetched (docs/spec/08-media-download.md
+  // §6). The overlay sends the element's blob: URL, so the log fills it in.
+  if (!validHttpUrl(url) || candidate.blob === true) {
+    const recorded = mseStreamFor(tabId, candidate.streamKey ?? stream?.key);
+    if (!recorded || recorded.segmentCount === 0) {
+      throw new Error(
+        "This player streams through blob: URLs. Play the video from the start so " +
+        "the segments are recorded, then try again.");
+    }
+    kind = "mse";
+    segments = recorded.segments;
+    url = recorded.initUrl || recorded.segments[0]?.url || "";
+  }
+  if (!validHttpUrl(url)) {
+    throw new Error("This stream has no downloadable address.");
+  }
+  if (kind === "mse" && segments.length === 0) {
+    throw new Error(
+      "This player streams through blob: URLs and no segments were recorded yet. " +
+      "Play the video from the start, then try again.");
+  }
 
   const commandSocketWarmup = getCommandSocket();
   commandSocketWarmup.catch(() => {});
@@ -512,23 +555,25 @@ async function sendMedia(candidate, tabId) {
     }
   }
 
-  const pageUrl = validHttpUrl(candidate.pageUrl) ? candidate.pageUrl : "";
   const data = {
     url,
     kind,
     pageUrl,
-    pageTitle: String(candidate.pageTitle ?? "").slice(0, 1024),
+    pageTitle,
     referer: pageUrl && sameOrigin(pageUrl, url) ? pageUrl : "",
     userAgent: navigator.userAgent,
     cookies,
     filename: String(candidate.filename ?? "").slice(0, 255),
     quality: String(candidate.quality ?? "").slice(0, 64),
-    group: sanitizeGroup(candidate.group),
     durationSec: Math.max(0, Number(candidate.durationSec) || 0),
     positionSec: Math.max(0, Number(candidate.positionSec) || 0),
     elementTag: String(candidate.elementTag ?? "").slice(0, 16),
-    protected: candidate.protected === true
+    protected: false
   };
+  // An empty group is not a group: the app validates the token with a 1..32
+  // character pattern and rejects the whole request otherwise.
+  const group = sanitizeGroup(candidate.group);
+  if (group) data.group = group;
   if (Array.isArray(candidate.candidates) && candidate.candidates.length) {
     data.candidates = candidate.candidates.slice(0, 8).map((entry) => ({
       url: String(entry?.url ?? ""),
@@ -537,8 +582,8 @@ async function sendMedia(candidate, tabId) {
       bandwidth: Math.max(0, Number(entry?.bandwidth) || 0)
     }));
   }
-  if (Array.isArray(candidate.segments) && candidate.segments.length) {
-    data.segments = candidate.segments.slice(0, MEDIA_MAX_SEGMENTS).map((entry, index) => ({
+  if (segments.length) {
+    data.segments = segments.slice(0, MEDIA_MAX_SEGMENTS).map((entry, index) => ({
       url: String(entry?.url ?? ""),
       role: entry?.role === "init" ? "init" : "media",
       order: Number.isFinite(entry?.order) ? entry.order : index,
@@ -548,6 +593,20 @@ async function sendMedia(candidate, tabId) {
   const extras = observedExtrasFor(url);
   if (extras.headers?.length) data.headers = extras.headers;
   return sendCommand("addMedia", data, commandSocketWarmup);
+}
+
+// The recorded MSE stream for a tab: the one the candidate names, or the
+// longest one when it names none.
+function mseStreamFor(tabId, streamKey) {
+  const log = tabSegments.get(tabId);
+  if (!log) return null;
+  const streams = log.candidates();
+  if (!streams.length) return null;
+  if (streamKey) {
+    const named = streams.find((stream) => stream.key === streamKey);
+    if (named) return named;
+  }
+  return streams[0];
 }
 
 function sameOrigin(a, b) {

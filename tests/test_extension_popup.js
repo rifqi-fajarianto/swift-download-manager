@@ -39,7 +39,7 @@ for (const id of [
   "auto-intercept",
   "cookies",
   "media",
-  "media-list",
+  "media-hint",
   "app-version",
   "connection",
 ]) {
@@ -65,10 +65,13 @@ check(!/\son[a-z]+\s*=/i.test(html),
 // api.js must load before the files that use swiftdmApi.
 const apiIndex = html.indexOf('src="api.js"');
 check(apiIndex > 0, "popup.html loads api.js");
-for (const file of ["cookie-permission.js", "action-icon.js", "popup.js"]) {
+for (const file of ["cookie-permission.js", "action-icon.js", "media-detect.js", "popup.js"]) {
   const index = html.indexOf(`src="${file}"`);
   check(index > apiIndex, `popup.html loads ${file} after api.js`);
 }
+// media-detect.js defines the helpers popup.js calls, so it must come first.
+check(html.indexOf('src="media-detect.js"') < html.indexOf('src="popup.js"'),
+  "popup.html loads media-detect.js before popup.js");
 
 // The design tokens and building blocks of the UI template are present.
 for (const token of [
@@ -97,14 +100,34 @@ check(!/\bbrowser\.(runtime|storage|tabs|action|menus|permissions|cookies|downlo
   "popup.js goes through swiftdmApi, not browser.*");
 check(script.includes("swiftdmApi."), "popup.js uses the shared API layer");
 
-// The media list offers every detection source: HLS, DASH, adaptive pairs, the
-// DOM player and reconstructed MSE streams (docs/spec/08-media-download.md).
+// The stream chooser lives in the overlay over the player, not in the popup
+// (docs/spec/08-media-download.md §4.1). The popup only points at it.
+const content = fs.readFileSync(path.join(sharedDir, "content.js"), "utf8");
+const detectScript = fs.readFileSync(path.join(sharedDir, "media-detect.js"), "utf8");
 for (const kind of ["hls", "dash", "pairs", "dom", "mse"]) {
-  check(script.includes(`detected.${kind}`), `popup.js reads detected.${kind}`);
+  check(detectScript.includes(`detected.${kind}`),
+    `media-detect.js reads detected.${kind}`);
 }
-check(script.includes("download-media"), "popup.js hands media off with download-media");
-check(script.includes("get-media-streams"), "popup.js asks the worker for the media list");
-check(/protected/.test(script), "popup.js knows about protected media");
+check(detectScript.includes("buildMediaItems"),
+  "media-detect.js builds the shared stream rows");
+check(detectScript.includes("mediaCandidate"),
+  "media-detect.js builds the shared addMedia candidate");
+check(content.includes("buildMediaItems"),
+  "content.js renders the stream rows in the overlay menu");
+check(content.includes("download-media"),
+  "content.js hands the picked stream off with download-media");
+check(content.includes("get-media-streams"),
+  "content.js asks the worker for the media list");
+check(content.includes("response?.error"),
+  "content.js shows why a handoff was refused");
+check(!content.includes("media-list"),
+  "the overlay menu is not the popup list");
+check(script.includes("get-media-streams"),
+  "popup.js still asks the worker whether the page has streams");
+check(script.includes("buildMediaItems"),
+  "popup.js counts streams with the shared row builder");
+check(!script.includes("download-media"),
+  "popup.js no longer hands streams off (the overlay does)");
 
 // Both manifests must describe a Manifest V3 extension with the same version,
 // the same popup and the icons the popup references.

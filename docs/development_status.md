@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.0**. Status ini cepat
+> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.1**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,13 +8,21 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.26.0 — unduhan media dari ekstensi
-  browser: tombol mengambang di atas video dan daftar di popup mengirim file,
-  varian HLS, representasi DASH, pasangan video+audio, dan segmen `blob:` (MSE)
-  ke aplikasi. Engine menambah parser DASH dan rekonstruksi MSE dengan
-  pemeriksaan kontinuitas (`mfhd`/`tfdt`); stream DRM ditolak, jendela konfirmasi
-  punya pemilih kualitas, dan koneksi ekstensi pertama disetujui lewat prompt
-  pairing bertoken lokal. Sebelumnya 0.25.0 — pemecahan segmen dinamis
+- **Rilis terakhir di jalur `main`**: 0.26.1 — memperbaiki handoff media yang
+  selalu gagal: ekstensi mengirim `group: ""` sehingga aplikasi menolak dengan
+  "invalid media request", dan tombol di atas player tidak melakukan apa pun.
+  Field `group` kini hanya dikirim kalau ada pasangan video+audio; tombol
+  overlay membuka pemilih stream sendiri (HLS, DASH, pasangan, elemen yang
+  sedang diputar, segmen `blob:`), daftar dipindah dari popup, dan alasan
+  penolakan ditampilkan di baris yang bersangkutan. Tab kini diambil dari
+  pengirim pesan, jadi segmen MSE per-tab bisa ditemukan. Sebelumnya 0.26.0 —
+  unduhan media dari ekstensi browser: tombol mengambang di atas video dan
+  daftar di popup mengirim file, varian HLS, representasi DASH, pasangan
+  video+audio, dan segmen `blob:` (MSE) ke aplikasi. Engine menambah parser
+  DASH dan rekonstruksi MSE dengan pemeriksaan kontinuitas (`mfhd`/`tfdt`);
+  stream DRM ditolak, jendela konfirmasi punya pemilih kualitas, dan koneksi
+  ekstensi pertama disetujui lewat prompt pairing bertoken lokal. Sebelumnya
+  0.25.0 — pemecahan segmen dinamis
   (dynamic split): saat ada slot koneksi kosong dan semua rentang rencana sudah
   berjalan, segmen aktif dengan perkiraan sisa waktu terbesar dipecah; bagian
   depan tetap diunduh koneksi lama, bagian belakang lewat koneksi baru. Jumlah
@@ -46,7 +54,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.26.0. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.26.1. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang
@@ -211,8 +219,8 @@
   Properties` | `Start Queue`, `Stop Queue` | `New URL`, `Delete`,
   `Delete File`.
 - **Integrasi Chromium MV3**: handoff otomatis/manual, cookie opsional, deteksi
-  HLS/DASH/MSE dan pasangan video+audio di popup dan tombol mengambang,
-  status push lewat WebSocket; socket command
+  HLS/DASH/MSE dan pasangan video+audio lewat pemilih di tombol mengambang
+  (popup hanya menunjuk ke sana), status push lewat WebSocket; socket command
   dipakai ulang untuk handoff berurutan selama masih terbuka.
 - **Dialog konfirmasi tampil saat probe berjalan** dan memakai ulang hasil probe
   untuk transfer awal; resume selalu validasi ulang server.

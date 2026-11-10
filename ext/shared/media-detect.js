@@ -186,6 +186,137 @@ function describeCandidate(candidate, extra = {}) {
   };
 }
 
+// Short display name for a URL: the last path component, ellipsised.
+function shortName(url) {
+  try {
+    const parsed = new URL(String(url));
+    const name = parsed.pathname.split("/").filter(Boolean).pop() ?? parsed.hostname;
+    return name.length > 32 ? `${name.slice(0, 29)}…` : name;
+  } catch {
+    return String(url ?? "");
+  }
+}
+
+/**
+ * Turns the merged detection result into the rows the overlay menu renders.
+ *
+ * One row per downloadable thing, in the order the user is most likely to want
+ * them: manifests first (SwiftDM resolves the renditions), then a paired
+ * video+audio handoff, then the element that is playing right now, then the
+ * reconstructed blob: streams. Each row keeps the payload the background needs,
+ * so neither the overlay nor the popup assembles protocol fields itself.
+ *
+ * Pure: no DOM, no browser API. See docs/spec/08-media-download.md §4.2.
+ *
+ * @param {{hls?: string[], dash?: string[], pairs?: object[],
+ *          dom?: object[], mse?: object[]}} detected
+ * @returns {object[]}
+ */
+function buildMediaItems(detected = {}) {
+  const items = [];
+  for (const url of new Set(detected.hls ?? [])) {
+    items.push({
+      label: `HLS playlist · ${shortName(url)}`,
+      hint: "Master playlist is resolved by SwiftDM",
+      kind: "hls",
+      urls: [url],
+    });
+  }
+  for (const url of new Set(detected.dash ?? [])) {
+    items.push({
+      label: `DASH manifest · ${shortName(url)}`,
+      hint: "Pick the video or the audio rendition in the next window",
+      kind: "dash",
+      urls: [url],
+    });
+  }
+  for (const pair of detected.pairs ?? []) {
+    items.push({
+      label: `Video + audio · ${shortName(pair.video)}`,
+      hint: "Sent to SwiftDM as a pair",
+      kind: "file",
+      urls: [pair.video, pair.audio],
+      group: pair.group,
+    });
+  }
+  for (const candidate of detected.dom ?? []) {
+    const size = candidate.videoWidth
+      ? `${candidate.videoWidth}×${candidate.videoHeight}`
+      : candidate.elementTag || "media";
+    items.push({
+      label: `Playing now · ${size}`,
+      hint: candidate.protected
+        ? "Protected (DRM): cannot be downloaded"
+        : "The media element in the page",
+      kind: "file",
+      urls: [candidate.url],
+      candidate,
+      disabled: candidate.protected === true,
+    });
+  }
+  for (const stream of detected.mse ?? []) {
+    const count = Number(stream.segmentCount ?? 0);
+    items.push({
+      label: `MSE stream · ${count} segment${count === 1 ? "" : "s"}`,
+      hint: stream.incomplete
+        ? "Assembled from recorded segments; may be incomplete"
+        : "Assembled from the segments the page downloaded",
+      kind: "mse",
+      urls: [stream.initUrl || stream.segments?.[0]?.url || ""],
+      stream,
+      disabled: !stream.initUrl && !stream.segments?.length,
+    });
+  }
+  return items;
+}
+
+/**
+ * Builds the `addMedia` candidate for one row of buildMediaItems().
+ *
+ * The page URL and title come from the sender's tab (the worker is the only
+ * place that has them), so the same row works from the overlay and from any
+ * other surface.
+ *
+ * @param {object} item a row from buildMediaItems()
+ * @param {{url?: string, title?: string}|null} [tab]
+ * @returns {object|null}
+ */
+function mediaCandidate(item, tab = null) {
+  if (!item || typeof item !== "object") return null;
+  const page = {
+    pageUrl: typeof tab?.url === "string" ? tab.url : "",
+    pageTitle: String(tab?.title ?? "").slice(0, 1024),
+  };
+  if (item.kind === "mse" && item.stream) {
+    return {
+      url: item.stream.initUrl || item.stream.segments?.[0]?.url || "",
+      kind: "mse",
+      ...page,
+      segments: (item.stream.segments ?? []).map((segment) => ({
+        url: segment.url,
+        role: segment.role,
+        order: segment.order,
+        contentType: segment.contentType,
+      })),
+      durationSec: 0,
+      positionSec: 0,
+      protected: false,
+    };
+  }
+  if (item.candidate) {
+    return { ...item.candidate, kind: item.kind, ...page, group: item.group ?? "" };
+  }
+  return {
+    url: item.urls?.[0] ?? "",
+    kind: item.kind,
+    ...page,
+    group: item.group ?? "",
+    durationSec: 0,
+    positionSec: 0,
+    protected: false,
+  };
+}
+
 // The DOM adapter is only used in a content script, so it is created lazily:
 // requiring this file in Node must not touch `document`.
 class MediaScanner {
@@ -333,6 +464,9 @@ const mediaDetect = {
   isPlaying,
   rankCandidates,
   describeCandidate,
+  shortName,
+  buildMediaItems,
+  mediaCandidate,
   MediaScanner,
 };
 

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.26.1 — 2026-11-10
+
+Fixes the media handoff, which failed for every stream: clicking a detected
+item reported "invalid media request", and the button over the player did
+nothing at all.
+
+- The extension sent `group: ""` for every stream that was not an adaptive
+  video+audio pair. The app validates the pair token with a 1..32 character
+  pattern, so an empty string rejected the whole request. The field is now
+  omitted unless there is a real pair, exactly like `addDownload`.
+- The button over the player now opens the stream chooser itself (HLS, DASH,
+  paired video+audio, the playing element, recorded `blob:` streams), instead
+  of sending the element's URL straight to the app. The list moved out of the
+  popup, which now only reports how many streams were found and points at the
+  overlay; the row builder is shared (`media-detect.js`), so the two surfaces
+  cannot drift apart.
+- A refused or failed handoff is shown on the row it belongs to. The old code
+  ignored `ok: false`, which is why the button looked dead.
+- `download-media`, `get-media-streams` and `media-segment` now read the tab
+  from the message sender. The content script has no tab id of its own, so the
+  recorded MSE segments of that tab could never be found before; a `blob:`
+  candidate is now resolved to its recorded init+media segments, with a
+  readable message when nothing was recorded yet.
+- The chooser stays open while the pointer is on it (the page's `pointerout`
+  used to hide the overlay after 900 ms), closes on Escape or an outside click,
+  and flips above the button when it would run off screen.
+- Extension `manifest` 0.7.1. New coverage in `extension_logic`
+  (empty group omitted, `blob:` resolved from the sender's tab, refusal reason),
+  `media_detect` (chooser rows and candidate), and `extension_popup` (the list
+  is the overlay's, not the popup's).
+
 ## 0.26.0 — 2026-11-10
 
 Adds browser media downloading: the extension detects video/audio on the page,

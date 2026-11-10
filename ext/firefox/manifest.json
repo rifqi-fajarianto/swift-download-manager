@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SwiftDM Browser Integration",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Send links, pages, POST downloads, custom headers and the video playing in the browser to SwiftDM.",
   "browser_specific_settings": {
     "gecko": {

@@ -11,7 +11,8 @@ compile_commands.json
 
 # Assembled extension directories: ext/shared/ is the source, the copies inside
 # ext/chromium/ and ext/firefox/ are written by tools/extension_pack.mjs (and by
-# CMake for the install rules).
+# CMake for the install rules). manifest.json, background.js and README.md are
+# the browser's own files and stay tracked.
 /ext/chromium/api.js
 /ext/chromium/core.js
 /ext/chromium/popup.html
@@ -19,6 +20,11 @@ compile_commands.json
 /ext/chromium/popup.js
 /ext/chromium/cookie-permission.js
 /ext/chromium/action-icon.js
+/ext/chromium/content.css
+/ext/chromium/content.js
+/ext/chromium/media-detect.js
+/ext/chromium/media-mse.js
+/ext/chromium/page-hook.js
 /ext/chromium/icons/
 /ext/firefox/api.js
 /ext/firefox/core.js
@@ -27,6 +33,11 @@ compile_commands.json
 /ext/firefox/popup.js
 /ext/firefox/cookie-permission.js
 /ext/firefox/action-icon.js
+/ext/firefox/content.css
+/ext/firefox/content.js
+/ext/firefox/media-detect.js
+/ext/firefox/media-mse.js
+/ext/firefox/page-hook.js
 /ext/firefox/icons/
 
 # Editor/IDE

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.26.1" date="2026-11-10">
+      <description>
+        <p>Fixes the browser media handoff, which failed for every stream with "invalid media request" and left the button over the player doing nothing. The extension no longer sends an empty pair token, the button now opens a stream chooser itself (HLS, DASH, paired video+audio, the playing element, recorded blob: streams) instead of sending one URL, a refused handoff says why on its row, and blob: playback is resolved to the segments recorded for that tab.</p>
+      </description>
+    </release>
     <release version="0.26.0" date="2026-11-10">
       <description>
         <p>Adds media downloading from the browser extension: a floating button over playing videos and a list in the popup hand HLS, DASH, and recorded blob: streams to the app, with a quality selector in the confirmation window. The engine learns DASH manifests and MSE segment reconstruction with a continuity check, DRM playback is refused, and the first extension connection is approved once through a pairing prompt backed by a local token.</p>

@@ -34,8 +34,10 @@
         </div>
 
         <div class="group" id="media" hidden>
-          <p class="group-label">Detected media</p>
-          <div id="media-list"></div>
+          <p class="group-label">Media on this page</p>
+          <p class="media-hint" id="media-hint">
+            Use the SwiftDM button over the player to pick a stream.
+          </p>
         </div>
 
         <button class="cta" id="download" type="button" disabled>
@@ -56,6 +58,7 @@
     <script src="api.js"></script>
     <script src="cookie-permission.js"></script>
     <script src="action-icon.js"></script>
+    <script src="media-detect.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

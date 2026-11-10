@@ -30,11 +30,15 @@
 
   let overlayEnabled = true;
   let host = null;
+  let shadow = null;
   let button = null;
+  let menu = null;
   let currentTarget = null;
   let lastScanAt = 0;
   let scanTimer = null;
   let hideTimer = null;
+  let menuOpen = false;
+  let busy = false;
 
   function createNonce() {
     const bytes = new Uint8Array(16);
@@ -59,6 +63,7 @@
     // Shadow DOM keeps the button out of the page's CSS and out of its
     // querySelectorAll results.
     const root = host.attachShadow ? host.attachShadow({ mode: "closed" }) : host;
+    shadow = root;
     const style = document.createElement("style");
     style.textContent = overlayStyles();
     button = document.createElement("button");
@@ -70,8 +75,23 @@
       '<path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>' +
       '<span class="swiftdm-media-label">SwiftDM</span>';
     button.addEventListener("click", onOverlayClick);
+    menu = document.createElement("div");
+    menu.className = "swiftdm-media-menu";
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
+    // The overlay must not vanish while the pointer is on it: the page's
+    // pointerout handler only knows about the media element, and it fires
+    // before the menu receives its own pointerover. Events from inside the
+    // closed shadow root reach the host through the composed path.
+    host.addEventListener("pointerover", () => cancelHide());
+    host.addEventListener("pointerout", (event) => {
+      const path = event.composedPath?.() ?? [];
+      if (path.includes(host)) return;
+      scheduleHide();
+    });
     root.appendChild(style);
     root.appendChild(button);
+    root.appendChild(menu);
     (document.body ?? document.documentElement).appendChild(host);
   }
 
@@ -89,7 +109,27 @@
       ".swiftdm-media-button:hover { background: rgba(38,43,52,.96); }",
       ".swiftdm-media-button:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 2px; }",
       ".swiftdm-media-button svg { width: 14px; height: 14px; flex: 0 0 auto; }",
-      ".swiftdm-media-label { white-space: nowrap; }"
+      ".swiftdm-media-label { white-space: nowrap; }",
+      ".swiftdm-media-menu { position: absolute; top: calc(100% + 6px); left: 0;",
+      "  display: flex; flex-direction: column; width: 300px; max-height: 280px;",
+      "  overflow-y: auto; padding: 4px; border: 1px solid rgba(255,255,255,.18);",
+      "  border-radius: 10px; background: rgba(18,20,24,.97); color: #f2f4f8;",
+      "  font: 500 12px/1.35 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;",
+      "  pointer-events: auto; box-shadow: 0 8px 26px rgba(0,0,0,.45); }",
+      ".swiftdm-media-menu[hidden] { display: none; }",
+      ".swiftdm-media-menu.above { top: auto; bottom: calc(100% + 6px); }",
+      ".swiftdm-media-item { display: block; width: 100%; margin: 0; padding: 7px 8px;",
+      "  border: 0; border-radius: 7px; background: transparent; color: inherit;",
+      "  font: inherit; text-align: left; cursor: pointer; }",
+      ".swiftdm-media-item:hover { background: rgba(255,255,255,.09); }",
+      ".swiftdm-media-item:focus-visible { outline: 2px solid #6ea8fe; outline-offset: -2px; }",
+      ".swiftdm-media-item b { display: block; font-weight: 600; overflow-wrap: anywhere; }",
+      ".swiftdm-media-item small { display: block; color: #9aa0a6; font-size: 11px;",
+      "  overflow-wrap: anywhere; }",
+      ".swiftdm-media-item[disabled] { cursor: default; opacity: .55; }",
+      ".swiftdm-media-item[disabled]:hover { background: transparent; }",
+      ".swiftdm-media-note { margin: 0; padding: 7px 8px; color: #9aa0a6; font-size: 11px; }",
+      ".swiftdm-media-note.error { color: #ff9a9a; }"
     ].join("\n");
   }
 
@@ -107,37 +147,247 @@
   }
 
   function hideOverlay() {
+    if (menuOpen) closeMenu();
     if (host) host.style.display = "none";
     currentTarget = null;
   }
 
+  function cancelHide() {
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  }
+
   function scheduleHide() {
-    if (hideTimer) clearTimeout(hideTimer);
+    if (menuOpen || busy) return;
+    cancelHide();
     hideTimer = setTimeout(() => hideOverlay(), 900);
   }
 
+  function setLabel(text) {
+    if (!button) return;
+    const label = button.querySelector(".swiftdm-media-label");
+    if (label) label.textContent = text;
+  }
+
+  // Clicking the button opens the chooser: the page may offer a manifest, a
+  // paired track, the playing element and a recorded blob: stream, and the user
+  // picks which one SwiftDM should download (docs/spec/08-media-download.md
+  // §4.1). A failure always says why instead of doing nothing.
   function onOverlayClick(event) {
     event.preventDefault();
     event.stopPropagation();
     if (!currentTarget) return;
-    const candidate = buildCandidate(currentTarget);
-    if (!candidate) return;
-    if (button) button.disabled = true;
+    if (menuOpen) {
+      closeMenu();
+      return;
+    }
+    if (busy) return;
+    busy = true;
+    cancelHide();
+    setLabel("Scanning…");
+    try {
+      chrome.runtime.sendMessage({ type: "get-media-streams" }, (response) => {
+        busy = false;
+        if (chrome.runtime.lastError) {
+          setLabel("SwiftDM");
+          showMenuError(chrome.runtime.lastError.message ?? "SwiftDM is unreachable.");
+          return;
+        }
+        if (!response?.ok) {
+          setLabel("SwiftDM");
+          showMenuError(response?.error ?? "SwiftDM is unreachable.");
+          return;
+        }
+        const items = detect.buildMediaItems(response.media ?? {});
+        // The element in front of the user is always offered, even when the
+        // network saw nothing: its src may be the only address available.
+        const own = buildCandidate(currentDescriptor());
+        if (own && !items.some((item) => item.urls?.[0] === own.url)) {
+          items.unshift({
+            label: `This player · ${own.videoWidth ? `${own.videoWidth}×${own.videoHeight}` : "media"}`,
+            hint: own.blob
+              ? "Recorded stream; needs the segments the page fetched"
+              : "The element you are watching",
+            kind: "file",
+            urls: [own.url],
+            candidate: own,
+            disabled: own.protected === true
+          });
+        }
+        setLabel("SwiftDM");
+        renderMenu(items);
+      });
+    } catch (error) {
+      busy = false;
+      setLabel("SwiftDM");
+      showMenuError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function showMenuError(text) {
+    if (!ensureMenu()) return;
+    menu.textContent = "";
+    const note = document.createElement("p");
+    note.className = "swiftdm-media-note error";
+    note.textContent = text;
+    menu.appendChild(note);
+    openMenu();
+  }
+
+  function renderMenu(items) {
+    if (!ensureMenu()) return;
+    menu.textContent = "";
+    if (!items.length) {
+      const note = document.createElement("p");
+      note.className = "swiftdm-media-note";
+      note.textContent = "No downloadable media found on this page.";
+      menu.appendChild(note);
+      openMenu();
+      return;
+    }
+    for (const item of items) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "swiftdm-media-item";
+      row.setAttribute("role", "menuitem");
+      row.disabled = item.disabled === true;
+      const title = document.createElement("b");
+      title.textContent = item.label;
+      const hint = document.createElement("small");
+      hint.textContent = item.hint;
+      row.appendChild(title);
+      row.appendChild(hint);
+      if (item.disabled !== true) {
+        row.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void chooseItem(item, row);
+        });
+      }
+      menu.appendChild(row);
+    }
+    openMenu();
+  }
+
+  // Sends one row to the worker. The worker owns the protocol payload: the
+  // content script only names what the user picked.
+  function chooseItem(item, row) {
+    if (!ensureMenu()) return;
+    const hint = row.querySelector("small");
+    if (hint) hint.textContent = "Sending…";
+    row.disabled = true;
+    // A paired row is two independent downloads that share a group token; every
+    // other row is a single addMedia request.
+    const pair = item.urls && item.urls.length > 1 ? item.urls : null;
+    if (pair) {
+      sendPair(item, pair, row, hint);
+      return;
+    }
+    const candidate = detect.mediaCandidate(item);
     try {
       chrome.runtime.sendMessage({ type: "download-media", candidate }, (response) => {
-        if (button) button.disabled = false;
-        if (chrome.runtime.lastError) return;
-        if (response?.ok) {
-          if (button) {
-            button.querySelector(".swiftdm-media-label").textContent = "Sent";
-            setTimeout(() => {
-              if (button) button.querySelector(".swiftdm-media-label").textContent = "SwiftDM";
-            }, 2500);
-          }
+        if (chrome.runtime.lastError) {
+          if (hint) hint.textContent = chrome.runtime.lastError.message ?? "SwiftDM is unreachable.";
+          row.disabled = false;
+          return;
         }
+        if (response?.ok) {
+          closeMenu();
+          setLabel("Sent");
+          setTimeout(() => setLabel("SwiftDM"), 2500);
+          return;
+        }
+        // A refusal (DRM, no recorded segments, app offline) must be visible;
+        // silently re-enabling the row was the old bug.
+        if (hint) hint.textContent = response?.error ?? "SwiftDM refused the request.";
+        row.disabled = false;
       });
-    } catch {
-      if (button) button.disabled = false;
+    } catch (error) {
+      if (hint) hint.textContent = error instanceof Error ? error.message : String(error);
+      row.disabled = false;
+    }
+  }
+
+  function sendPair(item, urls, row, hint) {
+    let index = 0;
+    const next = () => {
+      if (index >= urls.length) {
+        closeMenu();
+        setLabel("Sent");
+        setTimeout(() => setLabel("SwiftDM"), 2500);
+        return;
+      }
+      const url = urls[index++];
+      try {
+        chrome.runtime.sendMessage({ type: "download-url", url, group: item.group ?? "" },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              if (hint) hint.textContent =
+                chrome.runtime.lastError.message ?? "SwiftDM is unreachable.";
+              row.disabled = false;
+              return;
+            }
+            if (!response?.ok) {
+              if (hint) hint.textContent = response?.error ?? "SwiftDM refused the request.";
+              row.disabled = false;
+              return;
+            }
+            next();
+          });
+      } catch (error) {
+        if (hint) hint.textContent = error instanceof Error ? error.message : String(error);
+        row.disabled = false;
+      }
+    };
+    next();
+  }
+
+  function ensureMenu() {
+    if (!host || !host.isConnected) ensureOverlay();
+    return Boolean(menu);
+  }
+
+  function openMenu() {
+    if (!menu) return;
+    cancelHide();
+    menu.hidden = false;
+    menuOpen = true;
+    // Flip above the button when the menu would run past the viewport.
+    menu.classList.remove("above");
+    const rect = menu.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight - 8 && rect.top > rect.height + 16) {
+      menu.classList.add("above");
+    }
+    if (typeof document.addEventListener === "function") {
+      document.addEventListener("pointerdown", onDocumentPointerDown, true);
+      document.addEventListener("keydown", onDocumentKeyDown, true);
+    }
+  }
+
+  function closeMenu() {
+    if (!menu) return;
+    menu.hidden = true;
+    menu.textContent = "";
+    menuOpen = false;
+    if (typeof document.removeEventListener === "function") {
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+      document.removeEventListener("keydown", onDocumentKeyDown, true);
+    }
+    scheduleHide();
+  }
+
+  function onDocumentPointerDown(event) {
+    if (!menuOpen || !host) return;
+    if (event.composedPath?.().includes(host)) return;
+    closeMenu();
+  }
+
+  function onDocumentKeyDown(event) {
+    if (event.key === "Escape") {
+      closeMenu();
+      hideOverlay();
     }
   }
 
@@ -146,7 +396,6 @@
     if (!descriptor) return null;
     const described = detect.describeCandidate(descriptor);
     if (!described) return null;
-    const element = descriptor.element;
     return {
       url: described.url,
       kind: "file",
@@ -205,6 +454,13 @@
     if (!host || !currentTarget) return;
     if (event.relatedTarget && currentTarget.contains?.(event.relatedTarget)) return;
     scheduleHide();
+  }
+
+  // The element under the pointer, described only when it is actually needed:
+  // describe() reads computed style and hit-tests the centre, which is far too
+  // expensive to run on every pointerover.
+  function currentDescriptor() {
+    return currentTarget ? scanner.describe(currentTarget) : null;
   }
 
   // The overlay must follow the player when the page scrolls or resizes.

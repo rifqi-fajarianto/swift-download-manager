@@ -888,6 +888,86 @@ async function testAddMediaHandoff() {
   });
 }
 
+// The app validates the group token with a 1..32 character pattern, so an empty
+// string is not "no group": it rejects the whole request. Every ordinary media
+// handoff (no adaptive pair) used to fail on this.
+async function testEmptyGroupIsOmitted() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    let response = null;
+    env.onMessage()({
+      type: "download-media",
+      candidate: {
+        url: "https://cdn.example/master.m3u8",
+        kind: "hls",
+        group: "",
+        pageUrl: "https://cdn.example/watch"
+      }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === true, "a handoff without a pair token is accepted");
+    await settle(() => env.calls.sockets.some((socket) =>
+      socket.sent.some((message) => message.cmd === "addMedia")));
+    const socket = env.calls.sockets.find((candidate) =>
+      candidate.sent.some((message) => message.cmd === "addMedia"));
+    const sent = socket?.sent.find((message) => message.cmd === "addMedia");
+    check(Boolean(sent), "addMedia is sent for a plain manifest");
+    check(!("group" in (sent.data ?? {})), "an empty group is not sent at all");
+  });
+}
+
+// The overlay only has the element in front of the user; a blob: player has no
+// address of its own, so the worker fills in the segments recorded for the
+// sender's tab.
+async function testBlobCandidateResolvesRecordedSegments() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    const headers = env.onHeadersReceived();
+    headers({ url: "https://cdn.example/mse/init.mp4", tabId: 21,
+      responseHeaders: [{ name: "Content-Type", value: "video/iso.segment" }] });
+    for (let i = 1; i <= 2; i++) {
+      headers({ url: `https://cdn.example/mse/seg-${i}.m4s`, tabId: 21,
+        responseHeaders: [{ name: "Content-Type", value: "video/iso.segment" }] });
+    }
+
+    let response = null;
+    env.onMessage()({
+      type: "download-media",
+      tabId: 21,
+      candidate: { url: "blob:https://cdn.example/abc", kind: "file", blob: true }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === true, "a blob: candidate is accepted when segments exist");
+    await settle(() => env.calls.sockets.some((socket) =>
+      socket.sent.some((message) => message.cmd === "addMedia")));
+    const socket = env.calls.sockets.find((candidate) =>
+      candidate.sent.some((message) => message.cmd === "addMedia"));
+    const sent = socket?.sent.find((message) => message.cmd === "addMedia");
+    check(sent?.data.kind === "mse", "the blob: handoff becomes an MSE download");
+    check(sent.data.url.endsWith("init.mp4"), "the MSE payload starts at the init segment");
+    check(sent.data.segments.length === 3, "every recorded segment travels with it");
+    check(sent.data.segments[0].role === "init", "the init segment sorts first");
+  });
+}
+
+// The refusal has to reach the user: the old overlay ignored `ok: false`, so a
+// rejected handoff looked like a button that did nothing.
+async function testRefusalCarriesAReason() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    let response = null;
+    env.onMessage()({
+      type: "download-media",
+      tabId: 22,
+      candidate: { url: "blob:https://cdn.example/abc", kind: "file", blob: true }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === false, "a blob: candidate without segments is refused");
+    check(/segment/i.test(response.error ?? ""),
+      "the refusal tells the user to play the video so segments are recorded");
+  });
+}
+
 async function testMediaRejectsProtectedAndBlob() {
   await forEachFlavour(async ({ check, createEnvironment }) => {
     const env = createEnvironment();
@@ -984,6 +1064,9 @@ async function testPairingTokenTravelsOnTheSocketUrl() {
   await testMediaDomScanIsMerged();
   await testMseStreamIsOffered();
   await testAddMediaHandoff();
+  await testEmptyGroupIsOmitted();
+  await testBlobCandidateResolvesRecordedSegments();
+  await testRefusalCarriesAReason();
   await testMediaRejectsProtectedAndBlob();
   await testConfigPushReachesContentScripts();
   await testPairingTokenTravelsOnTheSocketUrl();

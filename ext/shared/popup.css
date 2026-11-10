@@ -279,21 +279,12 @@ main {
 .retry:hover { background: var(--line); }
 
 /* Detected media ---------------------------------------------------------- */
-#media-list {
-  display: flex;
-  flex-direction: column;
-}
-
-#media-list .row {
-  align-items: flex-start;
-}
-
-#media-list .row + .row {
-  border-top: 1px solid var(--line);
-}
-
-#media-list .row small {
-  overflow-wrap: anywhere;
+/* The chooser is the overlay over the player; the popup only points at it. */
+.media-hint {
+  margin: 2px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 /* Footer ------------------------------------------------------------------ */
