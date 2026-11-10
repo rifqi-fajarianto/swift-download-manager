@@ -19,6 +19,7 @@
 #include "engine/categories.h"
 #include "ui/icons.h"
 #include "ui/section_box.h"
+#include "ui/speed_limit_editor.h"
 
 namespace swiftdm::ui {
 namespace {
@@ -28,6 +29,9 @@ namespace {
 constexpr int kFileLabelChrome = 140;
 // The file name is never elided below this width, so it stays readable.
 constexpr int kMinFileLabelWidth = 160;
+// Speed limiter value offered when the user turns it on: 1 MB/s, the same
+// default preset the shared editor uses.
+constexpr int kDefaultLimitKbps = 1024;
 
 // The style gives buttons more padding than line edits and combos, so the
 // controls would end up with different heights and the rows would look
@@ -156,6 +160,19 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     location_container->setLayout(location_row);
     save_section->addRow(tr("Location:"), location_container);
 
+    // Speed limiter for this download. The application-wide setting was removed
+    // (0.26.0): the choice belongs here, where the user already sees the file
+    // name and size. Off means unlimited.
+    auto* bandwidth_section = add_form_section(layout, this, tr("Bandwidth"));
+    bandwidth_section->parentWidget()->setObjectName("confirm_bandwidth_section");
+    limit_editor_ = new SpeedLimitEditor(this);
+    limit_editor_->setObjectName("confirm_bandwidth_limit");
+    limit_editor_->set_value(false, kDefaultLimitKbps);
+    limit_editor_->setToolTip(
+        tr("Limit this download's speed. Ignored when the download is added to a "
+           "queue: a queue applies its own shared budget."));
+    bandwidth_section->addRow(tr("Speed limit:"), limit_editor_);
+
     layout->addStretch(1);
 
     auto* buttons = new QHBoxLayout;
@@ -231,6 +248,14 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
 
 QString ConfirmDownloadDialog::category() const {
     return category_box_->currentText();
+}
+
+bool ConfirmDownloadDialog::limit_enabled() const {
+    return limit_editor_ && limit_editor_->enabled();
+}
+
+int ConfirmDownloadDialog::limit_kbps() const {
+    return limit_editor_ ? limit_editor_->kbps() : 0;
 }
 
 QString ConfirmDownloadDialog::location() const {

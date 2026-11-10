@@ -6,7 +6,6 @@
 #include <string>
 
 #include "store/settings.h"
-#include "ui/speed_limit_editor.h"
 
 class QCheckBox;
 class QComboBox;
@@ -66,7 +65,6 @@ class SettingsDialog : public QDialog {
     QSpinBox* max_connections_ = nullptr;
     QRadioButton* all_at_once_ = nullptr;
     QRadioButton* one_by_one_ = nullptr;
-    SpeedLimitEditor* limit_editor_ = nullptr;
     QLineEdit* default_agent_ = nullptr;
     QCheckBox* use_ua_browser_ = nullptr;
     QLineEdit* download_dir_ = nullptr;

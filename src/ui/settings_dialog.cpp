@@ -299,10 +299,6 @@ QWidget* SettingsDialog::build_download_tab() {
     policy_layout->addWidget(one_by_one_);
     connections->addRow(tr("Create additional connections:"), policy);
 
-    auto* bandwidth = add_form_section(layout, page, tr("Bandwidth"));
-    limit_editor_ = new SpeedLimitEditor(page);
-    bandwidth->addRow(tr("Bandwidth limit per download:"), limit_editor_);
-
     auto* user_agent = add_form_section(layout, page, tr("User-Agent"));
     auto* ua_row = new QHBoxLayout;
     ua_row->setContentsMargins(0, 0, 0, 0);
@@ -461,8 +457,6 @@ void SettingsDialog::load_from_settings() {
     } else {
         all_at_once_->setChecked(true);
     }
-    limit_editor_->set_value(settings_.bandwidth_limit_enabled,
-                             settings_.bandwidth_limit_kbps);
     default_agent_->setText(QString::fromStdString(settings_.default_agent));
     use_ua_browser_->setChecked(settings_.use_ua_for_browser);
     download_dir_->setText(QString::fromStdString(settings_.download_dir));
@@ -513,8 +507,6 @@ void SettingsDialog::store_to_settings() {
 
     settings_.max_connections = max_connections_->value();
     settings_.connections_at_once = one_by_one_->isChecked() ? 1 : 0;
-    settings_.bandwidth_limit_enabled = limit_editor_->enabled();
-    settings_.bandwidth_limit_kbps = limit_editor_->kbps();
     settings_.default_agent = default_agent_->text().trimmed().toStdString();
     if (settings_.default_agent.empty()) {
         settings_.default_agent = swiftdm::kDefaultUserAgent;

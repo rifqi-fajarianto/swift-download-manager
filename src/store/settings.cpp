@@ -85,8 +85,7 @@ std::string pick_choice(const std::string& value,
 // case. Unknown keys and unknown sections are ignored, so a config written by
 // a newer release still loads.
 void apply_section(Settings& s, const std::string& section,
-                   const std::map<std::string, std::string>& keys,
-                   bool* saw_bandwidth_toggle) {
+                   const std::map<std::string, std::string>& keys) {
     for (const auto& entry : keys) {
         const std::string& k = entry.first;
         const std::string& value = entry.second;
@@ -116,12 +115,6 @@ void apply_section(Settings& s, const std::string& section,
             // section is applied afterwards and wins.
             else if (k == "maxconnections") parse_int(value, s.max_connections);
             else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
-            else if (k == "bandwidthlimitenabled") {
-                if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
-                s.bandwidth_limit_enabled =
-                    parse_bool(value, s.bandwidth_limit_enabled);
-            }
             else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
             else if (k == "defaultagent") s.default_agent = value;
             else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
@@ -131,12 +124,6 @@ void apply_section(Settings& s, const std::string& section,
         } else if (section == "download") {
             if (k == "maxconnections") parse_int(value, s.max_connections);
             else if (k == "connectionsatonce") parse_int(value, s.connections_at_once);
-            else if (k == "bandwidthlimit") parse_int(value, s.bandwidth_limit_kbps);
-            else if (k == "bandwidthlimitenabled") {
-                if (saw_bandwidth_toggle) *saw_bandwidth_toggle = true;
-                s.bandwidth_limit_enabled =
-                    parse_bool(value, s.bandwidth_limit_enabled);
-            }
             else if (k == "useuagent") s.use_ua_for_browser = parse_bool(value, s.use_ua_for_browser);
             else if (k == "defaultagent") s.default_agent = value;
             else if (k == "downloaddirectory") s.download_dir = expand_tilde(value);
@@ -379,17 +366,10 @@ bool load_settings(const std::string& path, Settings& out, std::string* error) {
 
     // [general] is applied first because it still holds the download options
     // of older configs; the dedicated [download] section overrides them.
-    bool saw_bandwidth_toggle = false;
     for (const char* name : {"general", "download", "interface", "proxy", "categories"}) {
         const auto found = sections.find(name);
         if (found == sections.end()) continue;
-        apply_section(out, name, found->second, &saw_bandwidth_toggle);
-    }
-
-    // Configs written before the toggle existed used any non-zero
-    // BandWidthLimit as "limiter on"; keep that behavior on upgrade.
-    if (!saw_bandwidth_toggle && out.bandwidth_limit_kbps > 0) {
-        out.bandwidth_limit_enabled = true;
+        apply_section(out, name, found->second);
     }
 
     if (error) error->clear();
@@ -430,8 +410,6 @@ bool save_settings(const Settings& settings, std::string* error) {
         << "\n[download]\n"
         << "MaxConnections = " << settings.max_connections << "\n"
         << "ConnectionsAtOnce = " << settings.connections_at_once << "\n"
-        << "BandWidthLimit = " << settings.bandwidth_limit_kbps << "\n"
-        << "BandWidthLimitEnabled = " << (settings.bandwidth_limit_enabled ? 1 : 0) << "\n"
         << "UseUAgent = " << (settings.use_ua_for_browser ? 1 : 0) << "\n"
         << "DefaultAgent = " << ini_value(settings.default_agent) << "\n"
         << "DownloadDirectory = " << ini_value(settings.download_dir) << "\n"

@@ -83,8 +83,9 @@ Layout (from `main-window.png`):
    with a URL field and `Download`/`Cancel`. On accept, the app starts probing
    the URL and immediately shows the *Download Confirmation* window (no list
    row or database entry yet): full URL, server-resolved file name and size, a
-   `Category` dropdown (file-type default, user overridable) and `Location`
-   (category folder by default, user overridable). `Download Now` adds the
+   `Category` dropdown (file-type default, user overridable), `Location`
+   (category folder by default, user overridable) and the `Bandwidth` speed
+   limiter for this download (0.26.0). `Download Now` adds the
    item to the main Downloads list and starts the transfer; `Download Later`
    adds it to the same list already paused and starts nothing (0.24.0);
    `Cancel` leaves no trace; `Add to queue` adds it to the chosen queue and
@@ -95,11 +96,22 @@ Layout (from `main-window.png`):
    - Fixed default size (650×330, minimum 560×320): the window never grows with
      the file name or the URL length (0.18.9). The file name line is elided in
      the middle and keeps the full name in its tooltip.
-   - Rows are grouped into two bold-titled sections (0.18.22): `File` holds
+   - Rows are grouped into bold-titled sections (0.18.22): `File` holds
      `Name` and `Size` (content length, `Unknown size` when the server reports
-     none); `Save` holds `URL` (read-only field), `Category` and `Location`.
+     none); `Save` holds `URL` (read-only field), `Category` and `Location`;
+     `Bandwidth` holds the per-download speed limiter (0.26.0).
      The size is no longer inline with the file name (0.18.9). Every
      description is vertically centered with the widget next to it (0.18.9).
+   - **Per-download speed limiter (0.26.0)**: the `Bandwidth` section carries
+     the shared speed-limit editor (enable toggle, KB/s value and presets). The
+     limiter is off by default, so a download starts unlimited; the choice
+     applies to the row and can be changed later from the download window's
+     Options tab. The application-wide `BandWidthLimit` /
+     `BandWidthLimitEnabled` setting was removed, so there is no global default
+     any more. When the confirmation window is off, new downloads start
+     unlimited and the Options tab is the only way to add a limit. The value is
+     ignored when the download is added to a queue, which applies its own
+     shared budget.
    - `Add to queue` asks for the target queue (0.19.2): with more than one
      queue it opens a `Choose Queue` picker that lists every queue with its
      item count, starts without a selection and enables its accept button only
@@ -203,11 +215,12 @@ Layout (from `main-window.png`):
 9. **Settings** (`options-window.png`), tabs:
    Every tab groups its options into labeled sections (0.18.20): `General`
    (Downloads, Startup, System tray), `Interface` (Toolbar, Appearance, System
-   tray), `Download` (Connections, Bandwidth, User-Agent, Files and folders),
+   tray), `Download` (Connections, User-Agent, Files and folders),
    `Proxy/Socks` (Proxy type, Server, Authentication); the `Passwords` tab is
    planned but not shown until the `auths` store exists (removed from the
    dialog in 0.20.0). Queue settings are not in this window; each queue has its
-   own `Queue Properties` dialog (0.19.0).
+   own `Queue Properties` dialog (0.19.0). The `Bandwidth` section was removed
+   in 0.26.0: the speed limiter is chosen per download.
    - *General*: app-wide behavior options — Show Download Confirmation Dialog
      (with a note that all files are downloaded automatically without
      confirmation while it is off, 0.18.17); Always Show the Confirmation

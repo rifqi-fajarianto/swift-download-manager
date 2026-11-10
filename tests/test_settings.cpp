@@ -17,8 +17,6 @@ void test_defaults() {
     Settings s = default_settings();
     CHECK_EQ(s.max_connections, 8);
     CHECK_EQ(s.connections_at_once, 0);
-    CHECK_EQ(s.bandwidth_limit_kbps, 1024);
-    CHECK(!s.bandwidth_limit_enabled);
     CHECK(s.category_folders);
     CHECK(s.completion_dialog);
     CHECK(!s.autostart);
@@ -48,8 +46,6 @@ void test_roundtrip(const std::string& dir) {
     s.config_path = dir + "/swiftdm.ini";
     s.max_connections = 32;
     s.connections_at_once = 1;
-    s.bandwidth_limit_kbps = 512;
-    s.bandwidth_limit_enabled = true;
     s.use_ua_for_browser = true;
     s.default_agent = "TestAgent/1.0";
     s.download_dir = dir + "/downloads";
@@ -83,8 +79,6 @@ void test_roundtrip(const std::string& dir) {
     CHECK(load_settings(s.config_path, loaded, &err));
     CHECK_EQ(loaded.max_connections, 32);
     CHECK_EQ(loaded.connections_at_once, 1);
-    CHECK_EQ(loaded.bandwidth_limit_kbps, 512);
-    CHECK(loaded.bandwidth_limit_enabled);
     CHECK(loaded.use_ua_for_browser);
     CHECK_EQ(loaded.default_agent, std::string("TestAgent/1.0"));
     CHECK_EQ(loaded.download_dir, s.download_dir);
@@ -261,28 +255,39 @@ void test_autostart_entry(const std::string& dir) {
 #endif
 }
 
-void test_bandwidth_toggle(const std::string& dir) {
-    // Configs from before the toggle existed used a non-zero BandWidthLimit as
-    // "limiter on", so the upgrade must keep them limited.
+// The speed limiter has no application-wide setting since 0.26.0: it is chosen
+// per download in the confirmation window. A config written by an older version
+// still carries the keys, and loading it must not fail (the keys are ignored).
+void test_legacy_bandwidth_keys_are_ignored(const std::string& dir) {
     {
         std::ofstream out(dir + "/legacy-limit.ini");
-        out << "[general]\nBandWidthLimit = 256\n";
+        out << "[general]\nBandWidthLimit = 256\nBandWidthLimitEnabled = 1\n";
     }
     Settings legacy;
     std::string err;
     CHECK(load_settings(dir + "/legacy-limit.ini", legacy, &err));
-    CHECK_EQ(legacy.bandwidth_limit_kbps, 256);
-    CHECK(legacy.bandwidth_limit_enabled);
+    CHECK(err.empty());
+    // The other keys of the section still load.
+    CHECK_EQ(legacy.max_connections, 8);
 
-    // An explicit toggle off wins even when a non-zero value is stored.
     {
-        std::ofstream out(dir + "/limit-off.ini");
-        out << "[general]\nBandWidthLimit = 2048\nBandWidthLimitEnabled = 0\n";
+        std::ofstream out(dir + "/limit-download.ini");
+        out << "[download]\nBandWidthLimit = 2048\nBandWidthLimitEnabled = 1\n"
+            << "MaxConnections = 12\n";
     }
-    Settings disabled;
-    CHECK(load_settings(dir + "/limit-off.ini", disabled, &err));
-    CHECK_EQ(disabled.bandwidth_limit_kbps, 2048);
-    CHECK(!disabled.bandwidth_limit_enabled);
+    Settings download;
+    CHECK(load_settings(dir + "/limit-download.ini", download, &err));
+    CHECK(err.empty());
+    CHECK_EQ(download.max_connections, 12);
+
+    // Saving drops the obsolete keys instead of writing them back.
+    Settings saved = default_settings();
+    saved.config_path = dir + "/saved.ini";
+    CHECK(save_settings(saved, &err));
+    std::ifstream in(dir + "/saved.ini");
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    CHECK(content.find("BandWidthLimit") == std::string::npos);
 }
 
 // Configs written before the [download] section existed keep the download
@@ -308,8 +313,6 @@ void test_legacy_general_section(const std::string& dir) {
     std::string err;
     CHECK(load_settings(path, s, &err));
     CHECK_EQ(s.max_connections, 16);
-    CHECK_EQ(s.bandwidth_limit_kbps, 256);
-    CHECK(s.bandwidth_limit_enabled);
     CHECK(s.use_ua_for_browser);
     CHECK_EQ(s.default_agent, std::string("LegacyAgent/1.0"));
     CHECK_EQ(s.download_dir, home_dir() + "/legacy-dl");
@@ -581,7 +584,7 @@ int main() {
     test_missing_file(dir);
     test_parsing_quirks(dir);
     test_autostart_entry(dir);
-    test_bandwidth_toggle(dir);
+    test_legacy_bandwidth_keys_are_ignored(dir);
     test_legacy_general_section(dir);
     test_download_section_wins(dir);
     test_interface_values(dir);

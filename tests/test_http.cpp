@@ -1067,15 +1067,13 @@ void test_chunked_reports_speed(const std::string& dir, testutil::TestHttpServer
     CHECK(peak_speed < 4.0 * 256.0 * 1024.0);
 }
 
-// The speed limiter toggle is authoritative: on applies the value to the
-// sequential (unknown-size) path as well, off means unlimited no matter what
-// value is stored per download or in the settings. libcurl enforces the rate
-// on the wall clock, so only lower bounds are asserted: 256 KiB at 128 KiB/s
-// cannot finish in well under two seconds.
+// The speed limiter is per request: on applies the value to the sequential
+// (unknown-size) path as well, off means unlimited. There is no application-wide
+// limiter setting any more (0.26.0), so nothing can leak in from Settings.
+// libcurl enforces the rate on the wall clock, so only lower bounds are
+// asserted: 256 KiB at 128 KiB/s cannot finish in well under two seconds.
 void test_bandwidth_limit_toggle(const std::string& dir, testutil::TestHttpServer& server) {
     Settings settings = test_settings(dir);
-    settings.bandwidth_limit_enabled = true;
-    settings.bandwidth_limit_kbps = 8;  // applied by mistake: needs ~32 s
     DownloadEngine engine(settings);
 
     constexpr uint64_t kSize = 256u << 10;
@@ -1101,7 +1099,7 @@ void test_bandwidth_limit_toggle(const std::string& dir, testutil::TestHttpServe
     disabled.bandwidth_limit_enabled = false;
     CHECK(run_seconds(disabled) < 4.0);
 
-    // No fallback to the global setting while the toggle is off.
+    // A disabled limiter ignores the stored value entirely.
     disabled.bandwidth_limit_kbps = 0;
     CHECK(run_seconds(disabled) < 4.0);
 }

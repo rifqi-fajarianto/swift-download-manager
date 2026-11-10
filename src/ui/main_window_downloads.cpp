@@ -90,12 +90,13 @@ void MainWindow::add_download(const QString& url, qint64 queue_id) {
     DownloadTask::Options options;
     options.url = request_url;
     options.output_dir = QString::fromStdString(settings_.download_dir);
-    // New downloads start from the global limiter state; the Options tab can
-    // override both the toggle and the value per download. The row keeps this
-    // value even when it is added to a queue: the queue ignores it while the
-    // item belongs there, but a later move back to Downloads can use it again.
-    options.limit_enabled = settings_.bandwidth_limit_enabled;
-    options.limit_kbps = settings_.bandwidth_limit_kbps;
+    // A new download starts unlimited: the speed limiter is chosen in the
+    // Download Confirmation window (0.26.0), which is the only place it can be
+    // set before the transfer starts. The row keeps that value even when it is
+    // added to a queue: the queue ignores it while the item belongs there, but a
+    // later move back to Downloads can use it again.
+    options.limit_enabled = false;
+    options.limit_kbps = 0;
 
     DownloadItem item;
     item.url = request_url;
@@ -209,8 +210,11 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     DownloadTask::Options options;
     options.url = url.toString(QUrl::FullyEncoded);
     options.output_dir = QString::fromStdString(settings_.download_dir);
-    options.limit_enabled = settings_.bandwidth_limit_enabled;
-    options.limit_kbps = settings_.bandwidth_limit_kbps;
+    // Unlimited until the confirmation window says otherwise (0.26.0). Without
+    // a confirmation window the download simply runs unlimited; the Options tab
+    // in the download window can still add a limit afterwards.
+    options.limit_enabled = false;
+    options.limit_kbps = 0;
     const std::string requested_filename = swiftdm::sanitize_filename(
         data.value(QStringLiteral("filename")).toString().toStdString());
     options.filename = QString::fromStdString(requested_filename);
@@ -394,6 +398,13 @@ void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem i
             // download came from, which the dialog resolves without a picker).
             target_queue = flow->dialog->selected_queue_id();
             download_later = flow->dialog->later_requested();
+            // The limiter belongs to this download: take it from the window
+            // that just closed. Queue items ignore it (the queue owns the
+            // budget) but the row keeps the value for a later move back.
+            start_options.limit_enabled = flow->dialog->limit_enabled();
+            start_options.limit_kbps = flow->dialog->limit_kbps();
+            draft.bandwidth_limit_enabled = start_options.limit_enabled;
+            draft.bandwidth_limit_kbps = start_options.limit_kbps;
             flow->dialog->deleteLater();
             flow->dialog = nullptr;
         } else {

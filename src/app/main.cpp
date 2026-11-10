@@ -303,13 +303,14 @@ int run_get(int argc, char** argv) {
     swiftdm::Settings settings;
     std::string settings_error;
     swiftdm::load_settings(config_path, settings, &settings_error);
-    // --limit enables the limiter explicitly (0 = unlimited); without the flag
-    // the settings toggle and value apply.
+    // The speed limiter has no application-wide setting (0.26.0): it is chosen
+    // per download. The CLI keeps --limit as the explicit way to set one; without
+    // the flag the download is unlimited.
     if (limit_given) {
         request.bandwidth_limit_enabled = request.bandwidth_limit_kbps > 0;
     } else {
-        request.bandwidth_limit_enabled = settings.bandwidth_limit_enabled;
-        request.bandwidth_limit_kbps = settings.bandwidth_limit_kbps;
+        request.bandwidth_limit_enabled = false;
+        request.bandwidth_limit_kbps = 0;
     }
 
     swiftdm::DownloadEngine engine(settings);

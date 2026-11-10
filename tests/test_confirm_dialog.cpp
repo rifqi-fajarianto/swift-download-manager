@@ -19,6 +19,7 @@
 
 #include "core/util.h"
 #include "ui/confirm_download_dialog.h"
+#include "ui/speed_limit_editor.h"
 
 namespace {
 
@@ -128,8 +129,32 @@ int main(int argc, char** argv) {
     check(dialog.layout()->sizeHint().height() <= ConfirmDownloadDialog::kDefaultWindowHeight,
           "the content fits into the default window height");
     check(section_titles(&dialog) ==
-              QStringList({QStringLiteral("File"), QStringLiteral("Save")}),
-          "the dialog has File and Save sections in order");
+              QStringList({QStringLiteral("File"), QStringLiteral("Save"),
+                           QStringLiteral("Bandwidth")}),
+          "the dialog has File, Save and Bandwidth sections in order");
+
+    // The speed limiter is chosen here since 0.26.0: the application-wide
+    // setting is gone, so a new download is unlimited until this says otherwise.
+    auto* limit_editor = qobject_cast<swiftdm::ui::SpeedLimitEditor*>(
+        named_widget(&dialog, "confirm_bandwidth_limit"));
+    check(limit_editor != nullptr, "the dialog has a speed limit editor");
+    check(!dialog.limit_enabled(), "the speed limiter starts off (unlimited)");
+    check(dialog.limit_kbps() == 1024, "the default limit value is 1 MB/s");
+    check(is_in_section(&dialog, QStringLiteral("Bandwidth"),
+                        "confirm_bandwidth_limit"),
+          "the speed limit editor sits in the Bandwidth section");
+
+    // The getters the main window reads when the dialog is accepted must follow
+    // what the user picked, so the value can reach the download's row.
+    if (limit_editor) {
+        limit_editor->set_value(true, 5 * 1024);
+        check(dialog.limit_enabled(), "the getter reports the limiter as on");
+        check(dialog.limit_kbps() == 5 * 1024, "the getter reports the chosen value");
+        limit_editor->set_value(false, 2048);
+        check(!dialog.limit_enabled(), "turning the toggle off means unlimited");
+        check(dialog.limit_kbps() == 2048,
+              "the value is kept while the toggle is off");
+    }
 
     // The size has its own row and is no longer inline with the file name.
     // The expected text comes from the shared formatter: the decimal
@@ -225,12 +250,15 @@ int main(int argc, char** argv) {
     const QComboBox* category_box =
         qobject_cast<QComboBox*>(named_widget(&dialog, "confirm_category"));
     const QLineEdit* url_edit = nullptr;
-    const QLineEdit* location_edit = nullptr;
+    // Named lookup, not a scan: the speed limit editor is a composite widget and
+    // its QSpinBox owns an internal QLineEdit child, so scanning for line edits
+    // would pick that one up instead of the location field.
+    const QLineEdit* location_edit =
+        qobject_cast<QLineEdit*>(named_widget(&dialog, "confirm_location"));
     for (const QLineEdit* edit : dialog.findChildren<QLineEdit*>()) {
         if (edit->isReadOnly()) {
             url_edit = edit;
-        } else {
-            location_edit = edit;
+            break;
         }
     }
     struct Row {
@@ -402,13 +430,27 @@ int main(int argc, char** argv) {
 
     // Every input and button shares one height.
     QList<int> control_heights;
+    // The speed limit editor is a composite widget: its QSpinBox owns an
+    // internal QLineEdit child, which is not a dialog control of its own. Skip
+    // the whole subtree instead of only the direct child.
+    const auto inside_limit_editor = [&dialog](const QWidget* widget) {
+        for (const QWidget* p = widget->parentWidget(); p; p = p->parentWidget()) {
+            if (qobject_cast<const swiftdm::ui::SpeedLimitEditor*>(p)) return true;
+            if (p == &dialog) break;
+        }
+        return false;
+    };
     for (const QWidget* widget : dialog.findChildren<QWidget*>()) {
+        if (inside_limit_editor(widget)) continue;
         if (qobject_cast<const QPushButton*>(widget) ||
             qobject_cast<const QLineEdit*>(widget) ||
             qobject_cast<const QComboBox*>(widget)) {
             control_heights << widget->height();
         }
     }
+    // URL, category, location, browse, cancel, Download Later, Add to queue and
+    // Download Now. The speed limit editor is a composite widget with its own
+    // internal layout, so it is checked separately above.
     check(control_heights.size() == 8, "the dialog has eight controls");
     bool same_height = !control_heights.isEmpty();
     for (const int height : control_heights) {

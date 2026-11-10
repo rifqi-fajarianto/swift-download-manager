@@ -16,6 +16,8 @@ class QPushButton;
 
 namespace swiftdm::ui {
 
+class SpeedLimitEditor;
+
 // Default destination folder of a download: the download root plus the
 // category folder when the category folders are enabled. The dialog and the
 // automatic download path share it, so a download that skips the confirmation
@@ -42,9 +44,9 @@ class ConfirmDownloadDialog : public QDialog {
   public:
     // Fixed window geometry (see the class comment).
     static constexpr int kDefaultWindowWidth = 600;
-    static constexpr int kDefaultWindowHeight = 310;
+    static constexpr int kDefaultWindowHeight = 370;
     static constexpr int kMinWindowWidth = 520;
-    static constexpr int kMinWindowHeight = 300;
+    static constexpr int kMinWindowHeight = 360;
 
     ConfirmDownloadDialog(const QString& file_name, quint64 size, const QString& url,
                           const QString& download_dir,
@@ -65,6 +67,12 @@ class ConfirmDownloadDialog : public QDialog {
     // True when the user accepted with Download Later: the row is inserted in
     // the main Downloads list but stays paused until the user starts it.
     bool later_requested() const { return later_requested_; }
+    // Speed limiter chosen here. This window is the only place a new download
+    // can be limited (0.26.0): the application-wide setting was removed, so a
+    // download starts unlimited unless the user enables it below. The download
+    // window's Options tab can still change it afterwards.
+    bool limit_enabled() const;
+    int limit_kbps() const;
     void set_probe_pending();
     void set_probe_result(const QString& file_name, quint64 size);
 
@@ -105,6 +113,8 @@ class ConfirmDownloadDialog : public QDialog {
 
     QComboBox* category_box_ = nullptr;
     QLineEdit* location_edit_ = nullptr;
+    // Speed limiter for this download; off means unlimited.
+    SpeedLimitEditor* limit_editor_ = nullptr;
     QLabel* file_label_ = nullptr;
     QLabel* size_label_ = nullptr;
     QPushButton* download_button_ = nullptr;

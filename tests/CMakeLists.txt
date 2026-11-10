@@ -96,6 +96,7 @@ if(SWIFTSDM_BUILD_UI)
         test_confirm_dialog.cpp
         "${CMAKE_SOURCE_DIR}/src/ui/confirm_download_dialog.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/queue_picker_dialog.cpp"
+        "${CMAKE_SOURCE_DIR}/src/ui/speed_limit_editor.cpp"
         "${CMAKE_SOURCE_DIR}/src/ui/icons.cpp"
     )
     target_include_directories(test_confirm_dialog PRIVATE "${CMAKE_SOURCE_DIR}/src")

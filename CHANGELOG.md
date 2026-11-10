@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.26.0 — 2026-11-10
+
+Moves the speed limiter out of the application settings and into the Download
+Confirmation window, so the choice is made per download.
+
+- The `Bandwidth` section of Settings → Download is gone, along with the
+  `BandWidthLimit` and `BandWidthLimitEnabled` config keys. An older config that
+  still carries them loads normally (the keys are ignored) and they are dropped
+  on the next save.
+- The Download Confirmation window has a new `Bandwidth` section with the shared
+  speed-limit editor (toggle, KB/s value and presets). It is off by default, so a
+  download starts unlimited unless the user turns it on there. The value applies
+  to that download's row.
+- This is the place the limiter belongs: the user already sees the file name and
+  size when deciding whether to throttle. Setting a global default before knowing
+  what will be downloaded was the awkward part.
+- When the Download Confirmation window is off, new downloads run unlimited — the
+  user opted out of the per-download step. The Options tab in the download window
+  still adds a limit afterwards, and that tab is unchanged.
+- A limit set in the confirmation window is ignored when the download is added to
+  a queue, which applies its own shared budget; the editor says so in its tooltip.
+- The CLI keeps `--limit` as the explicit way to cap a `get` download; without the
+  flag it now runs unlimited instead of falling back to the removed setting.
+- `test_confirm_dialog` checks the new section, the default-off toggle and the
+  getters. `test_settings` checks that legacy config keys are ignored and dropped
+  on save, and `test_settings_dialog` no longer expects the Bandwidth section.
+- Version note: the `engine` branch is developing 0.26.x too; expect a version
+  bump when the two lines merge.
+
 ## 0.25.1 — 2026-11-10
 
 Fixes the speed limiter capping downloads at roughly 5 MB/s regardless of the

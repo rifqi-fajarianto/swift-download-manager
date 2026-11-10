@@ -22,8 +22,6 @@ CompletionDialogOnTop = 0      ; keep the completion window above others
 [download]
 MaxConnections = 8
 ConnectionsAtOnce = 0          ; 0 = add connections all at once, 1 = one by one
-BandWidthLimit = 1024          ; KB/s value used when the limiter is enabled
-BandWidthLimitEnabled = 0      ; 1 = speed limiter on, 0 = unlimited (value kept)
 UseUAgent = 0                  ; 1 = force DefaultAgent for browser-sent downloads
 DefaultAgent = Mozilla/5.0 (...)
 DownloadDirectory = ~/Downloads
@@ -69,8 +67,7 @@ Each INI section matches one tab of the settings window: `general` (General),
 |---|---|---|---|---|
 | `MaxConnections` | download | DWORD | 8 ("8 recommended") | max connections per download |
 | `ConnectionsAtOnce` | download | DWORD | 0 | 0 = create additional connections all at once; else one by one |
-| `BandWidthLimit` | download | DWORD | 1024 | per-download limit value in KB/s (kept while the toggle is off) |
-| `BandWidthLimitEnabled` | download | DWORD | 0 | speed-limiter toggle: 1 = apply `BandWidthLimit`, 0 = unlimited |
+| ~~`BandWidthLimit`~~ | — | — | — | **removed in 0.26.0**: the speed limiter is per download, chosen in the Download Confirmation window and changeable in the download window's Options tab. An older config may still carry the key; it is read as unknown and dropped on the next save. |
 | `UseUAgent` | download | DWORD | 2 | use configured UA for browser-sent downloads too |
 | `DefaultAgent` | download | STRING | Chrome-like modern UA | default User-Agent |
 | `DownloadDirectory` | download | STRING | `%USERPROFILE%\Downloads` | destination root |

@@ -181,12 +181,12 @@ int main(int argc, char** argv) {
     }
     if (download_page) {
         check(section_titles(download_page) ==
-                  QStringList({QStringLiteral("Connections"), QStringLiteral("Bandwidth"),
+                  QStringList({QStringLiteral("Connections"),
                                QStringLiteral("User-Agent"),
                                QStringLiteral("Files and folders"),
                                QStringLiteral("Category folders")}),
-              "the download tab has the Connections, Bandwidth, User-Agent, "
-              "Files and folders and Category folders sections");
+              "the download tab has the Connections, User-Agent, Files and "
+              "folders and Category folders sections");
         check(all_controls_are_in_sections(download_page),
               "the download tab has no control outside a section");
         // The default-location note spans the form so wrapping never clips it

@@ -1,13 +1,13 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-10**, versi kerja **0.25.1**. Status ini cepat
+> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.0**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
-- **Branch kerja saat snapshot**: `main`, sudah memuat port Windows 10
-  eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
-  fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
-  0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
+- **Branch kerja saat snapshot**: `speed-limit-confirmation-dialog`, berisi
+  pemindahan pengaturan speed limiter dari Settings ke Download Confirmation
+  window (0.26.0). Branch `engine` masih mengembangkan fitur media 0.26.x secara
+  terpisah; nomor versi kedua jalur perlu diselaraskan saat merge.
 - **Rilis terakhir di jalur `main`**: 0.25.1 — perbaikan speed limiter yang
   ter-cap di sekitar 5 MB/s. Gate receive-rate menidurkan `bytes / rate` per
   write callback curl dan tidak pernah membayar kembali overhead tidurnya;
@@ -49,7 +49,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.25.1. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.26.0. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang

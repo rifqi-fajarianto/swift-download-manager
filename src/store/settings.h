@@ -36,12 +36,10 @@ struct Settings {
     // [download] — download defaults.
     int max_connections = 8;        // MaxConnections, default 8 ("8 recommended")
     int connections_at_once = 0;    // ConnectionsAtOnce: 0 = all at once, 1 = one by one
-    // BandWidthLimit + BandWidthLimitEnabled: the toggle decides whether the
-    // limiter runs; the value is kept while the limiter is off so the user can
-    // prepare it. A legacy config with a non-zero BandWidthLimit but no toggle
-    // key loads as enabled.
-    int bandwidth_limit_kbps = 1024;  // BandWidthLimit, default 1 MB/s
-    bool bandwidth_limit_enabled = false;  // BandWidthLimitEnabled
+    // The speed limiter is per download: it is chosen in the Download
+    // Confirmation window and can be changed later in the download window's
+    // Options tab. There is no application-wide default any more (0.26.0), so a
+    // new download starts unlimited unless the confirmation says otherwise.
     bool use_ua_for_browser = false;  // UseUAgent
     std::string default_agent;      // DefaultAgent (filled by default_settings())
     std::string download_dir;       // DownloadDirectory

@@ -97,11 +97,15 @@ are our own choices where the original is UNKNOWN (E23).
 ## 4. Rate limiting
 
 - `bandwidthlimit` (KB/s, per download) with the per-download
-  `bandwidthlimit_enabled` toggle; the settings dialog has the global
-  `BandWidthLimit` + `BandWidthLimitEnabled` pair (E8). 0.18.1: the toggle is
-  authoritative — off means unlimited and the stored value is kept editable in
-  the Options tab (and in settings) for later. **[design: 0.18.1]** new
-  downloads are seeded from the global pair, then overridden per download.
+  `bandwidthlimit_enabled` toggle. Since 0.26.0 there is **no application-wide**
+  limiter setting: the toggle and value are chosen in the Download Confirmation
+  window for each download and can be changed later in the download window's
+  Options tab (0.18.1 made the toggle authoritative — off means unlimited; the
+  stored per-item value is kept editable for later). **[design: 0.26.0]** the
+  global `BandWidthLimit` + `BandWidthLimitEnabled` pair and the `Bandwidth`
+  section of the Settings dialog were removed; a new download starts unlimited,
+  and a download created while the confirmation window is off is unlimited until
+  the Options tab sets a limit.
 - Preset values offered in both editors: 500 KB/s, 1 MB/s, 5 MB/s, 10 MB/s,
   20 MB/s, 50 MB/s (plus a custom KB/s field).
 - While a transfer runs, the Download tab shows `Speed limit: <value>`
