@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SwiftDM Browser Integration",
-  "version": "0.6.0",
-  "description": "Send links, pages, POST downloads and custom headers from Firefox to SwiftDM.",
+  "version": "0.7.0",
+  "description": "Send links, pages, POST downloads, custom headers and the video playing in the browser to SwiftDM.",
   "browser_specific_settings": {
     "gecko": {
       "id": "swiftdm@swift-download-manager",
@@ -16,9 +16,24 @@
       }
     }
   },
-  "permissions": ["activeTab", "contextMenus", "downloads", "storage", "webRequest"],
+  "permissions": ["activeTab", "contextMenus", "downloads", "scripting", "storage", "webRequest"],
   "optional_permissions": ["cookies"],
   "host_permissions": ["http://127.0.0.1:10007/*", "http://*/*", "https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["media-detect.js", "media-mse.js", "content.js"],
+      "css": ["content.css"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-hook.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -26,7 +41,14 @@
     "128": "icons/icon128.png"
   },
   "background": {
-    "scripts": ["api.js", "cookie-permission.js", "action-icon.js", "core.js"]
+    "scripts": [
+      "api.js",
+      "cookie-permission.js",
+      "action-icon.js",
+      "media-detect.js",
+      "media-mse.js",
+      "core.js"
+    ]
   },
   "action": {
     "default_title": "SwiftDM",

@@ -2,7 +2,7 @@
 
 Scope control across releases. "Replicated" = same observable behavior;
 "Diverges" = intentional difference (documented); "Dropped" = not implemented.
-Status as of 0.25.0 (Windows port is experimental and not yet release-validated).
+Status as of 0.26.0 (Windows port is experimental and not yet release-validated).
 
 ## Platform support
 
@@ -110,10 +110,10 @@ kept here as the completion history of the release line.
 
 | Feature | Status |
 |---|---|
-| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin by shape (0.23.2: Edge Add-ons and the Chrome Web Store re-sign the package, so the store ID cannot be pinned), Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `subscribe` (status push) |
-| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0) |
+| WebSocket server (loopback, JSON, documented protocol) | Implemented | Chromium extension origin by shape (0.23.2: Edge Add-ons and the Chrome Web Store re-sign the package, so the store ID cannot be pinned), Firefox `moz-extension://` origin by shape, and subprotocol validation; rejected handshakes are logged; `ping`, `getVersion`, `showPanel`, `addDownload`, `addMedia`, `subscribe` (status push); first contact needs an Allow/Deny pairing prompt and a 32-byte token in `$XDG_CONFIG_HOME/swiftdm/browser-token` (0600) since 0.26.0 |
+| Chromium (MV3) extension source in `ext/chromium/` | Development preview | Popup (connection pill with the app version, auto-intercept switch, browser cookies switch, detected media, download button, retry) styled after `ext/extension-ui-template.html`, explicit link/page context menu, automatic download handoff, POST body and `x-*` header capture; cookie permission is optional and granted on a user gesture; command WebSocket is reused across requests (0.18.19); the popup, background logic and icons come from `ext/shared/` (0.23.0); `content.js`/`page-hook.js` add the floating media button and MSE tap (0.26.0) |
 | Automatic browser-download interception | Implemented (preview) | Cancels the browser item, hands the URL (plus observed body/headers) to SwiftDM, and restarts the browser download if SwiftDM is unreachable |
-| Media detection in the popup | Implemented (preview) | Detected HLS playlists and same-tab video/audio pairs are listed in the popup; a pair is handed off with a shared `group` token |
+| Media detection in the popup and overlay | Implemented (preview, 0.26.0) | In-page button over playing videos plus a ranked list in the popup: direct files, HLS variants, DASH representations, and same-tab video/audio pairs (shared `group` token) and recorded `blob:` (MSE) segments. DRM (`protected`) playback is refused; the confirmation window shows a quality selector for HLS/DASH |
 | Firefox extension | Development preview (0.23.0) | Firefox build in `ext/firefox/` (Manifest V3 event page) assembled from the same `ext/shared/` sources as the Chromium build behind an `api.js` adapter; `moz-extension://<uuid>` origins accepted by shape; a permanent install needs a signed XPI |
 | Browser-sent page metadata | Implemented | `pageUrl`/title are sent by the extension, carried on the item, shown in Properties, and persisted in the SQLite `downloads` row (`pageurl`/`pagetitle`); restored at startup since 0.17.0 |
 
@@ -124,16 +124,19 @@ interception-off switch (C3), the strict cookie model (C13), and persisted page
 metadata (C12)
 are implemented as of 0.10.0; FTP (C11), HLS (C7), and adaptive pairing (C8)
 landed in 0.11.0, with MKV muxing left as a documented proposal
-(`03-engine.md` §9). The in-page media panel and site extractors (C4–C6, C9)
-are still uncommitted.
+(`03-engine.md` §9). The in-page media panel (C4) and the detection heuristics
+(C5) landed in 0.26.0; site extractors (C6) and subtitle handling (C9) remain
+out of scope.
 
 ## v3 — extra protocols and media
 
 | Feature | Status |
 |---|---|
 | FTP (passive, REST resume) | Implemented | `ftp://`/`ftps://` probe (`SIZE`), single connection, `REST` resume, validated protocol handoff |
-| HLS/m3u8 (`NeatSocketHlsMaster` equivalent) | Implemented | master/media playlists, highest-bandwidth variant, `EXT-X-MAP`, sequential segments concatenated to `.ts`, per-segment resume; encrypted playlists are refused |
-| MKV/WebM muxing of HLS streams | Proposal | `03-engine.md` §9: paired tracks are stored with a `groupid`; ffmpeg `-c copy` remux (hand-written EBML fallback) is the planned v3 step |
+| HLS/m3u8 (`NeatSocketHlsMaster` equivalent) | Implemented | master/media playlists, quality selection (best by default), `EXT-X-MAP`, sequential segments concatenated to `.ts`, per-segment resume; encrypted playlists are refused |
+| DASH/MPD | Implemented (0.26.0) | `SegmentTemplate`/`SegmentList`/`SegmentBase`, `BaseURL` inheritance, representation selection, init + media segments appended in order; a selected representation is one file (muxing separate video and audio is not done) |
+| MSE (`blob:`) reconstruction | Implemented (0.26.0) | recorded init + media segments are fetched in order and checked for `mfhd` sequence continuity and `tfdt` monotonicity; a gap fails the download and removes the part file |
+| MKV/WebM muxing of HLS/DASH streams | Proposal | `03-engine.md` §9: paired tracks are stored with a `groupid`; ffmpeg `-c copy` remux (hand-written EBML fallback) is the planned v3 step |
 | IE/Opera/Edge-specific integration | Dropped | platform-specific |
 | MKV "Basic/Pro" license gates | Dropped | we have no license tiers |
 
@@ -183,6 +186,11 @@ URL (`download`, `view`, or a Drive folder id).
   concatenation, mid-download pause plus resume, and the encrypted-playlist
   refusal. The extension-side pairing logic runs in the Node `vm` harness
   (`extension_logic`) with mocked `webRequest`/`tabs` APIs.
+- DASH and MSE are verified by `dash` (template/timeline/list/base/inherited
+  template), `mp4_boxes`, and `engine_dash_mse` (end-to-end DASH and MSE
+  downloads from the HTTP test server, plus a sequence-gap failure). The
+  extension classifiers run in `media_detect`/`media_mse`, and the pairing token
+  in `browser_token` and `browser_protocol`.
 - Queue rules are verified by `queue_logic` (start/wait ordering, limit pauses,
   speed sharing, all-complete detection, shutdown countdown) and
   `queue_dialog` (defaults, Unlimited/Default values, section layout, result

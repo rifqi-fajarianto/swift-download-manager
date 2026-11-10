@@ -171,7 +171,7 @@ download.addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Detected media (HLS playlists and adaptive video/audio pairs)
+// Detected media (HLS/DASH manifests, adaptive pairs, DOM players, MSE streams)
 // ---------------------------------------------------------------------------
 
 void (async () => {
@@ -183,7 +183,7 @@ void (async () => {
       tabId: tab.id
     });
     if (!response?.ok) return;
-    renderMedia(response.media ?? { hls: [], pairs: [] });
+    renderMedia(response.media ?? {});
   } catch {
     // The background context may be restarting; the popup simply lists nothing.
   }
@@ -199,18 +199,70 @@ function shortName(url) {
   }
 }
 
-function renderMedia(detected) {
+// One row per downloadable item. Each entry carries the addMedia payload the
+// background needs, so the popup never assembles protocol fields itself.
+function mediaItems(detected) {
   const items = [];
+  const pageUrl = "";
   for (const url of new Set(detected.hls ?? [])) {
-    items.push({ label: `HLS playlist · ${shortName(url)}`, urls: [url] });
+    items.push({
+      label: `HLS playlist · ${shortName(url)}`,
+      hint: "Master playlist is resolved by SwiftDM",
+      kind: "hls",
+      urls: [url]
+    });
+  }
+  for (const url of new Set(detected.dash ?? [])) {
+    items.push({
+      label: `DASH manifest · ${shortName(url)}`,
+      hint: "Video and audio tracks are fetched separately",
+      kind: "dash",
+      urls: [url]
+    });
   }
   for (const pair of detected.pairs ?? []) {
     items.push({
       label: `Video + audio · ${shortName(pair.video)}`,
+      hint: "Sent to SwiftDM as a pair",
+      kind: "file",
       urls: [pair.video, pair.audio],
       group: pair.group
     });
   }
+  for (const candidate of detected.dom ?? []) {
+    const label = candidate.videoWidth
+      ? `${candidate.videoWidth}×${candidate.videoHeight}`
+      : candidate.elementTag || "media";
+    items.push({
+      label: `Playing now · ${label}`,
+      hint: candidate.protected
+        ? "Protected (DRM): cannot be downloaded"
+        : "The media element in the page",
+      kind: "file",
+      urls: [candidate.url],
+      candidate,
+      disabled: candidate.protected === true
+    });
+  }
+  for (const stream of detected.mse ?? []) {
+    const count = Number(stream.segmentCount ?? 0);
+    items.push({
+      label: `MSE stream · ${count} segment${count === 1 ? "" : "s"}`,
+      hint: stream.incomplete
+        ? "Assembled from recorded segments; may be incomplete"
+        : "Assembled from the segments the page downloaded",
+      kind: "mse",
+      urls: [stream.initUrl || stream.segments?.[0]?.url || ""],
+      stream,
+      disabled: !stream.initUrl && !stream.segments?.length
+    });
+  }
+  void pageUrl;
+  return items;
+}
+
+function renderMedia(detected) {
+  const items = mediaItems(detected);
 
   mediaList.textContent = "";
   media.hidden = items.length === 0;
@@ -218,20 +270,61 @@ function renderMedia(detected) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "row";
+    button.disabled = item.disabled === true;
     const text = document.createElement("span");
     text.className = "txt";
     const title = document.createElement("b");
     title.textContent = item.label;
     const hint = document.createElement("small");
-    hint.textContent = item.urls.length > 1
-      ? "Sent to SwiftDM as a pair"
-      : "Sent to SwiftDM as one file";
+    hint.textContent = item.hint;
     text.appendChild(title);
     text.appendChild(hint);
     button.appendChild(text);
-    button.addEventListener("click", () => sendDetected(item, button));
+    if (item.disabled !== true) {
+      button.addEventListener("click", () => sendDetected(item, button));
+    }
     mediaList.appendChild(button);
   }
+}
+
+// Builds the candidate the background turns into an addMedia payload.
+function mediaCandidate(item, tab) {
+  if (item.kind === "mse" && item.stream) {
+    return {
+      url: item.stream.initUrl || item.stream.segments?.[0]?.url || "",
+      kind: "mse",
+      pageUrl: tab?.url ?? "",
+      pageTitle: tab?.title ?? "",
+      segments: (item.stream.segments ?? []).map((segment) => ({
+        url: segment.url,
+        role: segment.role,
+        order: segment.order,
+        contentType: segment.contentType
+      })),
+      durationSec: 0,
+      positionSec: 0,
+      protected: false
+    };
+  }
+  if (item.candidate) {
+    return {
+      ...item.candidate,
+      kind: item.kind,
+      pageUrl: tab?.url ?? "",
+      pageTitle: tab?.title ?? "",
+      group: item.group ?? ""
+    };
+  }
+  return {
+    url: item.urls[0],
+    kind: item.kind,
+    pageUrl: tab?.url ?? "",
+    pageTitle: tab?.title ?? "",
+    group: item.group ?? "",
+    durationSec: 0,
+    positionSec: 0,
+    protected: false
+  };
 }
 
 async function sendDetected(item, button) {
@@ -239,14 +332,26 @@ async function sendDetected(item, button) {
   setStatus(item.urls.length > 1 ? "Sending video and audio…" : "Sending media…");
   try {
     const [tab] = await swiftdmApi.tabs.query({ active: true, currentWindow: true });
-    for (const url of item.urls) {
+    const candidate = mediaCandidate(item, tab);
+    if (!candidate.url) throw new Error("This stream has no downloadable address.");
+    // A pair is two independent downloads that share a group token.
+    if (item.urls.length > 1) {
+      for (const url of item.urls) {
+        const response = await swiftdmApi.runtime.sendMessage({
+          type: "download-url",
+          url,
+          pageUrl: tab?.url ?? "",
+          title: tab?.title ?? "",
+          group: item.group ?? "",
+          cookiesGranted: switchState(cookies)
+        });
+        if (!response?.ok) throw new Error(response?.error ?? "Request failed.");
+      }
+    } else {
       const response = await swiftdmApi.runtime.sendMessage({
-        type: "download-url",
-        url,
-        pageUrl: tab?.url ?? "",
-        title: tab?.title ?? "",
-        group: item.group ?? "",
-        cookiesGranted: switchState(cookies)
+        type: "download-media",
+        candidate,
+        tabId: tab?.id
       });
       if (!response?.ok) throw new Error(response?.error ?? "Request failed.");
     }

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.26.0 — 2026-11-10
+
+Adds browser media downloading: the extension detects video/audio on the page,
+shows a floating button over the player, and hands HLS, DASH, and recorded
+`blob:` (MSE) streams to the app with their cookies, referer, and headers.
+
+- The extension (`manifest` 0.7.0) hooks `fetch`/`XMLHttpRequest`, the DOM, and
+  `MediaSource`; it ranks candidates, pairs adaptive video+audio tracks, and
+  lists them in the popup and in the overlay. DRM-protected playback is refused
+  with an explanation instead of producing a broken file.
+- New `addMedia` WebSocket command (same validation as `addDownload`) with a
+  cap of 8 candidates and 2000 segments per request; the extension is told the
+  command was accepted before the confirmation dialog opens.
+- The confirmation window gains a *Quality* combo for HLS/DASH renditions; it
+  stays hidden when there is only one.
+- The engine learns DASH: `SegmentTemplate`/`SegmentList`/`SegmentBase`,
+  `BaseURL` inheritance, `$Number$`/`$Time$`/`$RepresentationID$`/`$Bandwidth$`
+  substitution (including the init URL), and a best-video default. It also
+  reconstructs MSE playlists from the recorded init+media segments and verifies
+  `mfhd` sequence continuity and `tfdt` monotonicity; a gap fails the download
+  and removes the part file instead of writing a broken one.
+- Trust-on-first-use pairing: the first extension connection shows an
+  Allow/Deny prompt naming the origin, then the app stores a 32-byte token in
+  `$XDG_CONFIG_HOME/swiftdm/browser-token` (0600) and the extension sends it on
+  every later socket URL.
+- New tests: `xml_lite`, `dash`, `mp4_boxes`, `browser_token`,
+  `engine_dash_mse`, plus the extension `media_detect`/`media_mse` harnesses and
+  additions to `browser_protocol`, `confirm_dialog`, `extension_logic`,
+  `extension_popup`, and `extension_package`.
+- The behaviour spec is in `docs/spec/08-media-download.md`. Muxing adaptive
+  video+audio into one container and site-specific scrapers remain out of
+  scope; a DASH download fetches the selected representation as one file.
+
 ## 0.25.0 — 2026-11-09
 
 Splits the slowest running segment when a connection slot is free, so the last

@@ -117,6 +117,13 @@ const required = [
   "core.js",
   "cookie-permission.js",
   "action-icon.js",
+  // Media detection: the helpers are loaded as content scripts, the hook is a
+  // web-accessible resource the page world loads.
+  "media-detect.js",
+  "media-mse.js",
+  "content.js",
+  "content.css",
+  "page-hook.js",
   "icons/icon16.png",
   "icons/icon128.png",
   "icons/icon-off16.png",

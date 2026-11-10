@@ -13,6 +13,13 @@ const STREAM_TTL_MS = 60000;
 const STREAM_MAX_PER_TAB = 8;
 const MAX_POST_BYTES = 262144;
 const STATUS_RECONNECT_MS = 15000;
+// Media detection (docs/spec/08-media-download.md): one recorded MSE stream per
+// tab, capped so the worker never accumulates browsing data.
+const MEDIA_MAX_TABS = 16;
+const MEDIA_MAX_SEGMENTS = 2000;
+const MEDIA_MAX_BYTES = 512 * 1024;
+const MEDIA_TTL_MS = 30 * 60 * 1000;
+const MEDIA_SCAN_TIMEOUT_MS = 1500;
 const autoIntercepting = new Set();
 
 // Request bodies and custom headers are remembered briefly so an automatic
@@ -20,10 +27,23 @@ const autoIntercepting = new Set();
 // worker never accumulates browsing data.
 const observedRequests = new Map();
 
-// Per-tab media-only responses (video/audio/HLS) seen while browsing. Adaptive
-// pages serve their video and audio tracks as separate responses, so the popup
-// can offer both at once (the app tags them with a shared group token).
+// Per-tab media-only responses (video/audio/HLS/DASH) seen while browsing.
+// Adaptive pages serve their video and audio tracks as separate responses, so
+// the popup can offer both at once (the app tags them with a shared group
+// token).
 const tabStreams = new Map();
+
+// Per-tab MSE segment log (blob: players). `swiftdmMediaMse` is loaded before
+// this file by the content script and by the worker bootstrap.
+const tabSegments = new Map();
+
+// State the app pushes: whether the in-page overlay button may be shown. It is
+// persisted so a restarted worker keeps the last known value.
+let appConfig = { mediaOverlay: true };
+
+// The pairing token the app handed out on first contact. Kept in
+// storage.local, sent as `?t=` on every socket URL.
+let pairingToken = "";
 
 let statusSocket = null;
 let statusReconnectTimer = null;
@@ -44,6 +64,9 @@ async function restoreActionIcon() {
 }
 
 void restoreActionIcon();
+// The pairing token and the app-pushed config are read before the first socket
+// so a restarted worker reconnects silently instead of prompting again.
+void loadPairingToken();
 
 swiftdmApi.storage.onChanged((changes, area) => {
   if (area !== "local" || !changes.autoIntercept) return;
@@ -119,9 +142,40 @@ swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "get-media-streams") {
-    // Synchronous: the popup asks for whatever was observed for its tab.
-    sendResponse({ ok: true, media: mediaForTab(Number(message.tabId)) });
+    // The popup asks for whatever was observed for its tab: the network
+    // sniffing list merged with an on-demand DOM scan (docs/spec/08 §3).
+    void collectMedia(Number(message.tabId), message.frameId).then(
+      (media) => sendResponse({ ok: true, media }),
+      () => sendResponse({ ok: true, media: { hls: [], dash: [], pairs: [], dom: [], mse: [] } })
+    );
+    return true;
+  }
+  if (message?.type === "download-media") {
+    void sendMedia(message.candidate, message.tabId)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: errorText(error) }));
+    return true;
+  }
+  if (message?.type === "media-segment") {
+    // Relay from the page hook (metadata only). The worker decides whether the
+    // record belongs to a media stream.
+    rememberSegment(message.tabId ?? -1, message.record, message.pageUrl ?? "");
+    sendResponse({ ok: true });
     return false;
+  }
+  if (message?.type === "get-media-config") {
+    sendResponse({ ok: true, config: appConfig, paired: Boolean(pairingToken) });
+    return false;
+  }
+  if (message?.type === "install-page-hook") {
+    // Tabs that were already open when the extension was installed or updated
+    // have no content script yet. Injecting the hook directly keeps the MSE
+    // ordering hint working there too.
+    void installPageHook(Number(message.tabId)).then(
+      (installed) => sendResponse({ ok: true, installed }),
+      () => sendResponse({ ok: false, installed: false })
+    );
+    return true;
   }
   if (message?.type === "download-url") {
     void sendDownload(message.url, message.pageUrl ?? "", message.title ?? "", {
@@ -138,7 +192,7 @@ swiftdmApi.runtime.onMessage((message, _sender, sendResponse) => {
 // Request observation (POST bodies and x-* headers for automatic handoffs)
 // ---------------------------------------------------------------------------
 
-const observedTypes = ["main_frame", "sub_frame", "object", "xmlhttprequest", "other"];
+const observedTypes = ["main_frame", "sub_frame", "object", "xmlhttprequest", "media", "other"];
 const observedFilter = { urls: ["http://*/*", "https://*/*"], types: observedTypes };
 
 if (swiftdmApi.webRequest.available()) {
@@ -166,15 +220,28 @@ if (swiftdmApi.webRequest.available()) {
     if (!mimeType) return;
     rememberRequest(details.url, { mimeType: mimeType.split(";")[0].trim().toLowerCase() });
     rememberStream(details.tabId, details.url, mimeType);
+    // A segment response also feeds the MSE log, so a blob: player can be put
+    // back together from what the page actually fetched.
+    rememberSegment(details.tabId, {
+      url: details.url,
+      method: details.method,
+      contentType: mimeType,
+      contentLength: Number(
+        (details.responseHeaders ?? []).find(
+          (entry) => String(entry.name ?? "").toLowerCase() === "content-length"
+        )?.value ?? 0
+      ) || 0
+    }, details.documentUrl ?? "");
   }, observedFilter, ["responseHeaders"]);
 }
 
-// Media-only responses that the popup can offer (HLS requires app support,
-// plain video/audio tracks are paired so both halves are handed off together).
+// Media-only responses that the popup can offer. HLS and DASH are handed off as
+// manifests; plain video/audio tracks are paired so both halves travel together.
 function streamKind(mimeType, url) {
   const mime = String(mimeType ?? "").split(";")[0].trim().toLowerCase();
   const path = String(url ?? "").split(/[?#]/)[0].toLowerCase();
   if (mime.includes("mpegurl") || path.endsWith(".m3u8")) return "hls";
+  if (mime.includes("dash+xml") || path.endsWith(".mpd")) return "dash";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";
   return "";
@@ -185,6 +252,10 @@ function rememberStream(tabId, url, mimeType) {
   const kind = streamKind(mimeType, url);
   if (!kind) return;
   if ((kind === "video" || kind === "audio") && !isMediaOnly(mimeType)) return;
+  // A segment is not a downloadable track: it is part of the MSE log instead.
+  if (swiftdmMediaMse && swiftdmMediaMse.classifySegment({ url, contentType: mimeType }).segment) {
+    return;
+  }
   const now = Date.now();
   const entries = (tabStreams.get(tabId) ?? []).filter(
     (entry) => now - entry.at <= STREAM_TTL_MS && entry.url !== url
@@ -207,6 +278,7 @@ function mediaForTab(tabId) {
     (entry) => now - entry.at <= STREAM_TTL_MS
   );
   const hls = entries.filter((entry) => entry.kind === "hls").map((entry) => entry.url);
+  const dash = entries.filter((entry) => entry.kind === "dash").map((entry) => entry.url);
   const video = entries.filter((entry) => entry.kind === "video");
   const audio = entries.filter((entry) => entry.kind === "audio");
   const pairs = [];
@@ -222,7 +294,7 @@ function mediaForTab(tabId) {
       group: streamGroup(videoEntry.url)
     });
   }
-  return { hls, pairs };
+  return { hls, dash, pairs };
 }
 
 // Short stable token shared by both halves of a pair. It is not derived from
@@ -235,7 +307,10 @@ function streamGroup(videoUrl) {
   return `pair-${hash.toString(16).padStart(8, "0")}`;
 }
 
-swiftdmApi.tabs.onRemoved((tabId) => tabStreams.delete(tabId));
+swiftdmApi.tabs.onRemoved((tabId) => {
+  tabStreams.delete(tabId);
+  tabSegments.delete(tabId);
+});
 
 function rememberRequest(url, patch) {
   if (!url) return;
@@ -301,6 +376,204 @@ function observedExtrasFor(...urls) {
     return extras;
   }
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Media detection (docs/spec/08-media-download.md)
+// ---------------------------------------------------------------------------
+
+// One MSE segment log per tab, bounded and expiring like the stream list.
+function segmentLogFor(tabId) {
+  if (typeof tabId !== "number" || tabId < 0) return null;
+  const now = Date.now();
+  for (const [key, entry] of tabSegments) {
+    if (now - entry.updatedAt > MEDIA_TTL_MS) tabSegments.delete(key);
+  }
+  let log = tabSegments.get(tabId);
+  if (!log) {
+    if (tabSegments.size >= MEDIA_MAX_TABS) {
+      tabSegments.delete(tabSegments.keys().next().value);
+    }
+    log = new swiftdmMediaMse.SegmentLog({
+      maxSegments: MEDIA_MAX_SEGMENTS,
+      maxBytes: MEDIA_MAX_BYTES,
+      ttlMs: MEDIA_TTL_MS
+    });
+    tabSegments.set(tabId, log);
+  }
+  log.updatedAt = now;
+  return log;
+}
+
+function rememberSegment(tabId, record, pageUrl) {
+  if (!swiftdmMediaMse || !record?.url || !validHttpUrl(record.url)) return;
+  const log = segmentLogFor(tabId);
+  if (!log) return;
+  // A record arriving through the page hook keeps its own ordering counter; the
+  // webRequest path has none, so the log assigns the next one.
+  log.add({
+    url: record.url,
+    method: record.method ?? "GET",
+    contentType: record.contentType ?? "",
+    contentLength: record.contentLength ?? 0,
+    order: Number.isFinite(record.order) ? record.order : undefined,
+    pageUrl: pageUrl ?? ""
+  });
+}
+
+// Asks every frame of the tab for its best media element. The DOM scan runs in
+// the content script; the worker only merges the answers. Each frame answers
+// `{ok, candidate}`, so the candidates are unwrapped here.
+async function scanTab(tabId, urls) {
+  if (typeof tabId !== "number" || tabId < 0) return [];
+  const frames = await swiftdmApi.tabs.sendMessage(tabId, { type: "scan-media", urls });
+  const found = [];
+  for (const frame of Array.isArray(frames) ? frames : []) {
+    if (!frame) continue;
+    const candidate = frame.candidate ?? (frame.url ? frame : null);
+    if (candidate && typeof candidate === "object") found.push(candidate);
+  }
+  return found;
+}
+
+// Merges network-sniffed streams, the DOM candidates and the MSE logs into the
+// single list the popup renders. Duplicates are removed by URL.
+async function collectMedia(tabId, frameId) {
+  const sniffed = mediaForTab(tabId);
+  const dom = await scanTab(tabId, [...sniffed.hls, ...sniffed.dash, ...sniffed.pairs.map((p) => p.video)]);
+  const log = tabSegments.get(tabId);
+  const mse = log ? log.candidates().map((stream) => ({
+    key: stream.key,
+    kind: stream.kind,
+    segmentCount: stream.segmentCount,
+    initUrl: stream.initUrl,
+    incomplete: stream.incomplete,
+    dropped: stream.dropped,
+    segments: stream.segments.map((item) => ({
+      url: item.url,
+      role: item.role,
+      order: item.order,
+      contentType: item.contentType
+    }))
+  })) : [];
+
+  const seen = new Set();
+  const dedupe = (url) => {
+    if (!url || seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  };
+  return {
+    hls: sniffed.hls.filter(dedupe),
+    dash: sniffed.dash.filter(dedupe),
+    pairs: sniffed.pairs.filter((pair) => dedupe(pair.video) && dedupe(pair.audio)),
+    dom: dom.filter((candidate) => candidate && candidate.url && !candidate.blob),
+    mse: mse.filter((stream) => stream.segmentCount > 0),
+    frameId: frameId ?? 0
+  };
+}
+
+// Builds the addMedia payload from a candidate the popup or the overlay picked.
+// Everything that identifies the request (cookies, referer, UA, x-* headers)
+// travels with it, so the app can re-issue the request itself.
+async function sendMedia(candidate, tabId) {
+  if (!candidate || typeof candidate !== "object") {
+    throw new Error("No media was selected.");
+  }
+  const url = candidate.url || candidate.initUrl || "";
+  if (!validHttpUrl(url)) {
+    throw new Error("This stream has no downloadable address (blob: or DRM playback).");
+  }
+  if (candidate.protected === true) {
+    throw new Error("Protected (DRM) media cannot be downloaded.");
+  }
+  const kind = ["file", "hls", "dash", "mse"].includes(candidate.kind) ? candidate.kind : "file";
+
+  const commandSocketWarmup = getCommandSocket();
+  commandSocketWarmup.catch(() => {});
+
+  let granted = await swiftdmCookies.granted();
+  let cookies = [];
+  if (granted) {
+    try {
+      const siteCookies = await swiftdmApi.cookies.getAll({ url });
+      cookies = siteCookies
+        .filter((cookie) => !cookie.partitionKey)
+        .map((cookie) => ({
+          domain: cookie.domain,
+          path: cookie.path,
+          name: cookie.name,
+          value: cookie.value,
+          secure: cookie.secure,
+          expires: cookie.session ? 0 : Math.floor(cookie.expirationDate ?? 0)
+        }));
+    } catch {
+      cookies = [];
+    }
+  }
+
+  const pageUrl = validHttpUrl(candidate.pageUrl) ? candidate.pageUrl : "";
+  const data = {
+    url,
+    kind,
+    pageUrl,
+    pageTitle: String(candidate.pageTitle ?? "").slice(0, 1024),
+    referer: pageUrl && sameOrigin(pageUrl, url) ? pageUrl : "",
+    userAgent: navigator.userAgent,
+    cookies,
+    filename: String(candidate.filename ?? "").slice(0, 255),
+    quality: String(candidate.quality ?? "").slice(0, 64),
+    group: sanitizeGroup(candidate.group),
+    durationSec: Math.max(0, Number(candidate.durationSec) || 0),
+    positionSec: Math.max(0, Number(candidate.positionSec) || 0),
+    elementTag: String(candidate.elementTag ?? "").slice(0, 16),
+    protected: candidate.protected === true
+  };
+  if (Array.isArray(candidate.candidates) && candidate.candidates.length) {
+    data.candidates = candidate.candidates.slice(0, 8).map((entry) => ({
+      url: String(entry?.url ?? ""),
+      kind: String(entry?.kind ?? kind),
+      label: String(entry?.label ?? "").slice(0, 64),
+      bandwidth: Math.max(0, Number(entry?.bandwidth) || 0)
+    }));
+  }
+  if (Array.isArray(candidate.segments) && candidate.segments.length) {
+    data.segments = candidate.segments.slice(0, MEDIA_MAX_SEGMENTS).map((entry, index) => ({
+      url: String(entry?.url ?? ""),
+      role: entry?.role === "init" ? "init" : "media",
+      order: Number.isFinite(entry?.order) ? entry.order : index,
+      contentType: String(entry?.contentType ?? "").slice(0, 128)
+    }));
+  }
+  const extras = observedExtrasFor(url);
+  if (extras.headers?.length) data.headers = extras.headers;
+  return sendCommand("addMedia", data, commandSocketWarmup);
+}
+
+function sameOrigin(a, b) {
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    return left.protocol === right.protocol && left.host === right.host;
+  } catch {
+    return false;
+  }
+}
+
+// Injects the MAIN-world hook into every frame of a tab. The content script
+// normally loads it with a <script src>, but that fails on pages whose CSP
+// forbids extension resources; scripting.executeScript is not subject to the
+// page CSP.
+async function installPageHook(tabId) {
+  if (typeof tabId !== "number" || tabId < 0) return false;
+  if (!swiftdmApi.scripting.available()) return false;
+  try {
+    await swiftdmApi.scripting.executeInPage(tabId, ["page-hook.js"]);
+    return true;
+  } catch {
+    // chrome:// pages, the Web Store, PDF viewer: nothing to hook.
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +714,79 @@ function sanitizeGroup(value) {
 }
 
 // ---------------------------------------------------------------------------
+// Pairing token (docs/spec/08-media-download.md §7)
+// ---------------------------------------------------------------------------
+
+// The socket URL carries the pairing token when the app has handed one out.
+// The app answers a token-less connection with a pairing prompt, so the very
+// first connection works and later ones are silent.
+function socketUrl() {
+  return pairingToken ? `${SOCKET_URL}?t=${encodeURIComponent(pairingToken)}` : SOCKET_URL;
+}
+
+async function loadPairingToken() {
+  try {
+    const stored = await swiftdmApi.storage.get(["pairingToken", "appConfig"]);
+    if (typeof stored.pairingToken === "string") pairingToken = stored.pairingToken;
+    if (stored.appConfig && typeof stored.appConfig === "object") {
+      appConfig = { mediaOverlay: stored.appConfig.mediaOverlay !== false };
+    }
+  } catch {
+    // A missing storage entry simply means "not paired yet".
+  }
+}
+
+async function storePairingToken(token) {
+  if (typeof token !== "string" || !token) return;
+  pairingToken = token;
+  try {
+    await swiftdmApi.storage.set({ pairingToken: token });
+  } catch {
+    // The token still works for this worker lifetime.
+  }
+}
+
+async function forgetPairingToken() {
+  pairingToken = "";
+  try {
+    await swiftdmApi.storage.remove(["pairingToken"]);
+  } catch {
+    // ignored: the next connection simply prompts again
+  }
+}
+
+// Applies a `config` push: persist it and tell the content scripts so the
+// overlay disappears without reloading the page.
+async function applyConfig(config) {
+  if (!config || typeof config !== "object") return;
+  appConfig = { mediaOverlay: config.mediaOverlay !== false };
+  try {
+    await swiftdmApi.storage.set({ appConfig });
+  } catch {
+    // ignored: the value still applies for this worker lifetime
+  }
+  await broadcastToTabs({ type: "media-config", mediaOverlay: appConfig.mediaOverlay });
+}
+
+async function broadcastToTabs(message) {
+  let tabs = [];
+  try {
+    tabs = await swiftdmApi.tabs.query({});
+  } catch {
+    return;
+  }
+  for (const tab of tabs) {
+    if (typeof tab?.id !== "number") continue;
+    try {
+      await swiftdmApi.tabs.sendMessage(tab.id, message);
+    } catch {
+      // No content script in that tab (chrome:// page, PDF viewer, discarded
+      // tab). Not an error.
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Status channel (app -> extension push)
 // ---------------------------------------------------------------------------
 
@@ -451,7 +797,7 @@ function ensureStatusSocket() {
     return;
   }
   try {
-    statusSocket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
+    statusSocket = new WebSocket(socketUrl(), SUBPROTOCOL);
   } catch {
     statusSocket = null;
     scheduleStatusReconnect();
@@ -468,14 +814,21 @@ function ensureStatusSocket() {
       const message = JSON.parse(event.data);
       if (message.event === "status" && message.data) {
         void swiftdmApi.storage.set({ appStatus: message.data });
+      } else if (message.event === "config") {
+        void applyConfig(message.data);
+      } else if (message.event === "pair" && message.data?.token) {
+        void storePairingToken(message.data.token);
       }
     } catch { /* ignore malformed events */ }
   });
   socket.addEventListener("error", () => {
     try { socket.close(); } catch { /* already closed */ }
   });
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
     if (statusSocket === socket) statusSocket = null;
+    // 1008 = the app refused this connection (a stale pairing token). Drop the
+    // token so the next attempt goes through the pairing prompt again.
+    if (event?.code === 1008) void forgetPairingToken();
     scheduleStatusReconnect();
   });
 }
@@ -500,7 +853,7 @@ async function getCommandSocket() {
 
   let socket;
   try {
-    socket = new WebSocket(SOCKET_URL, SUBPROTOCOL);
+    socket = new WebSocket(socketUrl(), SUBPROTOCOL);
   } catch (error) {
     return Promise.reject(new Error(`Cannot create the SwiftDM connection: ${errorText(error)}`));
   }
@@ -514,6 +867,14 @@ async function getCommandSocket() {
     socket.addEventListener("message", (event) => {
       try {
         const response = JSON.parse(event.data);
+        if (response.event === "config") {
+          void applyConfig(response.data);
+          return;
+        }
+        if (response.event === "pair" && response.data?.token) {
+          void storePairingToken(response.data.token);
+          return;
+        }
         if (typeof response.id !== "string") return;
         if (!response.ok) {
           finishCommandRequest(response.id, new Error(response.error ?? "SwiftDM rejected the request."));
@@ -534,6 +895,7 @@ async function getCommandSocket() {
     socket.addEventListener("close", (event) => {
       const detail = event.code && event.code !== 1005 ? ` (close ${event.code})` : "";
       const error = new Error(`SwiftDM closed the connection${detail}.`);
+      if (event?.code === 1008) void forgetPairingToken();
       if (!opened) reject(error);
       dropCommandSocket(socket, error);
     });

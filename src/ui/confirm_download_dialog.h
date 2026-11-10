@@ -5,8 +5,10 @@
 #include <QVector>
 
 #include <map>
+#include <optional>
 #include <string>
 
+#include "ui/media_variant.h"
 #include "ui/queue_picker_dialog.h"
 
 class QComboBox;
@@ -67,6 +69,10 @@ class ConfirmDownloadDialog : public QDialog {
     bool later_requested() const { return later_requested_; }
     void set_probe_pending();
     void set_probe_result(const QString& file_name, quint64 size);
+    // Configures selectable media variants (HLS/DASH renditions). Shows the
+    // Quality row in the dialog and updates the URL field on selection.
+    void set_media_variants(const QVector<MediaVariant>& variants);
+    std::optional<MediaVariant> selected_variant() const;
 
   protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -110,6 +116,11 @@ class ConfirmDownloadDialog : public QDialog {
     QPushButton* download_button_ = nullptr;
     QPushButton* later_button_ = nullptr;
     QPushButton* queue_button_ = nullptr;
+    QComboBox* quality_box_ = nullptr;
+    QLabel* quality_label_ = nullptr;
+    QWidget* quality_row_ = nullptr;
+    QLineEdit* url_edit_ = nullptr;
+    QVector<MediaVariant> media_variants_;
 };
 
 }  // namespace swiftdm::ui

@@ -51,5 +51,21 @@ DownloadResult run_hls(const HttpOptions& base_options, const ProbeResult& probe
                        const std::shared_ptr<BandwidthLimit>& bandwidth_limit,
                        const std::function<bool(const ProgressInfo&)>& on_progress);
 
+// DASH: fetch the MPD, then the chosen representation's segments, appended
+// into one file (docs/spec/08-media-download.md §9).
+DownloadResult run_dash(const DownloadRequest& request, const HttpOptions& options,
+                        const std::string& filename, const std::string& out_dir,
+                        const DownloadWorkspace& ws, bool allow_resume, bool overwrite,
+                        const std::shared_ptr<BandwidthLimit>& bandwidth_limit,
+                        const std::function<bool(const ProgressInfo&)>& on_progress);
+
+// MSE: fetch the recorded init + media segments, verify continuity, and append
+// them into one file (docs/spec/08-media-download.md §6.2).
+DownloadResult run_mse(const DownloadRequest& request, const HttpOptions& options,
+                       const std::string& filename, const std::string& out_dir,
+                       const DownloadWorkspace& ws, bool allow_resume, bool overwrite,
+                       const std::shared_ptr<BandwidthLimit>& bandwidth_limit,
+                       const std::function<bool(const ProgressInfo&)>& on_progress);
+
 }  // namespace engine_internal
 }  // namespace swiftdm

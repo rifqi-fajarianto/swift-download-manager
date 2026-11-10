@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-09**, versi kerja **0.25.0**. Status ini cepat
+> Snapshot terakhir: **2026-11-10**, versi kerja **0.26.0**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,7 +8,13 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.25.0 — pemecahan segmen dinamis
+- **Rilis terakhir di jalur `main`**: 0.26.0 — unduhan media dari ekstensi
+  browser: tombol mengambang di atas video dan daftar di popup mengirim file,
+  varian HLS, representasi DASH, pasangan video+audio, dan segmen `blob:` (MSE)
+  ke aplikasi. Engine menambah parser DASH dan rekonstruksi MSE dengan
+  pemeriksaan kontinuitas (`mfhd`/`tfdt`); stream DRM ditolak, jendela konfirmasi
+  punya pemilih kualitas, dan koneksi ekstensi pertama disetujui lewat prompt
+  pairing bertoken lokal. Sebelumnya 0.25.0 — pemecahan segmen dinamis
   (dynamic split): saat ada slot koneksi kosong dan semua rentang rencana sudah
   berjalan, segmen aktif dengan perkiraan sisa waktu terbesar dipecah; bagian
   depan tetap diunduh koneksi lama, bagian belakang lewat koneksi baru. Jumlah
@@ -40,7 +46,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.25.0. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.26.0. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang
@@ -188,6 +194,10 @@
 - **FTP (`ftp://`/`ftps://`)** dengan probe `SIZE` dan resume `REST`.
 - **HLS/m3u8**: pemilihan varian, `EXT-X-MAP`, unduhan segmen berurutan, resume;
   playlist terenkripsi ditolak dengan pesan jelas.
+- **DASH (`.mpd`) dan MSE (`blob:`)**: representasi DASH dipilih lewat quality
+  combo, segmen init+media ditambahkan berurutan, dan rekaman MSE diperiksa
+  kontinuitas `mfhd`/`tfdt` sebelum file final ditulis; celah menggagalkan
+  unduhan dan menghapus part file.
 - **Resolusi interstitial Google Drive** dan ringkasan alasan penolakan host
   (JSON/HTML body) pada pesan error.
 - **CLI headless `swiftdm get`** dan GUI Qt6 lengkap dengan tray, kategori,
@@ -201,7 +211,8 @@
   Properties` | `Start Queue`, `Stop Queue` | `New URL`, `Delete`,
   `Delete File`.
 - **Integrasi Chromium MV3**: handoff otomatis/manual, cookie opsional, deteksi
-  HLS dan pasangan video+audio, status push lewat WebSocket; socket command
+  HLS/DASH/MSE dan pasangan video+audio di popup dan tombol mengambang,
+  status push lewat WebSocket; socket command
   dipakai ulang untuk handoff berurutan selama masih terbuka.
 - **Dialog konfirmasi tampil saat probe berjalan** dan memakai ulang hasil probe
   untuk transfer awal; resume selalu validasi ulang server.
@@ -228,8 +239,8 @@
   store (Chrome Web Store / AMO).
 - Muxing MKV/WebM untuk pasangan video+audio (saat ini dua file terpisah
   dengan `groupid`).
-- In-page media panel dan site extractor (C4–C6, C9 di
-  `docs/spec/07-chromium-extension-reference.md`).
+- Site extractor khusus situs (C6) dan subtitle (C9) belum ada; panel media
+  in-page dan heuristik deteksi (C4–C5) sudah tersedia sejak 0.26.0.
 - Verifikasi GUI selalu manual oleh user; tidak ada automation GUI.
 - Windows: verifikasi GUI manual di Windows 10 (tray, dialog konfirmasi,
   pause/resume, autostart) belum dilakukan. Sejak 0.19.17 executable GUI

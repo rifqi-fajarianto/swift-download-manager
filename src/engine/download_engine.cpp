@@ -18,6 +18,7 @@
 #include "core/util.h"
 #include "core/win_headers.h"
 #include "engine/categories.h"
+#include "engine/dash.h"
 #include "engine/engine_internal.h"
 #include "engine/hls.h"
 #include "engine/segment_plan.h"
@@ -159,6 +160,16 @@ std::string hls_output_filename(const std::string& filename) {
     if (dot == std::string::npos) return filename + ".ts";
     const std::string ext = lower_copy(filename.substr(dot));
     if (ext == ".m3u8" || ext == ".m3u") return filename.substr(0, dot) + ".ts";
+    return filename;
+}
+
+// The MPD itself is a manifest; the bytes written are the selected
+// representation, so a .mpd name would mislabel the result.
+std::string dash_output_filename(const std::string& filename) {
+    const size_t dot = filename.rfind('.');
+    if (dot == std::string::npos) return filename + ".mp4";
+    const std::string ext = lower_copy(filename.substr(dot));
+    if (ext == ".mpd") return filename.substr(0, dot) + ".mp4";
     return filename;
 }
 
@@ -518,6 +529,19 @@ DownloadResult DownloadEngine::run(
     if (is_ftp_url(workspace_key)) {
         result = engine_internal::run_ftp(options, probe, filename, out_dir, ws, request.resume,
                          request.overwrite, bandwidth_limit, on_progress);
+        return result;
+    }
+    if (request.media_kind == "dash" || is_dash_url(workspace_key, probe.mime_type)) {
+        result = engine_internal::run_dash(request, options,
+                                           dash_output_filename(filename), out_dir, ws,
+                                           request.resume, request.overwrite,
+                                           bandwidth_limit, on_progress);
+        return result;
+    }
+    if (request.media_kind == "mse" || !request.segments.empty()) {
+        result = engine_internal::run_mse(request, options, filename, out_dir, ws,
+                                          request.resume, request.overwrite,
+                                          bandwidth_limit, on_progress);
         return result;
     }
     if (is_hls_url(workspace_key, probe.mime_type)) {

@@ -38,6 +38,11 @@
 //   GET/HEAD /hls/file-segment.m3u8 playlist whose segment is file:///etc/passwd
 //   GET/HEAD /hls/file-variant.m3u8 master playlist with a file:// variant
 //   GET/HEAD /hls/file-map.m3u8     EXT-X-MAP pointing at file:///etc/passwd
+//   GET/HEAD /dash/manifest.mpd     DASH MPD (SegmentTemplate + SegmentTimeline)
+//   GET/HEAD /dash/init-<rep>.mp4   DASH initialisation segment
+//   GET/HEAD /dash/seg-<rep>-<n>.m4s DASH media segment
+//   GET/HEAD /mse/seg-<n>.m4s       MSE media segment (mfhd sequence n)
+//   GET/HEAD /mse/gap-<n>.m4s       MSE segment with sequence 2n (gap)
 // Content bytes are shared with the tests via content_byte().
 
 #ifdef _WIN32
@@ -404,6 +409,10 @@ class TestHttpServer {
                              "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         } else if (path.rfind("/hls/", 0) == 0) {
             serve_hls(fd, method, path);
+        } else if (path.rfind("/dash/", 0) == 0) {
+            serve_dash(fd, method, path);
+        } else if (path.rfind("/mse/", 0) == 0) {
+            serve_mse(fd, method, path);
         } else if (path == "/forbidden") {
             const std::string body = "denied";
             send_str(fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: " +
@@ -961,6 +970,173 @@ class TestHttpServer {
             return;
         }
         send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    }
+
+    // DASH fixture: SegmentTemplate + SegmentTimeline, two video renditions and
+    // one audio rendition, four segments each. Bodies are deterministic.
+    static std::string dash_manifest() {
+        return "<?xml version=\"1.0\"?>\n"
+               "<MPD type=\"static\" mediaPresentationDuration=\"PT8S\">\n"
+               "  <Period>\n"
+               "    <AdaptationSet contentType=\"video\" mimeType=\"video/mp4\">\n"
+               "      <SegmentTemplate timescale=\"90000\" duration=\"180000\" startNumber=\"1\" "
+               "initialization=\"init-$RepresentationID$.mp4\" "
+               "media=\"seg-$RepresentationID$-$Number$.m4s\">\n"
+               "        <SegmentTimeline>\n"
+               "          <S t=\"0\" d=\"180000\" r=\"3\"/>\n"
+               "        </SegmentTimeline>\n"
+               "      </SegmentTemplate>\n"
+               "      <Representation id=\"v1\" bandwidth=\"5000000\" width=\"1920\" height=\"1080\" "
+               "codecs=\"avc1.640028\"/>\n"
+               "      <Representation id=\"v2\" bandwidth=\"2500000\" width=\"1280\" height=\"720\" "
+               "codecs=\"avc1.4d401f\"/>\n"
+               "    </AdaptationSet>\n"
+               "    <AdaptationSet contentType=\"audio\" mimeType=\"audio/mp4\">\n"
+               "      <SegmentTemplate timescale=\"48000\" duration=\"96000\" startNumber=\"1\" "
+               "initialization=\"init-$RepresentationID$.mp4\" "
+               "media=\"seg-$RepresentationID$-$Number$.m4s\">\n"
+               "        <SegmentTimeline>\n"
+               "          <S t=\"0\" d=\"96000\" r=\"3\"/>\n"
+               "        </SegmentTimeline>\n"
+               "      </SegmentTemplate>\n"
+               "      <Representation id=\"a1\" bandwidth=\"128000\" codecs=\"mp4a.40.2\"/>\n"
+               "    </AdaptationSet>\n"
+               "  </Period>\n"
+               "</MPD>\n";
+    }
+
+    static std::string dash_segment_body(const std::string& path) {
+        // /dash/init-<rep>.mp4 or /dash/seg-<rep>-<n>.m4s
+        int rep_index = 0;
+        int number = 0;
+        if (path.rfind("/dash/init-", 0) == 0) {
+            const std::string rep = path.substr(11, path.size() - 11 - 4);
+            rep_index = rep == "v1" ? 0 : (rep == "v2" ? 1 : 2);
+        } else if (path.rfind("/dash/seg-", 0) == 0) {
+            const size_t dot = path.rfind('.');
+            const std::string rest = path.substr(10, dot - 10);
+            const size_t dash = rest.rfind('-');
+            if (dash == std::string::npos) return {};
+            const std::string rep = rest.substr(0, dash);
+            rep_index = rep == "v1" ? 0 : (rep == "v2" ? 1 : 2);
+            number = std::atoi(rest.substr(dash + 1).c_str());
+        } else {
+            return {};
+        }
+        const uint64_t offset = static_cast<uint64_t>(rep_index) * 100000u +
+                                static_cast<uint64_t>(number) * 16u;
+        std::string body;
+        for (int i = 0; i < 64; ++i) {
+            body.push_back(static_cast<char>(content_byte(offset + static_cast<uint64_t>(i))));
+        }
+        return body;
+    }
+
+    static void serve_dash(socket_t fd, const std::string& method, const std::string& path) {
+        if (path == "/dash/manifest.mpd") {
+            const std::string body = dash_manifest();
+            send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: application/dash+xml\r\n"
+                         "Content-Length: " +
+                         std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n");
+            if (method != "HEAD") send_str(fd, body);
+            return;
+        }
+        const std::string body = dash_segment_body(path);
+        if (body.empty()) {
+            send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            return;
+        }
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: video/iso.segment\r\n"
+                     "Content-Length: " +
+                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n");
+        if (method != "HEAD") send_str(fd, body);
+    }
+
+    // Builds one ISOBMFF media segment: moof(mfhd sequence, traf/tfdt) + mdat.
+    // The box layout matches what engine/mp4_boxes.cpp reads back.
+    static std::vector<uint8_t> mse_segment_bytes(uint32_t sequence, uint64_t base_decode_time) {
+        std::vector<uint8_t> out;
+        auto put_u32 = [](std::vector<uint8_t>& dst, uint32_t v) {
+            dst.push_back(static_cast<uint8_t>(v >> 24));
+            dst.push_back(static_cast<uint8_t>(v >> 16));
+            dst.push_back(static_cast<uint8_t>(v >> 8));
+            dst.push_back(static_cast<uint8_t>(v));
+        };
+        auto put_u64 = [&put_u32](std::vector<uint8_t>& dst, uint64_t v) {
+            put_u32(dst, static_cast<uint32_t>(v >> 32));
+            put_u32(dst, static_cast<uint32_t>(v));
+        };
+        auto put_type = [](std::vector<uint8_t>& dst, const char* type) {
+            dst.insert(dst.end(), {static_cast<uint8_t>(type[0]),
+                                   static_cast<uint8_t>(type[1]),
+                                   static_cast<uint8_t>(type[2]),
+                                   static_cast<uint8_t>(type[3])});
+        };
+
+        std::vector<uint8_t> mfhd;
+        put_u32(mfhd, 16);
+        put_type(mfhd, "mfhd");
+        put_u32(mfhd, 0);
+        put_u32(mfhd, sequence);
+
+        std::vector<uint8_t> tfdt;
+        put_u32(tfdt, 20);
+        put_type(tfdt, "tfdt");
+        tfdt.push_back(1);
+        tfdt.push_back(0);
+        tfdt.push_back(0);
+        tfdt.push_back(0);
+        put_u64(tfdt, base_decode_time);
+
+        std::vector<uint8_t> traf;
+        put_u32(traf, 8 + static_cast<uint32_t>(tfdt.size()));
+        put_type(traf, "traf");
+        traf.insert(traf.end(), tfdt.begin(), tfdt.end());
+
+        std::vector<uint8_t> moof;
+        put_u32(moof, 8 + static_cast<uint32_t>(mfhd.size()) +
+                          static_cast<uint32_t>(traf.size()));
+        put_type(moof, "moof");
+        moof.insert(moof.end(), mfhd.begin(), mfhd.end());
+        moof.insert(moof.end(), traf.begin(), traf.end());
+
+        out.insert(out.end(), moof.begin(), moof.end());
+        std::vector<uint8_t> mdat;
+        put_u32(mdat, 8 + 16);
+        put_type(mdat, "mdat");
+        for (int i = 0; i < 16; ++i) {
+            mdat.push_back(content_byte(static_cast<uint64_t>(sequence) * 16u +
+                                        static_cast<uint64_t>(i)));
+        }
+        out.insert(out.end(), mdat.begin(), mdat.end());
+        return out;
+    }
+
+    static void serve_mse(socket_t fd, const std::string& method, const std::string& path) {
+        uint32_t sequence = 0;
+        uint64_t base_decode_time = 0;
+        bool known = false;
+        if (path.rfind("/mse/seg-", 0) == 0) {
+            const int n = std::atoi(path.c_str() + 9);
+            sequence = static_cast<uint32_t>(n);
+            base_decode_time = static_cast<uint64_t>(n) * 90000u;
+            known = true;
+        } else if (path.rfind("/mse/gap-", 0) == 0) {
+            // Sequence numbers jump by two so the continuity check must fail.
+            const int n = std::atoi(path.c_str() + 9);
+            sequence = static_cast<uint32_t>(n) * 2u;
+            base_decode_time = static_cast<uint64_t>(n) * 180000u;
+            known = true;
+        }
+        if (!known) {
+            send_str(fd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            return;
+        }
+        const std::vector<uint8_t> body = mse_segment_bytes(sequence, base_decode_time);
+        send_str(fd, "HTTP/1.1 200 OK\r\nContent-Type: video/iso.segment\r\n"
+                     "Content-Length: " +
+                     std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n");
+        if (method != "HEAD") send_all(fd, body.data(), body.size());
     }
 
     static void serve_hls_segment(socket_t fd, const std::string& method, int variant, int segment) {

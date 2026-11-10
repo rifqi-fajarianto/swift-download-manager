@@ -8,6 +8,8 @@
 
 #include <cstdio>
 
+#include "core/browser_token.h"
+#include "test_util.h"
 #include "ui/browser_integration.h"
 
 namespace {
@@ -150,6 +152,19 @@ int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     swiftdm::ui::BrowserIntegration server(nullptr, 0);
     check(server.isListening(), "loopback WebSocket server starts on ephemeral port");
+
+    // Pairing token (docs/spec/08-media-download.md §7): the server asks before
+    // it trusts a client, and remembers the answer in a token file.
+    const std::string token_dir = testutil::make_temp_dir("browser-pairing");
+    server.set_token_path(QString::fromStdString(token_dir + "/browser-token"));
+    int pairing_prompts = 0;
+    server.set_pairing_prompt([&](const QString& origin) {
+        ++pairing_prompts;
+        return origin.startsWith(QStringLiteral("chrome-extension://")) ||
+               origin.startsWith(QStringLiteral("moz-extension://")) ||
+               origin.startsWith(QStringLiteral("extensions://")) ||
+               origin.startsWith(QStringLiteral("extension://"));
+    });
 
     QTcpSocket socket;
     check(connect_extension(socket, server.port()), "Chrome extension WebSocket handshake succeeds");
@@ -467,6 +482,216 @@ int main(int argc, char** argv) {
         [&] { return stalled.state() != QAbstractSocket::ConnectedState; }, 7000);
     check(closed_on_timeout, "incomplete handshake times out and releases its slot");
     check(handshake_timer.elapsed() < 6500, "handshake timeout is bounded near five seconds");
+
+    // ---------------------------------------------------------------------
+    // Media handoff (docs/spec/08-media-download.md §5.1)
+    // ---------------------------------------------------------------------
+    {
+        QTcpSocket media_socket;
+        check(connect_extension(media_socket, server.port()),
+              "a second extension socket pairs with the stored token");
+        check(pairing_prompts >= 1, "the first connection asked for approval");
+
+        int media_received = 0;
+        QJsonObject last_media;
+        QObject::connect(&server, &swiftdm::ui::BrowserIntegration::mediaRequested,
+                         &app, [&](const QJsonObject& data) {
+                             ++media_received;
+                             last_media = data;
+                         });
+
+        if (media_socket.state() == QAbstractSocket::ConnectedState) {
+            const QJsonObject accepted = command(
+                media_socket, QStringLiteral("addMedia"),
+                {{QStringLiteral("url"), QStringLiteral("https://cdn.example/master.m3u8")},
+                 {QStringLiteral("kind"), QStringLiteral("hls")},
+                 {QStringLiteral("pageUrl"), QStringLiteral("https://cdn.example/watch")},
+                 {QStringLiteral("referer"), QStringLiteral("https://cdn.example/watch")},
+                 {QStringLiteral("quality"), QStringLiteral("1080p")},
+                 {QStringLiteral("durationSec"), 600},
+                 {QStringLiteral("positionSec"), 30},
+                 {QStringLiteral("candidates"), QJsonArray{
+                      QJsonObject{{QStringLiteral("url"), QStringLiteral("https://cdn.example/1080.m3u8")},
+                                  {QStringLiteral("label"), QStringLiteral("1080p")},
+                                  {QStringLiteral("bandwidth"), 5000000}}}}},
+                QStringLiteral("media-1"));
+            check(accepted.value(QStringLiteral("ok")).toBool(),
+                  "a well-formed addMedia is accepted");
+            check(accepted.value(QStringLiteral("data")).toObject()
+                      .value(QStringLiteral("accepted")).toBool(),
+                  "addMedia reports acceptance");
+            // The signal is queued so the reply is written first.
+            pump_until([&] { return media_received == 1; });
+            check(media_received == 1, "addMedia emits mediaRequested");
+            check(last_media.value(QStringLiteral("kind")).toString() ==
+                      QStringLiteral("hls"),
+                  "mediaRequested carries the media kind");
+
+            // Rejections: each one must leave the signal untouched.
+            const QString base_url = QStringLiteral("https://cdn.example/v.mp4");
+            auto expect_rejected = [&](const char* name, const QJsonObject& payload) {
+                const QJsonObject response = command(
+                    media_socket, QStringLiteral("addMedia"), payload,
+                    QStringLiteral("media-reject"));
+                check(!response.value(QStringLiteral("ok")).toBool(), name);
+            };
+
+            expect_rejected("an unknown media kind",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("flv")}});
+            expect_rejected("a file:// media URL",
+                            QJsonObject{{QStringLiteral("url"), QStringLiteral("file:///etc/passwd")},
+                                        {QStringLiteral("kind"), QStringLiteral("file")}});
+            expect_rejected("protected (DRM) media",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("dash")},
+                                        {QStringLiteral("protected"), true}});
+            expect_rejected("a cross-origin referer",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("file")},
+                                        {QStringLiteral("referer"),
+                                         QStringLiteral("https://evil.example/page")}});
+            expect_rejected("a cookie for another domain",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("file")},
+                                        {QStringLiteral("cookies"), QJsonArray{QJsonObject{
+                                             {QStringLiteral("domain"), QStringLiteral("evil.example")},
+                                             {QStringLiteral("path"), QStringLiteral("/")},
+                                             {QStringLiteral("name"), QStringLiteral("sid")},
+                                             {QStringLiteral("value"), QStringLiteral("secret")},
+                                             {QStringLiteral("secure"), true},
+                                             {QStringLiteral("expires"), 0}}}}});
+            expect_rejected("a non-x extra header",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("file")},
+                                        {QStringLiteral("headers"), QJsonArray{QJsonObject{
+                                             {QStringLiteral("name"), QStringLiteral("Authorization")},
+                                             {QStringLiteral("value"), QStringLiteral("Bearer x")}}}}});
+            expect_rejected("segments out of order",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("mse")},
+                                        {QStringLiteral("segments"), QJsonArray{
+                                             QJsonObject{{QStringLiteral("url"), QStringLiteral("https://cdn.example/s2.m4s")},
+                                                         {QStringLiteral("role"), QStringLiteral("media")},
+                                                         {QStringLiteral("order"), 2}},
+                                             QJsonObject{{QStringLiteral("url"), QStringLiteral("https://cdn.example/s1.m4s")},
+                                                         {QStringLiteral("role"), QStringLiteral("media")},
+                                                         {QStringLiteral("order"), 1}}}}});
+            expect_rejected("a segment with a file:// URL",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("mse")},
+                                        {QStringLiteral("segments"), QJsonArray{QJsonObject{
+                                             {QStringLiteral("url"), QStringLiteral("file:///etc/passwd")},
+                                             {QStringLiteral("role"), QStringLiteral("media")},
+                                             {QStringLiteral("order"), 1}}}}});
+            expect_rejected("an invalid quality label",
+                            QJsonObject{{QStringLiteral("url"), base_url},
+                                        {QStringLiteral("kind"), QStringLiteral("file")},
+                                        {QStringLiteral("quality"),
+                                         QStringLiteral("1080p\nX-Injected: 1")}});
+            pump_until([&] { return media_received > 1; });
+            check(media_received == 1, "rejected media requests emit no signal");
+
+            // A protected request carries a readable reason.
+            const QJsonObject drm = command(
+                media_socket, QStringLiteral("addMedia"),
+                {{QStringLiteral("url"), base_url},
+                 {QStringLiteral("kind"), QStringLiteral("dash")},
+                 {QStringLiteral("protected"), true}},
+                QStringLiteral("media-drm"));
+            check(drm.value(QStringLiteral("error")).toString().contains(
+                      QStringLiteral("protected")),
+                  "a DRM rejection explains why");
+        }
+    }
+
+    // A stale token is refused: the app already handed one out, so a client
+    // presenting a different one must not be trusted.
+    {
+        QTcpSocket stale;
+        stale.connectToHost(QHostAddress::LocalHost, server.port());
+        if (stale.waitForConnected(1000)) {
+            const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
+            stale.write("GET /?t=not-the-token HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                        "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                        "Sec-WebSocket-Key: " + key + "\r\n"
+                        "Sec-WebSocket-Version: 13\r\n"
+                        "Sec-WebSocket-Protocol: swiftdm.v1\r\n"
+                        "Origin: chrome-extension://hagednkleljjijmjonpeiokknhngknbb\r\n\r\n");
+            pump_until([&] { return stale.bytesToWrite() == 0; });
+            // The pairing prompt is consulted again; the origin is accepted by
+            // the test prompt, so the connection continues with a fresh token.
+            const bool connected = pump_until([&] {
+                return stale.state() != QAbstractSocket::ConnectedState ||
+                       stale.bytesAvailable() > 0;
+            });
+            check(connected, "a wrong token is answered instead of hanging");
+        } else {
+            check(false, "stale-token client can connect");
+        }
+    }
+
+    // A client the user denies is closed with 1008 and never gets a command.
+    {
+        swiftdm::ui::BrowserIntegration refusing(nullptr, 0);
+        const std::string refusing_dir = testutil::make_temp_dir("browser-pairing-deny");
+        refusing.set_token_path(QString::fromStdString(refusing_dir + "/browser-token"));
+        int prompts = 0;
+        refusing.set_pairing_prompt([&](const QString&) {
+            ++prompts;
+            return false;
+        });
+        QTcpSocket denied;
+        denied.connectToHost(QHostAddress::LocalHost, refusing.port());
+        if (denied.waitForConnected(1000)) {
+            const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
+            denied.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                         "Connection: Upgrade\r\nSec-WebSocket-Key: " + key +
+                         "\r\nSec-WebSocket-Version: 13\r\n"
+                         "Sec-WebSocket-Protocol: swiftdm.v1\r\n"
+                         "Origin: chrome-extension://hagednkleljjijmjonpeiokknhngknbb\r\n\r\n");
+            pump_until([&] { return denied.bytesToWrite() == 0; });
+            check(pump_until([&] {
+                      return denied.state() != QAbstractSocket::ConnectedState;
+                  }),
+                  "a denied client is disconnected");
+            check(prompts == 1, "the denial prompt was shown once");
+            // Nothing was written: no token file for a refused client.
+            check(swiftdm::BrowserToken::load(refusing_dir + "/browser-token").empty(),
+                  "a refused client stores no token");
+        } else {
+            check(false, "denied client can connect");
+        }
+        testutil::cleanup_dir(refusing_dir);
+    }
+
+    // An app with no prompt installed (headless) refuses silently instead of
+    // pairing an unknown client.
+    {
+        swiftdm::ui::BrowserIntegration headless(nullptr, 0);
+        const std::string headless_dir = testutil::make_temp_dir("browser-pairing-headless");
+        headless.set_token_path(QString::fromStdString(headless_dir + "/browser-token"));
+        QTcpSocket client;
+        client.connectToHost(QHostAddress::LocalHost, headless.port());
+        if (client.waitForConnected(1000)) {
+            const QByteArray key = "dGhlIHNhbXBsZSBub25jZQ==";
+            client.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                         "Connection: Upgrade\r\nSec-WebSocket-Key: " + key +
+                         "\r\nSec-WebSocket-Version: 13\r\n"
+                         "Sec-WebSocket-Protocol: swiftdm.v1\r\n"
+                         "Origin: chrome-extension://hagednkleljjijmjonpeiokknhngknbb\r\n\r\n");
+            pump_until([&] { return client.bytesToWrite() == 0; });
+            check(pump_until([&] {
+                      return client.state() != QAbstractSocket::ConnectedState;
+                  }),
+                  "a headless app refuses an unpaired client");
+        } else {
+            check(false, "headless pairing test connects");
+        }
+        testutil::cleanup_dir(headless_dir);
+    }
+
+    testutil::cleanup_dir(token_dir);
 
     if (failures) std::printf("%d failure(s)\n", failures);
     else std::printf("Browser protocol tests passed\n");

@@ -4,7 +4,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QUrl>
@@ -32,6 +34,7 @@
 #include "ui/theme.h"
 
 #include "ui/main_window_internal.h"
+#include "ui/media_probe_task.h"
 
 namespace swiftdm::ui {
 
@@ -56,6 +59,47 @@ void rewrite_resume_state(const QString& workspace, const QString& new_url) {
         qWarning() << "refresh address: cannot rewrite" << state_path
                    << QString::fromStdString(error);
     }
+}
+
+// Builds the media variant list from the `candidates` array of an addMedia
+// payload. Candidates without a URL are dropped.
+QVector<MediaVariant> media_variants_from_json(const QJsonValue& value) {
+    QVector<MediaVariant> out;
+    if (!value.isArray()) return out;
+    for (const QJsonValue& item : value.toArray()) {
+        const QJsonObject o = item.toObject();
+        MediaVariant variant;
+        variant.url = o.value(QStringLiteral("url")).toString().toStdString();
+        if (variant.url.empty()) continue;
+        variant.kind = o.value(QStringLiteral("kind")).toString().toStdString();
+        const QString label = o.value(QStringLiteral("label")).toString();
+        variant.label = label.isEmpty() ? media_variant_label(variant)
+                                        : label.toStdString();
+        variant.bandwidth = static_cast<int64_t>(
+            o.value(QStringLiteral("bandwidth")).toDouble());
+        out.push_back(std::move(variant));
+    }
+    return out;
+}
+
+// Builds the MSE segment list from the `segments` array of an addMedia
+// payload. Entries without a URL are dropped.
+std::vector<MediaSegment> media_segments_from_json(const QJsonValue& value) {
+    std::vector<MediaSegment> out;
+    if (!value.isArray()) return out;
+    for (const QJsonValue& item : value.toArray()) {
+        const QJsonObject o = item.toObject();
+        MediaSegment segment;
+        segment.url = o.value(QStringLiteral("url")).toString().toStdString();
+        if (segment.url.empty()) continue;
+        segment.role = o.value(QStringLiteral("role")).toString().toStdString();
+        segment.order = static_cast<int>(
+            o.value(QStringLiteral("order")).toDouble());
+        segment.content_type =
+            o.value(QStringLiteral("contentType")).toString().toStdString();
+        out.push_back(std::move(segment));
+    }
+    return out;
 }
 
 }  // namespace
@@ -248,6 +292,269 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     // layer) so both rows can be recognized as one pair.
     item.group = data.value(QStringLiteral("group")).toString();
     probe_and_confirm(std::move(options), std::move(item));
+}
+
+void MainWindow::add_media_download(const QJsonObject& data) {
+    const QUrl url(data.value(QStringLiteral("url")).toString());
+    if (!url.isValid() || (url.scheme() != QStringLiteral("http") &&
+                           url.scheme() != QStringLiteral("https")) ||
+        url.host().isEmpty()) {
+        return;
+    }
+
+    DownloadTask::Options options;
+    options.url = url.toString(QUrl::FullyEncoded);
+    options.output_dir = QString::fromStdString(settings_.download_dir);
+    options.limit_enabled = settings_.bandwidth_limit_enabled;
+    options.limit_kbps = settings_.bandwidth_limit_kbps;
+    const std::string requested_filename = swiftdm::sanitize_filename(
+        data.value(QStringLiteral("filename")).toString().toStdString());
+    options.filename = QString::fromStdString(requested_filename);
+    options.referer = data.value(QStringLiteral("referer")).toString();
+    if (!options.referer.isEmpty()) {
+        const QUrl referer(options.referer);
+        const bool same_origin = referer.scheme() == url.scheme() &&
+                                 referer.host().compare(url.host(), Qt::CaseInsensitive) == 0 &&
+                                 referer.port(0) == url.port(0);
+        if (!same_origin) options.referer.clear();
+    }
+    options.user_agent = data.value(QStringLiteral("userAgent")).toString();
+    if (settings_.use_ua_for_browser) options.user_agent.clear();
+    options.headers = headers_from_json(data.value(QStringLiteral("headers")));
+    options.cookies = cookies_from_json(data.value(QStringLiteral("cookies")));
+
+    const QString kind = data.value(QStringLiteral("kind")).toString();
+    options.media_kind = kind;
+    options.segments = media_segments_from_json(data.value(QStringLiteral("segments")));
+
+    DownloadItem item;
+    item.url = options.url;
+    item.file_name = options.filename.isEmpty()
+                         ? QString::fromStdString(
+                               swiftdm::file_name_from_url(options.url.toStdString()))
+                         : options.filename;
+    item.category = QString::fromStdString(
+        swiftdm::category_folder_for(item.file_name.toStdString()));
+    item.output_dir = options.output_dir;
+    item.bandwidth_limit_enabled = options.limit_enabled;
+    item.bandwidth_limit_kbps = options.limit_kbps;
+    item.page_url = data.value(QStringLiteral("pageUrl")).toString();
+    item.page_title = data.value(QStringLiteral("pageTitle")).toString();
+    item.group = data.value(QStringLiteral("group")).toString();
+
+    QVector<MediaVariant> variants =
+        media_variants_from_json(data.value(QStringLiteral("candidates")));
+    // MSE handoffs carry the recorded segment list; the raw URL is only a
+    // fallback. Represent it as the single variant so the confirmation still
+    // opens (spec §8: no quality combo for MSE).
+    if (variants.isEmpty() && kind == QStringLiteral("mse")) {
+        MediaVariant variant;
+        variant.kind = "mse";
+        variant.url = options.url.toStdString();
+        variant.manifest_url = options.url.toStdString();
+        variant.label = "default";
+        variants.push_back(std::move(variant));
+    }
+    // Candidates already carry resolved renditions (HLS/DASH master playlists).
+    // Without them, streaming manifests are probed for their variants; plain
+    // files and MSE segment lists go through the normal download flow.
+    if (!variants.isEmpty() || kind == QStringLiteral("hls") ||
+        kind == QStringLiteral("dash")) {
+        probe_media_and_confirm(std::move(options), std::move(item), std::move(variants),
+                                kind.toStdString());
+    } else {
+        probe_and_confirm(std::move(options), std::move(item));
+    }
+}
+
+void MainWindow::probe_media_and_confirm(DownloadTask::Options options, DownloadItem item,
+                                         QVector<MediaVariant> variants, std::string kind) {
+    item.url = options.url;
+
+    struct MediaFlow {
+        DownloadTask::Options options;
+        DownloadItem item;
+        QPointer<ConfirmDownloadDialog> dialog;
+        QPointer<MediaProbeTask> probe_task;
+        QVector<MediaVariant> variants;
+        std::string kind;
+        QString resolved_name;
+        quint64 resolved_size = 0;
+        bool ready = false;
+        bool canceled = false;
+        std::function<void()> start_download;
+    };
+
+    auto flow = std::make_shared<MediaFlow>();
+    flow->options = std::move(options);
+    flow->item = std::move(item);
+    flow->variants = std::move(variants);
+    flow->kind = std::move(kind);
+
+    const bool show_confirmation = settings_.show_download_confirmation;
+    if (show_confirmation) {
+        QString fallback_name = flow->options.filename.isEmpty()
+                                    ? flow->item.file_name
+                                    : flow->options.filename;
+        if (fallback_name.isEmpty()) fallback_name = QStringLiteral("download.bin");
+        auto* dialog = new ConfirmDownloadDialog(
+            fallback_name, 0, flow->options.url,
+            QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+            settings_.category_folders);
+        dialog->set_queue_choices(queue_choices(), flow->item.queue_id);
+        dialog->setWindowFlag(Qt::WindowStaysOnTopHint, settings_.confirm_dialog_on_top);
+        dialog->set_probe_pending();
+        if (!flow->variants.isEmpty()) {
+            dialog->set_media_variants(flow->variants);
+            dialog->set_probe_result(fallback_name, flow->variants.front().size_estimate);
+        }
+        flow->dialog = dialog;
+        connect(dialog, &QDialog::finished, this, [flow](int result) {
+            if (result != QDialog::Accepted) {
+                flow->canceled = true;
+                if (flow->probe_task) flow->probe_task->cancel();
+                if (flow->dialog) flow->dialog->deleteLater();
+            } else if (flow->ready && flow->start_download) {
+                flow->start_download();
+            }
+        });
+        dialog->setModal(true);
+    }
+
+    const std::weak_ptr<MediaFlow> weak_flow = flow;
+    flow->start_download = [this, weak_flow] {
+        const std::shared_ptr<MediaFlow> flow = weak_flow.lock();
+        if (!flow) return;
+        if (flow->canceled || !flow->ready) return;
+        qInfo() << "media download accepted";
+
+        std::optional<MediaVariant> selected;
+        if (flow->dialog) selected = flow->dialog->selected_variant();
+        if (!selected && !flow->variants.isEmpty()) selected = flow->variants.front();
+        if (!selected) return;
+
+        DownloadItem draft = flow->item;
+        draft.url = QString::fromStdString(selected->url);
+        // The DASH output is the selected representation, not the manifest, so a
+        // .mpd name would mislabel the file. The engine applies the same rule to
+        // CLI callers; doing it here keeps the row in sync.
+        QString output_name = flow->resolved_name;
+        if (flow->kind == "dash" || selected->kind == "dash") {
+            if (output_name.endsWith(QStringLiteral(".mpd"), Qt::CaseInsensitive)) {
+                output_name.chop(4);
+                output_name += QStringLiteral(".mp4");
+            }
+        }
+        draft.file_name = output_name;
+        draft.category = QString::fromStdString(
+            swiftdm::category_folder_for(output_name.toStdString()));
+        draft.size = flow->resolved_size;
+        draft.output_dir = QString::fromStdString(settings_.download_dir);
+        draft.last_try = now_stamp();
+        draft.last_try_epoch = swiftdm::unix_now();
+        draft.state = DownloadItem::State::Queued;
+
+        DownloadTask::Options start_options = flow->options;
+        start_options.url = draft.url;
+        start_options.filename = output_name;
+        start_options.category = draft.category;
+        start_options.manifest_url = QString::fromStdString(selected->manifest_url);
+        start_options.variant_id = QString::fromStdString(selected->representation_id);
+        qint64 target_queue = flow->item.queue_id;
+        bool download_later = false;
+        if (flow->dialog) {
+            draft.category = flow->dialog->category();
+            draft.output_dir = flow->dialog->location();
+            start_options.category = draft.category;
+            start_options.apply_category_folder = false;
+            start_options.output_dir = draft.output_dir;
+            target_queue = flow->dialog->selected_queue_id();
+            download_later = flow->dialog->later_requested();
+            flow->dialog->deleteLater();
+            flow->dialog = nullptr;
+        } else {
+            draft.output_dir = default_download_location(
+                QString::fromStdString(settings_.download_dir), settings_.category_dirs,
+                draft.category, settings_.category_folders);
+            start_options.output_dir = draft.output_dir;
+            start_options.apply_category_folder = false;
+        }
+        draft.queue_id = target_queue;
+        if (target_queue > 0) {
+            const swiftdm::HistoryStore::QueueRecord* queue = queue_for(target_queue);
+            start_options.connections = queue ? queue->connections : 0;
+            start_options.limit_enabled = false;
+            start_options.limit_kbps = 0;
+        }
+        // The task probes the selected variant itself: for HLS/DASH the probe
+        // discovers the real media size and segment layout.
+        swiftdm::ProbeResult probe;
+        start_confirmed_download(std::move(draft), std::move(start_options), probe,
+                                 !download_later);
+    };
+
+    if (flow->variants.isEmpty()) {
+        MediaProbeTask::Options po;
+        po.url = flow->options.url.toStdString();
+        po.referer = flow->options.referer.toStdString();
+        po.user_agent = flow->options.user_agent.toStdString();
+        po.cookies = flow->options.cookies;
+        po.headers = flow->options.headers;
+        po.kind = flow->kind;
+        auto* probe = new MediaProbeTask(po, this);
+        flow->probe_task = probe;
+        connect(probe, &MediaProbeTask::finished, this,
+                [this, probe, flow, show_confirmation](QVector<MediaVariant> probed,
+                                                       QString error) {
+                    if (flow->canceled) {
+                        probe->deleteLater();
+                        return;
+                    }
+                    if (probed.isEmpty()) {
+                        if (flow->dialog) flow->dialog->reject();
+                        if (!error.isEmpty())
+                            show_error_dialog(flow->options.url, error,
+                                              flow->item.page_url);
+                        probe->deleteLater();
+                        return;
+                    }
+                    flow->variants = std::move(probed);
+                    QString name = flow->options.filename.isEmpty()
+                                       ? flow->item.file_name
+                                       : flow->options.filename;
+                    if (name.isEmpty()) name = QStringLiteral("download.bin");
+                    flow->resolved_name = name;
+                    flow->resolved_size = flow->variants.front().size_estimate;
+                    flow->ready = true;
+                    if (show_confirmation) {
+                        if (!flow->dialog) {
+                            probe->deleteLater();
+                            return;
+                        }
+                        flow->dialog->set_media_variants(flow->variants);
+                        flow->dialog->set_probe_result(name, flow->resolved_size);
+                    }
+                    probe->deleteLater();
+                    if (!show_confirmation && flow->start_download) {
+                        flow->start_download();
+                    }
+                });
+        if (flow->dialog) flow->dialog->open();
+        probe->start();
+    } else {
+        QString name = flow->options.filename.isEmpty()
+                           ? flow->item.file_name
+                           : flow->options.filename;
+        if (name.isEmpty()) name = QStringLiteral("download.bin");
+        flow->resolved_name = name;
+        flow->resolved_size = flow->variants.front().size_estimate;
+        flow->ready = true;
+        if (flow->dialog) {
+            flow->dialog->open();
+        } else if (flow->start_download) {
+            flow->start_download();
+        }
+    }
 }
 
 void MainWindow::probe_and_confirm(DownloadTask::Options options, DownloadItem item) {

@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.26.0" date="2026-11-10">
+      <description>
+        <p>Adds media downloading from the browser extension: a floating button over playing videos and a list in the popup hand HLS, DASH, and recorded blob: streams to the app, with a quality selector in the confirmation window. The engine learns DASH manifests and MSE segment reconstruction with a continuity check, DRM playback is refused, and the first extension connection is approved once through a pairing prompt backed by a local token.</p>
+      </description>
+    </release>
     <release version="0.25.0" date="2026-11-09">
       <description>
         <p>Splits the slowest running segment when a connection slot is free, so the last connection no longer drags the end of a segmented download. The number of active connections never exceeds the configured limit, the segments.json format is unchanged, and a new DynamicSplit key in the download section turns it off.</p>

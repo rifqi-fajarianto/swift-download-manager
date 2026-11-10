@@ -110,6 +110,9 @@ class MainWindow : public QMainWindow {
     void refresh_action_icons();
     void add_download(const QString& url, qint64 queue_id = 0);
     void add_browser_download(const QJsonObject& data);
+    void add_media_download(const QJsonObject& data);
+    void probe_media_and_confirm(DownloadTask::Options options, DownloadItem item,
+                                 QVector<MediaVariant> variants, std::string kind);
     // Probes the URL (no list row, no database entry) and shows the download
     // confirmation dialog. Only Download Now and Download Later insert the item;
     // Download Later leaves it paused in the main list.

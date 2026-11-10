@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMoveEvent>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -131,8 +132,28 @@ MainWindow::MainWindow(swiftdm::Settings settings, QWidget* parent)
     shutdown_timer_->setInterval(1000);
     connect(shutdown_timer_, &QTimer::timeout, this, &MainWindow::on_shutdown_tick);
     browser_integration_ = new BrowserIntegration(this);
+    // Trust-on-first-use pairing (docs/spec/08-media-download.md §7): the first
+    // connection names its origin, and only an explicit approval hands out the
+    // token. Without a prompt the app refuses every unpaired client.
+    browser_integration_->set_pairing_prompt([this](const QString& origin) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Browser Integration"));
+        box.setIconPixmap(dialog_question_pixmap());
+        box.setTextFormat(Qt::PlainText);
+        box.setText(tr("Allow \"%1\" to send downloads to SwiftDM?").arg(origin));
+        box.setInformativeText(
+            tr("Allow this only if it is the browser extension you installed."));
+        QPushButton* allow = box.addButton(tr("Allow"), QMessageBox::AcceptRole);
+        QPushButton* deny = box.addButton(tr("Deny"), QMessageBox::RejectRole);
+        box.setDefaultButton(deny);
+        box.setEscapeButton(deny);
+        box.exec();
+        return box.clickedButton() == allow;
+    });
     connect(browser_integration_, &BrowserIntegration::downloadRequested, this,
             &MainWindow::add_browser_download);
+    connect(browser_integration_, &BrowserIntegration::mediaRequested, this,
+            &MainWindow::add_media_download);
     connect(browser_integration_, &BrowserIntegration::showPanelRequested, this,
             [this](bool visible) {
                 if (visible) {

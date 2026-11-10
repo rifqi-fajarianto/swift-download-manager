@@ -171,8 +171,24 @@ const swiftdmApi = (() => {
       const value = await call(api.tabs, "query", info);
       return Array.isArray(value) ? value : [];
     },
+    // Sends a message to the content scripts of one tab. Without an explicit
+    // frameId the browser delivers to every frame and answers with one response
+    // per frame (or a single response when only one frame listens), so the
+    // caller always gets an array.
+    async sendMessage(tabId, message) {
+      try {
+        const value = await call(api.tabs, "sendMessage", tabId, message);
+        return Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
+      } catch {
+        // No content script in that tab/frame: not an error for the caller.
+        return [];
+      }
+    },
     onRemoved(handler) {
       return listen(api.tabs?.onRemoved, handler);
+    },
+    onUpdated(handler) {
+      return listen(api.tabs?.onUpdated, handler);
     },
   };
 
@@ -276,6 +292,22 @@ const swiftdmApi = (() => {
     },
   };
 
+  // `scripting` injects the MAIN-world hook (page-hook.js). It is optional: an
+  // older Firefox without it falls back to a web-accessible <script> tag.
+  const scripting = {
+    available() {
+      return Boolean(api.scripting?.executeScript);
+    },
+    async executeInPage(tabId, files) {
+      if (!api.scripting?.executeScript) throw unavailable("executeScript");
+      return call(api.scripting, "executeScript", {
+        target: { tabId, allFrames: true },
+        files,
+        world: "MAIN",
+      });
+    },
+  };
+
   return {
     isFirefox,
     storage,
@@ -287,5 +319,6 @@ const swiftdmApi = (() => {
     permissions,
     cookies,
     webRequest,
+    scripting,
   };
 })();

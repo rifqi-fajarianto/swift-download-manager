@@ -250,6 +250,10 @@ void DownloadTask::run() {
     request.probe = probe;
     request.history_id = options_.history_id;
     request.overwrite = options_.overwrite;
+    request.media_kind = options_.media_kind.toStdString();
+    request.manifest_url = options_.manifest_url.toStdString();
+    request.variant_id = options_.variant_id.toStdString();
+    request.segments = options_.segments;
 
     swiftdm::DownloadEngine engine(settings_);
     QElapsedTimer transfer_timer;

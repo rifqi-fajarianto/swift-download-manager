@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 # Single source of truth for the application version (see AGENTS.md).
 project(SwiftDM
-    VERSION 0.25.0
+    VERSION 0.26.0
     DESCRIPTION "Clean-room cross-platform download manager (segmented, resumable)"
     LANGUAGES CXX
 )
@@ -143,9 +143,15 @@ add_library(swiftdm_core STATIC
     src/core/paths.cpp
     src/core/strings.cpp
     src/core/names.cpp
+    src/core/browser_token.cpp
+    src/core/xml_lite.cpp
+    src/engine/dash.cpp
+    src/engine/mp4_boxes.cpp
+    src/ui/media_variant.cpp
     src/engine/categories.cpp
     src/engine/download_engine.cpp
     src/engine/engine_ftp_hls.cpp
+    src/engine/engine_dash_mse.cpp
     src/engine/hls.cpp
     src/engine/segment_plan.cpp
     src/engine/split_policy.cpp
@@ -235,6 +241,7 @@ if(SWIFTSDM_BUILD_UI)
         src/ui/main_window_dialogs.cpp
         src/ui/main_window_queue.cpp
         src/ui/main_window_shutdown.cpp
+        src/ui/media_probe_task.cpp
     )
     target_link_libraries(swiftdm PRIVATE Qt6::Network Qt6::Widgets)
     target_compile_definitions(swiftdm PRIVATE SWIFTSDM_WITH_GUI)

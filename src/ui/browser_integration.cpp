@@ -11,9 +11,12 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
+#include <QUrlQuery>
 
+#include <cmath>
 #include <utility>
 
+#include "core/browser_token.h"
 #include "swiftdm/version.h"
 
 namespace swiftdm::ui {
@@ -104,9 +107,209 @@ bool is_download_url(const QString& text) {
            url.userName().isEmpty() && url.password().isEmpty();
 }
 
+constexpr qsizetype kMaxPostBytes = 256 * 1024;
+constexpr int kMaxExtraHeaders = 16;
+constexpr qsizetype kMaxUrlLength = 8192;
+
+// Structured, domain-scoped cookies. Older extension builds sent an empty
+// string when no cookie permission was granted; that still means "no cookies",
+// while a raw Cookie header (which would bypass domain scoping) is rejected.
+bool cookies_are_valid(const QJsonValue& cookies, const QUrl& download_url) {
+    if (cookies.isUndefined()) return true;
+    if (cookies.isString()) return cookies.toString().isEmpty();
+    if (!cookies.isArray()) return false;
+
+    const QJsonArray entries = cookies.toArray();
+    if (entries.size() > 256) return false;
+    static const QRegularExpression cookie_token(
+        QStringLiteral("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"));
+    static const QRegularExpression cookie_domain(QStringLiteral("^\\.?[A-Za-z0-9.-]+$"));
+    static const QRegularExpression cookie_controls(QStringLiteral("[\\x00-\\x20\\x7f]"));
+    const QString download_host = download_url.host().toLower();
+    for (const QJsonValue& entry : entries) {
+        if (!entry.isObject()) return false;
+        const QJsonObject cookie = entry.toObject();
+        const QString domain = cookie.value(QStringLiteral("domain")).toString();
+        const QString path = cookie.value(QStringLiteral("path")).toString();
+        const QString name = cookie.value(QStringLiteral("name")).toString();
+        const QString value = cookie.value(QStringLiteral("value")).toString();
+        QString cookie_host = domain.toLower();
+        if (cookie_host.startsWith(QLatin1Char('.'))) cookie_host.remove(0, 1);
+        const bool domain_matches =
+            download_host == cookie_host ||
+            download_host.endsWith(QLatin1Char('.') + cookie_host);
+        if (!cookie_domain.match(domain).hasMatch() || domain.size() > 255 ||
+            !domain_matches || path.isEmpty() || path.size() > 2048 ||
+            !path.startsWith(QLatin1Char('/')) || cookie_controls.match(path).hasMatch() ||
+            !cookie_token.match(name).hasMatch() || value.size() > 4096 ||
+            cookie_controls.match(value).hasMatch() ||
+            !cookie.value(QStringLiteral("secure")).isBool() ||
+            !cookie.value(QStringLiteral("expires")).isDouble() ||
+            cookie.value(QStringLiteral("expires")).toDouble() < 0 ||
+            cookie.value(QStringLiteral("expires")).toDouble() > 253402300799.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Extra request headers are limited to `x-*` names: raw Cookie, Authorization
+// or Referer headers would bypass the structured cookie and referer rules.
+bool headers_are_valid(const QJsonValue& header_value) {
+    if (header_value.isUndefined()) return true;
+    if (!header_value.isArray()) return false;
+    const QJsonArray entries = header_value.toArray();
+    if (entries.size() > kMaxExtraHeaders) return false;
+    static const QRegularExpression header_name(
+        QStringLiteral("^[Xx]-[A-Za-z0-9!#$%&'*+.^_`|~-]{0,80}$"));
+    static const QRegularExpression header_controls(QStringLiteral("[\\x00-\\x1f\\x7f]"));
+    qsizetype total = 0;
+    for (const QJsonValue& entry : entries) {
+        if (!entry.isObject()) return false;
+        const QJsonObject header = entry.toObject();
+        const QString name = header.value(QStringLiteral("name")).toString();
+        const QString value = header.value(QStringLiteral("value")).toString();
+        total += name.size() + value.size();
+        if (!header_name.match(name).hasMatch() || value.size() > 2048 ||
+            header_controls.match(value).hasMatch() || total > 16384) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Adaptive (video + audio) pairs share a short opaque token so the application
+// can recognize both halves later (muxing is a later release).
+bool group_is_valid(const QJsonValue& group_value) {
+    if (group_value.isUndefined() || group_value.isNull()) return true;
+    if (!group_value.isString()) return false;
+    static const QRegularExpression group_pattern(QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
+    return group_pattern.match(group_value.toString()).hasMatch();
+}
+
+// A Referer is only replayed while the download stays on the same origin, so a
+// page URL is never leaked to a different host.
+bool referer_is_safe(const QString& referer, const QUrl& download_url) {
+    if (referer.isEmpty()) return true;
+    if (!is_http_url(referer) || referer.size() > kMaxUrlLength) return false;
+    const QUrl referer_url(referer);
+    return referer_url.scheme() == download_url.scheme() &&
+           referer_url.host().compare(download_url.host(), Qt::CaseInsensitive) == 0 &&
+           referer_url.port(0) == download_url.port(0);
+}
+
+bool user_agent_is_valid(const QString& user_agent) {
+    static const QRegularExpression controls(QStringLiteral("[\\x00-\\x1f\\x7f]"));
+    return user_agent.size() <= 2048 && !controls.match(user_agent).hasMatch();
+}
+
+// Rules shared by `addDownload` and `addMedia`: the URL, the structured cookies,
+// the same-origin referer and the extra `x-*` headers. Both commands must
+// enforce the same policy, so it lives in one place.
+bool request_is_valid(const QJsonObject& data) {
+    const QString url = data.value(QStringLiteral("url")).toString();
+    if (!is_download_url(url) || url.size() > kMaxUrlLength) return false;
+    const QUrl download_url(url);
+
+    const QString referer = data.value(QStringLiteral("referer")).toString();
+    if (!referer_is_safe(referer, download_url)) return false;
+    if (!user_agent_is_valid(data.value(QStringLiteral("userAgent")).toString())) return false;
+    if (data.value(QStringLiteral("filename")).toString().size() > 255) return false;
+    if (!cookies_are_valid(data.value(QStringLiteral("cookies")), download_url)) return false;
+    if (!headers_are_valid(data.value(QStringLiteral("headers")))) return false;
+    if (!group_is_valid(data.value(QStringLiteral("group")))) return false;
+    return true;
+}
+
+// Media-specific validation on top of request_is_valid(): the kind, the
+// variant list and the segment list (docs/spec/08-media-download.md §5.1).
+// Returns an empty string when the request may be accepted.
+QString media_request_error(const QJsonObject& data) {
+    if (!request_is_valid(data)) return QStringLiteral("invalid media request");
+
+    const QString kind = data.value(QStringLiteral("kind")).toString();
+    if (kind != QStringLiteral("file") && kind != QStringLiteral("hls") &&
+        kind != QStringLiteral("dash") && kind != QStringLiteral("mse")) {
+        return QStringLiteral("invalid media kind");
+    }
+    if (data.value(QStringLiteral("protected")).toBool(false)) {
+        return QStringLiteral("protected media cannot be downloaded");
+    }
+    static const QRegularExpression controls(QStringLiteral("[\\x00-\\x1f\\x7f]"));
+    const QString quality = data.value(QStringLiteral("quality")).toString();
+    if (quality.size() > 64 || controls.match(quality).hasMatch()) {
+        return QStringLiteral("invalid media quality label");
+    }
+    for (const char* field : {"durationSec", "positionSec"}) {
+        const QJsonValue value = data.value(QLatin1String(field));
+        if (value.isUndefined()) continue;
+        if (!value.isDouble() || !std::isfinite(value.toDouble()) || value.toDouble() < 0) {
+            return QStringLiteral("invalid media timing");
+        }
+    }
+
+    const QJsonValue candidates = data.value(QStringLiteral("candidates"));
+    if (!candidates.isUndefined()) {
+        if (!candidates.isArray()) return QStringLiteral("invalid media candidate list");
+        const QJsonArray entries = candidates.toArray();
+        if (entries.size() > 8) return QStringLiteral("too many media candidates");
+        for (const QJsonValue& entry : entries) {
+            if (!entry.isObject()) return QStringLiteral("invalid media candidate");
+            const QJsonObject candidate = entry.toObject();
+            const QString candidate_url = candidate.value(QStringLiteral("url")).toString();
+            if (!is_download_url(candidate_url) || candidate_url.size() > kMaxUrlLength) {
+                return QStringLiteral("invalid media candidate URL");
+            }
+            const QString label = candidate.value(QStringLiteral("label")).toString();
+            if (label.size() > 64 || controls.match(label).hasMatch()) {
+                return QStringLiteral("invalid media candidate label");
+            }
+            const QJsonValue bandwidth = candidate.value(QStringLiteral("bandwidth"));
+            if (!bandwidth.isUndefined() &&
+                (!bandwidth.isDouble() || !std::isfinite(bandwidth.toDouble()) ||
+                 bandwidth.toDouble() < 0)) {
+                return QStringLiteral("invalid media candidate bandwidth");
+            }
+        }
+    }
+
+    const QJsonValue segments = data.value(QStringLiteral("segments"));
+    if (!segments.isUndefined()) {
+        if (!segments.isArray()) return QStringLiteral("invalid media segment list");
+        const QJsonArray entries = segments.toArray();
+        if (entries.size() > 2000) return QStringLiteral("too many media segments");
+        qsizetype total = 0;
+        int last_order = -1;
+        for (const QJsonValue& entry : entries) {
+            if (!entry.isObject()) return QStringLiteral("invalid media segment");
+            const QJsonObject segment = entry.toObject();
+            const QString segment_url = segment.value(QStringLiteral("url")).toString();
+            if (!is_download_url(segment_url) || segment_url.size() > kMaxUrlLength) {
+                return QStringLiteral("invalid media segment URL");
+            }
+            const QString role = segment.value(QStringLiteral("role")).toString();
+            if (role != QStringLiteral("init") && role != QStringLiteral("media")) {
+                return QStringLiteral("invalid media segment role");
+            }
+            const QJsonValue order = segment.value(QStringLiteral("order"));
+            if (order.isUndefined() || !order.isDouble() || order.toDouble() < 0) {
+                return QStringLiteral("invalid media segment order");
+            }
+            // The list has to arrive in playback order, which is what the
+            // engine relies on when it appends the segments.
+            if (order.toInt() < last_order) return QStringLiteral("media segments are out of order");
+            last_order = order.toInt();
+            total += segment_url.size();
+        }
+        if (total > 512 * 1024) return QStringLiteral("media segment list is too large");
+    }
+    return {};
+}
+
 }  // namespace
 
 BrowserIntegration::BrowserIntegration(QObject* parent, quint16 port) : QObject(parent) {
+    token_path_ = QString::fromStdString(swiftdm::BrowserToken::default_path());
     connect(&server_, &QTcpServer::newConnection, this,
             &BrowserIntegration::accept_connections);
     if (!server_.listen(QHostAddress::LocalHost, port)) {
@@ -127,12 +330,50 @@ BrowserIntegration::~BrowserIntegration() {
     handshaken_.clear();
     handshake_timers_.clear();
     subscribed_.clear();
+    media_counts_.clear();
     for (QTcpSocket* socket : sockets) {
         if (!socket) continue;
         socket->disconnect(this);
         socket->abort();
         delete socket;
     }
+}
+
+bool BrowserIntegration::verify_token(const QString& candidate) const {
+    const std::string expected = swiftdm::BrowserToken::load(token_path_.toStdString());
+    return swiftdm::BrowserToken::verify(expected, candidate.toStdString());
+}
+
+bool BrowserIntegration::authorize(QTcpSocket* socket, const QString& origin,
+                                   const QString& token) {
+    if (verify_token(token)) return true;
+    // No stored token yet, or the extension lost it: ask the user once. The
+    // prompt is skipped in a headless run (no handler installed), which keeps
+    // an unattended app from pairing silently.
+    const bool paired = pairing_prompt_ ? pairing_prompt_(origin) : false;
+    if (!paired) {
+        qWarning() << "browser integration: refused an unpaired connection from" << origin;
+        handshake_error_ = QStringLiteral("unpaired client: %1").arg(origin);
+        send_close(socket, 1008);
+        return false;
+    }
+    std::string error;
+    const std::string created =
+        swiftdm::BrowserToken::create(token_path_.toStdString(), &error);
+    if (created.empty()) {
+        qWarning() << "browser integration: cannot store the pairing token:"
+                   << QString::fromStdString(error);
+        handshake_error_ = QStringLiteral("cannot store the pairing token");
+        send_close(socket, 1011);
+        return false;
+    }
+    emit clientPaired(origin);
+    send_json(socket, {{QStringLiteral("v"), 1},
+                       {QStringLiteral("event"), QStringLiteral("pair")},
+                       {QStringLiteral("data"),
+                        QJsonObject{{QStringLiteral("token"),
+                                     QString::fromStdString(created)}}}});
+    return true;
 }
 
 void BrowserIntegration::accept_connections() {
@@ -164,6 +405,7 @@ void BrowserIntegration::accept_connections() {
             handshaken_.remove(socket);
             handshake_timers_.remove(socket);
             subscribed_.remove(socket);
+            media_counts_.remove(socket);
             socket->deleteLater();
         });
         connect(socket, &QTcpSocket::errorOccurred, this,
@@ -210,12 +452,23 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
                           "Connection: close\r\n\r\n");
             socket->disconnectFromHost();
         };
-        if (lines.isEmpty() || lines.first().trimmed() != "GET / HTTP/1.1") {
+        const QByteArray request_line = lines.isEmpty() ? QByteArray() : lines.first().trimmed();
+        // `GET /` for the plain protocol, `GET /?t=<token>` once the extension
+        // holds a pairing token.
+        const QByteArray target = request_line.startsWith("GET ")
+                                      ? request_line.mid(4, request_line.indexOf(" HTTP/")
+                                                                  - 4)
+                                      : QByteArray();
+        if (!request_line.startsWith("GET ") || !target.startsWith("/") ||
+            !request_line.endsWith(" HTTP/1.1")) {
             reject(QStringLiteral("unsupported request line '%1'").arg(
-                QString::fromLatin1(lines.isEmpty() ? QByteArray()
-                                                    : lines.first().trimmed())));
+                QString::fromLatin1(request_line)));
             return;
         }
+        const QUrl target_url(QStringLiteral("http://127.0.0.1") +
+                              QString::fromLatin1(target));
+        const QString token =
+            QUrlQuery(target_url).queryItemValue(QStringLiteral("t"), QUrl::FullyDecoded);
         QHash<QByteArray, QByteArray> headers;
         for (qsizetype i = 1; i < lines.size(); ++i) {
             const QByteArray line = lines.at(i).trimmed();
@@ -260,6 +513,9 @@ void BrowserIntegration::read_socket(QTcpSocket* socket) {
         if (QTimer* timer = handshake_timers_.value(socket, nullptr)) timer->stop();
         handshake_error_.clear();
         qInfo() << "browser integration: extension connected; origin=" << origin.constData();
+        // The origin checks above are compatibility checks, not authentication.
+        // The pairing token decides whether this client may talk to the app.
+        if (!authorize(socket, QString::fromLatin1(origin), token)) return;
     }
 
     while (handshaken_.value(socket) &&
@@ -340,6 +596,42 @@ void BrowserIntegration::send_json(QTcpSocket* socket, const QJsonObject& respon
     }
 }
 
+void BrowserIntegration::send_close(QTcpSocket* socket, quint16 code) {
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState) return;
+    // A close frame carries a 2-byte big-endian status code plus a reason.
+    QByteArray payload;
+    payload.append(static_cast<char>((code >> 8) & 0xff));
+    payload.append(static_cast<char>(code & 0xff));
+    QByteArray frame;
+    frame.append(static_cast<char>(0x88));  // FIN + close
+    frame.append(static_cast<char>(payload.size()));
+    frame.append(payload);
+    socket->write(frame);
+    socket->disconnectFromHost();
+}
+
+// A page can generate thousands of segment requests, so media commands are
+// rate limited per socket: 30 per minute, counted in 10 s windows.
+bool BrowserIntegration::allow_media_command(QTcpSocket* socket) {
+    int& count = media_counts_[socket];
+    if (count >= 30) return false;
+    ++count;
+    return true;
+}
+
+void BrowserIntegration::set_media_config(bool overlay_enabled) {
+    if (media_overlay_ == overlay_enabled) return;
+    media_overlay_ = overlay_enabled;
+    if (subscribed_.isEmpty()) return;
+    const QJsonObject event{
+        {QStringLiteral("v"), 1},
+        {QStringLiteral("event"), QStringLiteral("config")},
+        {QStringLiteral("data"), QJsonObject{{QStringLiteral("mediaOverlay"), media_overlay_}}}};
+    for (QTcpSocket* socket : std::as_const(subscribed_)) {
+        send_json(socket, event);
+    }
+}
+
 void BrowserIntegration::set_status(bool waiting, int active_downloads) {
     if (waiting_ == waiting && active_downloads_ == active_downloads) return;
     waiting_ = waiting;
@@ -384,6 +676,10 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
         status.insert(QStringLiteral("waiting"), waiting_);
         status.insert(QStringLiteral("active"), active_downloads_);
         result.insert(QStringLiteral("status"), status);
+        // A freshly connected worker learns the overlay switch right away, so
+        // the button state is correct before the first page loads.
+        result.insert(QStringLiteral("config"),
+                      QJsonObject{{QStringLiteral("mediaOverlay"), media_overlay_}});
     } else if (command == QStringLiteral("showPanel")) {
         if (!data.value(QStringLiteral("visible")).isBool()) {
             ok = false;
@@ -393,73 +689,10 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
         }
     } else if (command == QStringLiteral("addDownload")) {
         const QString url = data.value(QStringLiteral("url")).toString();
-        const QJsonValue cookies = data.value(QStringLiteral("cookies"));
-        const QString referer = data.value(QStringLiteral("referer")).toString();
-        const QString user_agent = data.value(QStringLiteral("userAgent")).toString();
-        const QString filename = data.value(QStringLiteral("filename")).toString();
-        // Older extension builds sent an empty string when no cookie permission
-        // was granted; treat that as "no cookies" while rejecting raw Cookie
-        // headers (which would bypass domain scoping).
-        bool cookies_valid =
-            cookies.isUndefined() || cookies.isArray() ||
-            (cookies.isString() && cookies.toString().isEmpty());
-        const QUrl download_url(url);
-        if (cookies.isArray()) {
-            const QJsonArray entries = cookies.toArray();
-            cookies_valid = entries.size() <= 256;
-            static const QRegularExpression cookie_token(QStringLiteral("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"));
-            static const QRegularExpression cookie_domain(
-                QStringLiteral("^\\.?[A-Za-z0-9.-]+$"));
-            static const QRegularExpression cookie_controls(
-                QStringLiteral("[\\x00-\\x20\\x7f]"));
-            for (const QJsonValue& entry : entries) {
-                if (!entry.isObject()) {
-                    cookies_valid = false;
-                    break;
-                }
-                const QJsonObject cookie = entry.toObject();
-                const QString domain = cookie.value(QStringLiteral("domain")).toString();
-                const QString path = cookie.value(QStringLiteral("path")).toString();
-                const QString name = cookie.value(QStringLiteral("name")).toString();
-                const QString value = cookie.value(QStringLiteral("value")).toString();
-                QString cookie_host = domain.toLower();
-                if (cookie_host.startsWith(QLatin1Char('.'))) cookie_host.remove(0, 1);
-                const QString download_host = download_url.host().toLower();
-                const bool domain_matches = download_host == cookie_host ||
-                    download_host.endsWith(QLatin1Char('.') + cookie_host);
-                if (!cookie_domain.match(domain).hasMatch() || domain.size() > 255 ||
-                    !domain_matches || path.isEmpty() || path.size() > 2048 ||
-                    !path.startsWith(QLatin1Char('/')) || cookie_controls.match(path).hasMatch() ||
-                    !cookie_token.match(name).hasMatch() || value.size() > 4096 ||
-                    cookie_controls.match(value).hasMatch() ||
-                    !cookie.value(QStringLiteral("secure")).isBool() ||
-                    !cookie.value(QStringLiteral("expires")).isDouble() ||
-                    cookie.value(QStringLiteral("expires")).toDouble() < 0 ||
-                    cookie.value(QStringLiteral("expires")).toDouble() > 253402300799.0) {
-                    cookies_valid = false;
-                    break;
-                }
-            }
-        }
-        const bool referer_valid = referer.isEmpty() || is_http_url(referer);
-        const QUrl referer_url(referer);
-        const bool referer_is_safe = referer.isEmpty() ||
-                                     (referer_url.scheme() == download_url.scheme() &&
-                                      referer_url.host().compare(download_url.host(),
-                                                                 Qt::CaseInsensitive) == 0 &&
-                                      referer_url.port(0) == download_url.port(0));
-        const bool user_agent_valid = !user_agent.contains(
-            QRegularExpression(QStringLiteral("[\\x00-\\x1f\\x7f]")));
-
-        // POST handoffs carry a bounded body plus optional custom x-* request
-        // headers, mirroring the original extension's model. Raw Cookie or
-        // Authorization headers are never accepted here: cookies stay
-        // structured and domain-scoped.
         const QString method = data.value(QStringLiteral("method")).toString().toUpper();
         const QString post_data = data.value(QStringLiteral("postData")).toString();
         const QString post_encoding = data.value(QStringLiteral("postDataEncoding")).toString();
-        constexpr qsizetype kMaxPostBytes = 256 * 1024;
-        constexpr int kMaxExtraHeaders = 16;
+
         bool method_valid = method.isEmpty() || method == QStringLiteral("GET");
         if (method == QStringLiteral("POST")) method_valid = !post_data.isEmpty();
         bool post_valid = post_data.isEmpty() && post_encoding.isEmpty();
@@ -477,45 +710,7 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
             post_valid = encoding_ok && body_ok &&
                          (method.isEmpty() || method == QStringLiteral("POST"));
         }
-        const QJsonValue header_value = data.value(QStringLiteral("headers"));
-        bool headers_valid = header_value.isUndefined();
-        if (header_value.isArray()) {
-            const QJsonArray entries = header_value.toArray();
-            headers_valid = entries.size() <= kMaxExtraHeaders;
-            static const QRegularExpression header_name(
-                QStringLiteral("^[Xx]-[A-Za-z0-9!#$%&'*+.^_`|~-]{0,80}$"));
-            static const QRegularExpression header_controls(
-                QStringLiteral("[\\x00-\\x1f\\x7f]"));
-            qsizetype total = 0;
-            for (const QJsonValue& entry : entries) {
-                if (!headers_valid) break;
-                if (!entry.isObject()) {
-                    headers_valid = false;
-                    break;
-                }
-                const QJsonObject header = entry.toObject();
-                const QString name = header.value(QStringLiteral("name")).toString();
-                const QString value = header.value(QStringLiteral("value")).toString();
-                total += name.size() + value.size();
-                if (!header_name.match(name).hasMatch() || value.size() > 2048 ||
-                    header_controls.match(value).hasMatch() || total > 16384) {
-                    headers_valid = false;
-                }
-            }
-        }
-        // Adaptive (video + audio) pairs share a short opaque token so the app
-        // can recognize both halves later (muxing is a later release).
-        const QJsonValue group_value = data.value(QStringLiteral("group"));
-        bool group_valid = group_value.isUndefined() || group_value.isNull();
-        if (!group_valid && group_value.isString()) {
-            static const QRegularExpression group_pattern(
-                QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
-            group_valid = group_pattern.match(group_value.toString()).hasMatch();
-        }
-        if (!is_download_url(url) || !cookies_valid || !referer_valid || !referer_is_safe ||
-            referer.size() > 8192 || !user_agent_valid || user_agent.size() > 2048 ||
-            filename.size() > 255 || !method_valid || !post_valid || !headers_valid ||
-            !group_valid) {
+        if (!request_is_valid(data) || !method_valid || !post_valid) {
             ok = false;
             error = QStringLiteral("invalid download request");
         } else {
@@ -526,6 +721,24 @@ QJsonObject BrowserIntegration::handle_message(QTcpSocket* socket, const QJsonOb
             // prompts). Queue the delivery so the reply is written first.
             QMetaObject::invokeMethod(
                 this, [this, data] { emit downloadRequested(data); },
+                Qt::QueuedConnection);
+        }
+    } else if (command == QStringLiteral("addMedia")) {
+        // Media handoff (docs/spec/08-media-download.md §5.1). The same request
+        // rules as addDownload apply, plus the media-specific fields below.
+        const QString error_text = media_request_error(data);
+        if (!error_text.isEmpty()) {
+            ok = false;
+            error = error_text;
+        } else if (!allow_media_command(socket)) {
+            ok = false;
+            error = QStringLiteral("too many media requests; try again later");
+        } else {
+            result.insert(QStringLiteral("accepted"), true);
+            // Same reason as addDownload: the reply must be written before the
+            // confirmation window blocks the event loop.
+            QMetaObject::invokeMethod(
+                this, [this, data] { emit mediaRequested(data); },
                 Qt::QueuedConnection);
         }
     } else {

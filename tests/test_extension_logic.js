@@ -15,8 +15,10 @@ const sharedDir = path.join(root, "ext", "shared");
 const chromiumDir = path.join(root, "ext", "chromium");
 const firefoxDir = path.join(root, "ext", "firefox");
 
-// Loaded before core.js, in this order, in both browsers.
-const bootFiles = ["api.js", "cookie-permission.js", "action-icon.js"];
+// Loaded before core.js, in this order, in both browsers. The media helpers are
+// part of the worker bootstrap too (they hold the pure detection/segment logic).
+const bootFiles = ["api.js", "cookie-permission.js", "action-icon.js",
+                   "media-detect.js", "media-mse.js"];
 
 let failures = 0;
 
@@ -60,7 +62,12 @@ function createEnvironment(options = {}) {
     permissionChecks: [],
     permissionRemoves: [],
     menuCreates: [],
+    tabMessages: [],
+    scriptInjections: [],
   };
+  // The DOM side of media detection is mocked: the popup asks the worker for a
+  // merged list and the worker asks each frame for its best element.
+  let domCandidates = [];
   let onInstalled = null;
   let onStorageChanged = null;
   let onCreated = null;
@@ -156,6 +163,20 @@ function createEnvironment(options = {}) {
     },
     tabs: {
       onRemoved: { addListener(fn) { onTabRemoved = fn; } },
+      query: callbackApi(() => [{ id: 1, url: "https://example.com/watch", title: "Video" }]),
+      sendMessage: callbackApi((tabId, message) => {
+        calls.tabMessages.push({ tabId, message });
+        if (message?.type === "scan-media") {
+          return domCandidates.map((candidate) => ({ ok: true, candidate }));
+        }
+        return { ok: true };
+      }),
+    },
+    scripting: {
+      executeScript: callbackApi((details) => {
+        calls.scriptInjections.push(details);
+        return [{ result: true }];
+      }),
     },
     downloads: {
       onCreated: { addListener(fn) { onCreated = fn; } },
@@ -266,6 +287,7 @@ function createEnvironment(options = {}) {
     onHeadersReceived: () => onHeadersReceived,
     onMenuClicked: () => onMenuClicked,
     onTabRemoved: () => onTabRemoved,
+    setDomCandidates: (candidates) => { domCandidates = candidates; },
     context,
   };
 }
@@ -650,14 +672,21 @@ async function testDetectedMediaStreams() {
     media("https://cdn.example/sd/audio.mp4", "audio/mp4", 2);
     media("https://cdn.example/page.html", "text/html", 2);
 
-    let response = null;
-    env.onMessage()({ type: "get-media-streams", tabId: 1 }, {}, (value) => { response = value; });
+    // The handler answers asynchronously (it also asks the content script for a
+    // DOM scan), so each request waits for its response.
+    const ask = async (tabId) => {
+      let value = null;
+      env.onMessage()({ type: "get-media-streams", tabId }, {}, (answer) => { value = answer; });
+      await settle(() => value !== null);
+      return value;
+    };
+
+    let response = await ask(1);
     check(response?.ok === true && response.media.hls.length === 1,
       "HLS playlists are reported for the tab that requested them");
     check(response.media.pairs.length === 0, "separate tabs are not paired");
 
-    response = null;
-    env.onMessage()({ type: "get-media-streams", tabId: 2 }, {}, (value) => { response = value; });
+    response = await ask(2);
     check(response?.media.pairs.length === 1, "video and audio tracks in one tab are paired");
     check(response.media.pairs[0].video.endsWith("video.mp4") &&
           response.media.pairs[0].audio.endsWith("audio.mp4"),
@@ -665,15 +694,13 @@ async function testDetectedMediaStreams() {
     check(/^pair-[0-9a-f]{8}$/.test(response.media.pairs[0].group),
       "the pair carries a short group token");
 
-    response = null;
-    env.onMessage()({ type: "get-media-streams", tabId: 3 }, {}, (value) => { response = value; });
+    response = await ask(3);
     check(response?.media.pairs.length === 0 && response.media.hls.length === 0,
       "pages without media streams report nothing");
 
     // A closed tab drops its observations.
     env.onTabRemoved()(2);
-    response = null;
-    env.onMessage()({ type: "get-media-streams", tabId: 2 }, {}, (value) => { response = value; });
+    response = await ask(2);
     check(response?.media.pairs.length === 0,
       "closing a tab forgets the media observed in it");
   });
@@ -690,6 +717,7 @@ async function testPairedHandoffSharesTheGroupToken() {
 
     let media = null;
     env.onMessage()({ type: "get-media-streams", tabId: 4 }, {}, (value) => { media = value; });
+    await settle(() => media !== null);
     const pair = media.media.pairs[0];
 
     for (const url of [pair.video, pair.audio]) {
@@ -752,6 +780,184 @@ async function testStatusChannel() {
   });
 }
 
+async function testMediaDomScanIsMerged() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    const headers = env.onHeadersReceived();
+    headers({ url: "https://cdn.example/watch.m3u8", tabId: 9, responseHeaders: [
+      { name: "Content-Type", value: "application/vnd.apple.mpegurl" }
+    ] });
+
+    // The content script reports the media element it found.
+    env.setDomCandidates([{
+      url: "https://cdn.example/direct.mp4",
+      kind: "file",
+      elementTag: "video",
+      durationSec: 120,
+      positionSec: 8,
+      protected: false,
+      videoWidth: 1920,
+      videoHeight: 1080
+    }]);
+
+    let media = null;
+    env.onMessage()({ type: "get-media-streams", tabId: 9 }, {}, (value) => { media = value; });
+    await settle(() => media !== null);
+
+    check(media?.ok === true, "the merged media list answers");
+    check(media.media.hls.length === 1, "the sniffed HLS playlist is still listed");
+    check(media.media.dom.length === 1, "the DOM candidate is merged in");
+    check(media.media.dom[0].url === "https://cdn.example/direct.mp4",
+      "the DOM candidate keeps its URL");
+    check(media.media.dom[0].videoHeight === 1080, "the DOM candidate keeps its size");
+
+    check(env.calls.tabMessages.some((entry) => entry.message?.type === "scan-media"),
+      "the worker asks the content script for a scan");
+  });
+}
+
+async function testMseStreamIsOffered() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    const headers = env.onHeadersReceived();
+    // A blob: player fetches an init segment and numbered media segments.
+    headers({ url: "https://cdn.example/mse/init.mp4", tabId: 11,
+      responseHeaders: [{ name: "Content-Type", value: "video/iso.segment" }] });
+    for (let i = 1; i <= 3; i++) {
+      headers({ url: `https://cdn.example/mse/seg-${i}.m4s`, tabId: 11,
+        responseHeaders: [{ name: "Content-Type", value: "video/iso.segment" }] });
+    }
+
+    let media = null;
+    env.onMessage()({ type: "get-media-streams", tabId: 11 }, {}, (value) => { media = value; });
+    await settle(() => media !== null);
+
+    check(media.media.mse.length === 1, "one MSE stream is reported");
+    check(media.media.mse[0].segmentCount === 3, "the media segment count is reported");
+    check(media.media.mse[0].initUrl.endsWith("init.mp4"), "the init segment is reported");
+    check(media.media.mse[0].segments[0].role === "init", "the init segment sorts first");
+    check(media.media.mse[0].segments[1].url.endsWith("seg-1.m4s"),
+      "the media segments keep their order");
+    check(media.media.mse[0].incomplete === false, "a complete log is not marked incomplete");
+    check(media.media.pairs.length === 0, "segments are not offered as a track pair");
+  });
+}
+
+async function testAddMediaHandoff() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    let response = null;
+    env.onMessage()({
+      type: "download-media",
+      tabId: 3,
+      candidate: {
+        url: "https://cdn.example/master.m3u8",
+        kind: "hls",
+        pageUrl: "https://cdn.example/watch",
+        pageTitle: "Episode 1",
+        quality: "1080p",
+        group: "pair-1234abcd",
+        durationSec: 600,
+        positionSec: 30,
+        elementTag: "video",
+        protected: false,
+        candidates: [
+          { url: "https://cdn.example/1080.m3u8", kind: "hls", label: "1080p", bandwidth: 5000000 },
+          { url: "https://cdn.example/720.m3u8", kind: "hls", label: "720p", bandwidth: 2500000 }
+        ]
+      }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === true, "the media handoff is accepted");
+
+    await settle(() => env.calls.sockets.some((socket) =>
+      socket.sent.some((message) => message.cmd === "addMedia")));
+    const socket = env.calls.sockets.find((candidate) =>
+      candidate.sent.some((message) => message.cmd === "addMedia"));
+    const sent = socket.sent.find((message) => message.cmd === "addMedia");
+    check(Boolean(sent), "addMedia is sent to the app");
+    check(sent.data.url === "https://cdn.example/master.m3u8", "addMedia carries the URL");
+    check(sent.data.kind === "hls", "addMedia carries the kind");
+    check(sent.data.quality === "1080p", "addMedia carries the quality label");
+    check(sent.data.group === "pair-1234abcd", "addMedia carries the group token");
+    check(sent.data.candidates.length === 2, "addMedia carries the variant list");
+    check(sent.data.durationSec === 600, "addMedia carries the duration");
+    check(sent.data.positionSec === 30, "addMedia carries the play position");
+    check(sent.data.pageTitle === "Episode 1", "addMedia carries the page title");
+    check(sent.data.protected === false, "addMedia carries the protection flag");
+  });
+}
+
+async function testMediaRejectsProtectedAndBlob() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+
+    let response = null;
+    env.onMessage()({
+      type: "download-media",
+      candidate: { url: "https://cdn.example/drm.mpd", kind: "dash", protected: true }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === false, "protected media is refused");
+    check(/DRM|protected/i.test(response.error ?? ""), "the refusal explains DRM");
+
+    response = null;
+    env.onMessage()({
+      type: "download-media",
+      candidate: { url: "blob:https://site.example/abc", kind: "file" }
+    }, {}, (value) => { response = value; });
+    await settle(() => response !== null);
+    check(response?.ok === false, "a blob: URL without segments is refused");
+
+    check(!env.calls.sockets.some((socket) =>
+      socket.sent.some((message) => message.cmd === "addMedia")),
+      "no addMedia is sent for a refused candidate");
+  });
+}
+
+async function testConfigPushReachesContentScripts() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    env.onMessage()({ type: "get-connection-status" }, {}, () => {});
+    await settle(() => env.calls.sockets.some((candidate) =>
+      candidate.sent.some((message) => message.cmd === "subscribe")));
+
+    const socket = env.calls.sockets.find((candidate) =>
+      candidate.sent.some((message) => message.cmd === "subscribe"));
+    check(Boolean(socket), "a socket subscribes to app events");
+    socket.emit("message", {
+      data: JSON.stringify({ v: 1, event: "config", data: { mediaOverlay: false } })
+    });
+    await settle(() => env.calls.storageSets.some((entry) => entry.appConfig));
+    check(env.calls.storageSets.some((entry) => entry.appConfig?.mediaOverlay === false),
+      "the pushed config is persisted");
+    await settle(() => env.calls.tabMessages.some((entry) =>
+      entry.message?.type === "media-config" && entry.message.mediaOverlay === false));
+    check(env.calls.tabMessages.some((entry) =>
+      entry.message?.type === "media-config" && entry.message.mediaOverlay === false),
+      "the content scripts are told to hide the overlay");
+  });
+}
+
+async function testPairingTokenTravelsOnTheSocketUrl() {
+  await forEachFlavour(async ({ check, createEnvironment }) => {
+    const env = createEnvironment();
+    env.onMessage()({ type: "get-connection-status" }, {}, () => {});
+    await settle(() => env.calls.sockets.some((candidate) =>
+      candidate.sent.some((message) => message.cmd === "subscribe")));
+    const socket = env.calls.sockets.find((candidate) =>
+      candidate.sent.some((message) => message.cmd === "subscribe"));
+    check(!socket.url.includes("?t="), "the first connection carries no token");
+
+    socket.emit("message", {
+      data: JSON.stringify({ v: 1, event: "pair", data: { token: "tok-abc" } })
+    });
+    await settle(() => env.calls.storageSets.some((entry) => entry.pairingToken === "tok-abc"));
+    check(env.calls.storageSets.some((entry) => entry.pairingToken === "tok-abc"),
+      "the pairing token is stored");
+  });
+}
+
 (async () => {
   await testSuccessfulHandoff();
   await testFirefoxItemWithoutFinalUrl();
@@ -775,6 +981,12 @@ async function testStatusChannel() {
   await testPairedHandoffSharesTheGroupToken();
   await testPairTokenIsSanitized();
   await testStatusChannel();
+  await testMediaDomScanIsMerged();
+  await testMseStreamIsOffered();
+  await testAddMediaHandoff();
+  await testMediaRejectsProtectedAndBlob();
+  await testConfigPushReachesContentScripts();
+  await testPairingTokenTravelsOnTheSocketUrl();
 
   if (failures) {
     console.error(`${failures} failure(s)`);

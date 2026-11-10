@@ -409,7 +409,7 @@ int main(int argc, char** argv) {
             control_heights << widget->height();
         }
     }
-    check(control_heights.size() == 8, "the dialog has eight controls");
+    check(control_heights.size() == 9, "the dialog has nine controls");
     bool same_height = !control_heights.isEmpty();
     for (const int height : control_heights) {
         if (height != control_heights.first()) same_height = false;

@@ -40,7 +40,9 @@ Neat Download Manager.
 
 ## Features
 
-- Download over HTTP, HTTPS, FTP, FTPS, and HLS playlists (`.m3u8`).
+- Download over HTTP, HTTPS, FTP, FTPS, HLS playlists (`.m3u8`), and DASH
+  manifests (`.mpd`); from the browser extension also recorded MSE (`blob:`)
+  segments.
 - Split HTTP/HTTPS downloads across multiple connections; configure the
   connection count. When one connection is much slower than the others, a free
   slot splits its remaining range so the tail is fetched in parallel too,
@@ -83,6 +85,11 @@ Neat Download Manager.
 - Download from the command line without opening the GUI.
 - Preview integration with the Chromium and Firefox extensions: send links or
   pages, intercept HTTP(S) downloads, and detect playlists/media pairs.
+- Media downloads from the extension: a floating button over playing videos and
+  a list in the popup offer every HLS/DASH rendition and recorded `blob:` (MSE)
+  stream; the confirmation window adds a quality selector, DRM-protected
+  streams are refused, and the first extension connection is approved once
+  through a pairing prompt (trust-on-first-use token).
 - Browser download confirmations appear while link metadata is checked; the
   initial transfer reuses that probe instead of repeating network checks.
 - Choose `Download Later` in that confirmation to add the link to the list
@@ -126,7 +133,7 @@ Create a Debian package with CPack, or use the CMake install rules:
 ```sh
 cd build
 cpack
-sudo apt install ./swiftdm_0.25.0_amd64.deb
+sudo apt install ./swiftdm_0.26.0_amd64.deb
 ```
 
 ```sh
@@ -229,9 +236,10 @@ start /wait swiftdm.exe get https://example.org/file.zip --dir %USERPROFILE%\Dow
 ```
 
 The CLI options are the same as on Linux; run `swiftdm.exe get --help` for the
-full list. Version 0.25.0 is the port tracking `main` (a Windows installer that
+full list. Version 0.26.0 is the port tracking `main` (a Windows installer that
 asks whether to install for the current user or all users, speed for downloads of
-unknown size, FTP and HLS, dynamic segment split when a connection slot is free,
+unknown size, FTP, HLS and DASH with the browser media detector, dynamic segment
+split when a connection slot is free,
 the Chromium and Firefox extensions as release assets,
 the single-instance guard for the shortcut, terminal start and
 login entry, connection-limit aware parallel plan, redownload from the item

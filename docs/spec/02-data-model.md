@@ -245,3 +245,6 @@ Implemented 0.20.0:
 
 Windows keeps settings in the registry (E6–E8); SwiftDM uses an INI file
 `~/.config/swiftdm/swiftdm.ini` with the same key names (see 05-settings.md).
+Next to it, `browser-token` holds the browser-integration pairing token (32
+random bytes, base64url, mode 0600); deleting it revokes every paired extension
+and the next connection asks again (see 08-media-download.md §7).

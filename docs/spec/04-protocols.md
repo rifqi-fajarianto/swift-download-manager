@@ -64,6 +64,7 @@ Commands (v1 of our extension protocol):
 |---|---|---|
 | `ping` | ext → app | `{}` → `{ "pong": true, "version": "0.x.y" }` |
 | `addDownload` | ext → app | `{ "url", "pageUrl", "pageTitle", "cookies", "referer", "filename"?, "userAgent"?, "method"?, "postData"?, "postDataEncoding"?: "utf8"\|"base64", "headers"?: [{ "name": "x-…", "value" }], "group"? }` |
+| `addMedia` | ext → app | `{ "url", "kind": "file"\|"hls"\|"dash"\|"mse", "pageUrl"?, "pageTitle"?, "referer"?, "userAgent"?, "cookies"?, "headers"?, "filename"?, "quality"?, "group"?, "durationSec"?, "positionSec"?, "elementTag"?, "protected"?, "candidates"?: [{ "url", "kind", "label"?, "bandwidth"? }], "segments"?: [{ "url", "role": "init"\|"media", "order", "contentType"? }] }`; see `08-media-download.md` §5.1 |
 | `showPanel` | ext → app | `{ "visible": true|false }` |
 | `getVersion` | ext → app | `{}` → `{ "version" }` |
 | `subscribe` | ext → app | `{}` → `{ "subscribed": true, "version", "status": { "waiting", "active" } }`; the socket then receives `{ "v":1, "event":"status", "data": { "waiting", "active" } }` frames whenever the app's active-download count changes |
@@ -130,7 +131,19 @@ subprotocol during the handshake:
 Ordinary web origins and malformed extension origins are rejected, the rejection
 is logged, and the reason is shown in the Extensions dialog. An
 incomplete WebSocket handshake is closed after five seconds so it cannot occupy
-one of the bounded client slots indefinitely. Both extensions send downloads
+one of the bounded client slots indefinitely.
+
+Trust-on-first-use pairing (0.26.0): a first connection without a token is
+refused unless the user approves a modal prompt naming the origin. On approval
+the app writes a 32-byte base64url token to
+`$XDG_CONFIG_HOME/swiftdm/browser-token` (mode 0600) and sends
+`{ "event": "pair", "data": { "token": "…" } }`; later handshakes carry it as
+`GET /?t=<token>`. A wrong or missing token after pairing is refused the same
+way, and the extension clears its stored token and retries the prompt once.
+Deleting the file revokes every paired extension. Protocol details are in
+`08-media-download.md` §7.
+
+Both extensions send downloads
 either from an explicit context-menu/popup action or by intercepting HTTP(S)
 downloads, and they share one set of sources in `ext/shared/` behind an `api.js`
 adapter that hides the callback-based `chrome.*` and promise-based `browser.*`

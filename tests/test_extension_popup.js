@@ -97,6 +97,15 @@ check(!/\bbrowser\.(runtime|storage|tabs|action|menus|permissions|cookies|downlo
   "popup.js goes through swiftdmApi, not browser.*");
 check(script.includes("swiftdmApi."), "popup.js uses the shared API layer");
 
+// The media list offers every detection source: HLS, DASH, adaptive pairs, the
+// DOM player and reconstructed MSE streams (docs/spec/08-media-download.md).
+for (const kind of ["hls", "dash", "pairs", "dom", "mse"]) {
+  check(script.includes(`detected.${kind}`), `popup.js reads detected.${kind}`);
+}
+check(script.includes("download-media"), "popup.js hands media off with download-media");
+check(script.includes("get-media-streams"), "popup.js asks the worker for the media list");
+check(/protected/.test(script), "popup.js knows about protected media");
+
 // Both manifests must describe a Manifest V3 extension with the same version,
 // the same popup and the icons the popup references.
 const manifests = {};
@@ -126,7 +135,9 @@ for (const [name, dir] of Object.entries(extensionDirs)) {
   // so the source is what has to exist; the manifest and the bootstrap are the
   // browser directory's own files.
   for (const asset of ["popup.html", "popup.css", "popup.js", "api.js",
-                       "cookie-permission.js", "action-icon.js"]) {
+                       "cookie-permission.js", "action-icon.js",
+                       "media-detect.js", "media-mse.js", "content.js",
+                       "content.css", "page-hook.js"]) {
     check(fs.existsSync(path.join(sharedDir, asset)), `ext/shared ships ${asset}`);
   }
   for (const size of ["16", "32", "48", "128"]) {
@@ -135,6 +146,32 @@ for (const [name, dir] of Object.entries(extensionDirs)) {
   }
   check(fs.existsSync(path.join(dir, "background.js")),
     `${name} directory ships its background bootstrap`);
+
+  // Media detection runs as a content script in every frame; the MAIN-world
+  // hook has to be web accessible so the page can load it.
+  const contentScripts = manifest.content_scripts ?? [];
+  const mediaScripts = contentScripts.find((entry) =>
+    (entry.js ?? []).includes("content.js"));
+  check(Boolean(mediaScripts), `${name} manifest injects content.js`);
+  if (mediaScripts) {
+    check(mediaScripts.all_frames === true, `${name} content script runs in all frames`);
+    check(mediaScripts.run_at === "document_start",
+      `${name} content script runs at document_start`);
+    check((mediaScripts.js ?? []).indexOf("media-detect.js") >= 0 &&
+          (mediaScripts.js ?? []).indexOf("media-mse.js") >= 0,
+      `${name} content script loads the media helpers first`);
+    check((mediaScripts.js ?? []).indexOf("media-detect.js") <
+          (mediaScripts.js ?? []).indexOf("content.js"),
+      `${name} media helpers load before content.js`);
+    check((mediaScripts.css ?? []).includes("content.css"),
+      `${name} content script ships its stylesheet`);
+  }
+  const resources = (manifest.web_accessible_resources ?? [])
+    .flatMap((entry) => entry.resources ?? []);
+  check(resources.includes("page-hook.js"),
+    `${name} exposes page-hook.js to the page world`);
+  check(manifest.permissions?.includes("scripting"),
+    `${name} manifest requests scripting`);
 }
 
 if (manifests.chromium && manifests.firefox) {

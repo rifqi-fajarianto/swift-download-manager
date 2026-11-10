@@ -30,4 +30,8 @@ std::string resolve_playlist_uri(const std::string& base_url, const std::string&
 // type (application/vnd.apple.mpegurl, application/x-mpegURL).
 bool is_hls_url(const std::string& url, const std::string& mime_type);
 
+// Returns the directory portion of a URL (everything up to and including the
+// last '/'). Used by both HLS and DASH for relative URI resolution.
+std::string directory_of(const std::string& url);
+
 }  // namespace swiftdm

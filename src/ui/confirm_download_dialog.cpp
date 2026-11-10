@@ -108,12 +108,38 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     save_section->parentWidget()->setObjectName("confirm_save_section");
 
     // URL: full value in a read-only field (selectable and scrollable).
-    auto* url_edit = new QLineEdit(url, this);
-    url_edit->setObjectName("confirm_url");
-    url_edit->setReadOnly(true);
-    url_edit->setCursorPosition(0);
-    url_edit->setToolTip(url);
-    save_section->addRow(tr("URL:"), url_edit);
+    url_edit_ = new QLineEdit(url, this);
+    url_edit_->setObjectName("confirm_url");
+    url_edit_->setReadOnly(true);
+    url_edit_->setCursorPosition(0);
+    url_edit_->setToolTip(url);
+    save_section->addRow(tr("URL:"), url_edit_);
+
+    // Quality selector: hidden until populated with variants (HLS/DASH).
+    quality_box_ = new QComboBox(this);
+    quality_box_->setObjectName("confirm_quality");
+    quality_box_->setMaximumWidth(260);
+    quality_row_ = new QWidget(this);
+    auto* quality_layout = new QHBoxLayout(quality_row_);
+    quality_layout->setContentsMargins(0, 0, 0, 0);
+    quality_layout->setSpacing(0);
+    quality_layout->addWidget(quality_box_);
+    quality_layout->addStretch(1);
+    save_section->addRow(tr("Quality:"), quality_row_);
+    quality_label_ = qobject_cast<QLabel*>(save_section->labelForField(quality_row_));
+    quality_row_->hide();
+    if (quality_label_) quality_label_->hide();
+
+    connect(quality_box_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index >= 0 && index < media_variants_.size()) {
+            const auto& v = media_variants_[index];
+            url_edit_->setText(QString::fromStdString(v.url));
+            url_edit_->setToolTip(QString::fromStdString(v.url));
+            if (v.size_estimate > 0) {
+                size_label_->setText(QString::fromStdString(swiftdm::format_bytes(v.size_estimate, 3)));
+            }
+        }
+    });
 
     // Category: extension-based default, overridable by the user.
     category_box_ = new QComboBox(this);
@@ -180,7 +206,7 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     layout->addLayout(buttons);
 
     // Every input and button gets the same height.
-    const QList<QWidget*> controls = {url_edit, category_box_, location_edit_,
+    const QList<QWidget*> controls = {url_edit_, quality_box_, category_box_, location_edit_,
                                       browse_button, download_button_, later_button_,
                                       queue_button_, cancel_button};
     const int control_height = common_control_height(controls);
@@ -377,6 +403,44 @@ bool ConfirmDownloadDialog::confirm_download() {
     }
     accept();
     return true;
+}
+
+void ConfirmDownloadDialog::set_media_variants(const QVector<MediaVariant>& variants) {
+    media_variants_ = variants;
+    quality_box_->blockSignals(true);
+    quality_box_->clear();
+    for (const auto& v : variants) {
+        quality_box_->addItem(QString::fromStdString(v.label));
+    }
+    quality_box_->blockSignals(false);
+
+    // A single rendition (plain file, MSE) needs no selector.
+    if (variants.size() > 1) {
+        quality_row_->show();
+        if (quality_label_) quality_label_->show();
+        quality_box_->setCurrentIndex(0);
+    } else {
+        quality_row_->hide();
+        if (quality_label_) quality_label_->hide();
+        quality_box_->setCurrentIndex(variants.isEmpty() ? -1 : 0);
+    }
+
+    if (!variants.isEmpty()) {
+        url_edit_->setText(QString::fromStdString(variants.front().url));
+        url_edit_->setToolTip(QString::fromStdString(variants.front().url));
+        if (variants.front().size_estimate > 0) {
+            size_label_->setText(QString::fromStdString(
+                swiftdm::format_bytes(variants.front().size_estimate, 3)));
+        }
+    }
+}
+
+std::optional<MediaVariant> ConfirmDownloadDialog::selected_variant() const {
+    const int idx = quality_box_->currentIndex();
+    if (idx >= 0 && idx < media_variants_.size()) {
+        return media_variants_[idx];
+    }
+    return std::nullopt;
 }
 
 void ConfirmDownloadDialog::update_file_label() {

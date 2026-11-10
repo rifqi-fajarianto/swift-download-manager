@@ -54,6 +54,8 @@ std::string scheme_and_authority(const std::string& url) {
     return path_start == std::string::npos ? url : url.substr(0, path_start);
 }
 
+}  // namespace
+
 std::string directory_of(const std::string& url) {
     const size_t scheme_end = url.find("://");
     const size_t slash = url.rfind('/');
@@ -63,8 +65,6 @@ std::string directory_of(const std::string& url) {
     }
     return url.substr(0, slash + 1);
 }
-
-}  // namespace
 
 bool parse_hls_playlist(const std::string& text, HlsPlaylist* out, std::string* error) {
     if (!out) {

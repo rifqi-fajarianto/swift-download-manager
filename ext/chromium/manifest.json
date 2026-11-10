@@ -2,11 +2,26 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu8okC1PU1pDeEgKCOVhzUsPKL+3+Ux2lErbv4em++BL3I1BviM1eufHnggTi/2QWWUCO4wgPt0Lw/u454ag54JsYWv+/pwdDkZe7y5COuwMreY//zR+gQWm6YUYSW7svYqxoRDE+JRVNxp5UZ/BOy0c9o5c/P3XHUVEAhjmPPNIIveVetanXP/SW/9Rjwpnu2ZkO16Z8m/meG9n10YewAczXG5fvizekd9xa/B5IgZ6iGMgejTtFDF1iOMJkvtWYin7y7MOC2UgJ7RcZ2rhSSUix9tQQINie0okFfFG9IM5FL44JPpl8Fz6KxxXMfYPsb4UQLJ+0MNiwIjGFWylmfwIDAQAB",
   "name": "SwiftDM Browser Integration",
-  "version": "0.6.0",
-  "description": "Send links, pages, POST downloads and custom headers from Chromium browsers to SwiftDM.",
-  "permissions": ["activeTab", "contextMenus", "downloads", "storage", "webRequest"],
+  "version": "0.7.0",
+  "description": "Send links, pages, POST downloads, custom headers and the video playing in the browser to SwiftDM.",
+  "permissions": ["activeTab", "contextMenus", "downloads", "scripting", "storage", "webRequest"],
   "optional_permissions": ["cookies"],
   "host_permissions": ["http://127.0.0.1:10007/*", "http://*/*", "https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["media-detect.js", "media-mse.js", "content.js"],
+      "css": ["content.css"],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-hook.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

@@ -44,9 +44,31 @@ add_executable(test_ca_bundle test_ca_bundle.cpp)
 target_link_libraries(test_ca_bundle PRIVATE swiftdm_core)
 add_test(NAME ca_bundle COMMAND test_ca_bundle)
 
+# Pairing token for the browser integration (docs/spec/08-media-download.md §7).
+add_executable(test_browser_token test_browser_token.cpp)
+target_link_libraries(test_browser_token PRIVATE swiftdm_core)
+add_test(NAME browser_token COMMAND test_browser_token)
+
+add_executable(test_xml_lite test_xml_lite.cpp)
+target_link_libraries(test_xml_lite PRIVATE swiftdm_core)
+add_test(NAME xml_lite COMMAND test_xml_lite)
+
+add_executable(test_dash test_dash.cpp)
+target_link_libraries(test_dash PRIVATE swiftdm_core)
+add_test(NAME dash COMMAND test_dash)
+
+add_executable(test_mp4_boxes test_mp4_boxes.cpp)
+target_link_libraries(test_mp4_boxes PRIVATE swiftdm_core)
+add_test(NAME mp4_boxes COMMAND test_mp4_boxes)
+
 add_executable(test_http test_http.cpp)
 target_link_libraries(test_http PRIVATE swiftdm_core)
 add_test(NAME http COMMAND test_http)
+
+# DASH and MSE engine paths against the local HTTP fixtures.
+add_executable(test_engine_dash_mse test_engine_dash_mse.cpp)
+target_link_libraries(test_engine_dash_mse PRIVATE swiftdm_core)
+add_test(NAME engine_dash_mse COMMAND test_engine_dash_mse)
 
 # The extension logic runs headlessly with mocked Chrome APIs and WebSocket.
 find_program(NODE_EXECUTABLE node)
@@ -59,6 +81,12 @@ if(NODE_EXECUTABLE)
     # test guards the archive layout users load with "Load unpacked".
     add_test(NAME extension_package
         COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_extension_package.js")
+    # Media detection and MSE reconstruction are pure logic; the Node harness
+    # keeps them testable without a browser or a GUI.
+    add_test(NAME media_detect
+        COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_media_detect.js")
+    add_test(NAME media_mse
+        COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_media_mse.js")
 endif()
 
 if(SWIFTSDM_BUILD_UI)

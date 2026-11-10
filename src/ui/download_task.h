@@ -14,6 +14,7 @@
 
 #include "net/http.h"
 #include "store/settings.h"
+#include "ui/media_variant.h"
 
 namespace swiftdm::ui {
 
@@ -46,6 +47,13 @@ class DownloadTask : public QObject {
         // "name (N)" variant. Only the Redownload action sets this, after the
         // user confirmed the overwrite.
         bool overwrite = false;
+        // Media handoff (docs/spec/08-media-download.md): the kind selects the
+        // engine path; manifest_url/variant_id describe the chosen rendition
+        // and segments carries the recorded MSE segment list.
+        QString media_kind;
+        QString manifest_url;
+        QString variant_id;
+        std::vector<swiftdm::ui::MediaSegment> segments;
     };
 
     struct Snapshot {

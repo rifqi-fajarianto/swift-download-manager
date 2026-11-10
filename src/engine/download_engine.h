@@ -9,6 +9,7 @@
 
 #include "net/http.h"
 #include "store/settings.h"
+#include "ui/media_variant.h"
 
 namespace swiftdm {
 
@@ -46,6 +47,13 @@ struct DownloadRequest {
     // once the transfer completed, so a failed redownload leaves the old file
     // untouched.
     bool overwrite = false;
+    // Media handoff (docs/spec/08-media-download.md). `media_kind` selects the
+    // DASH/MSE path; `manifest_url` and `variant_id` identify the chosen
+    // rendition; `segments` carries the recorded MSE segment list.
+    std::string media_kind;
+    std::string manifest_url;
+    std::string variant_id;
+    std::vector<ui::MediaSegment> segments;
 };
 
 struct ProgressInfo {
