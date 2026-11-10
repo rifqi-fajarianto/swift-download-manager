@@ -1,6 +1,6 @@
 ## 2. Status pengembangan (snapshot)
 
-> Snapshot terakhir: **2026-11-09**, versi kerja **0.25.0**. Status ini cepat
+> Snapshot terakhir: **2026-11-10**, versi kerja **0.25.1**. Status ini cepat
 > berubah. Verifikasi ulang dengan git dan `CMakeLists.txt`; jika berbeda,
 > percayai kondisi repositori dan perbarui bagian ini pada commit berikutnya.
 
@@ -8,7 +8,16 @@
   eksperimental yang sebelumnya dikerjakan di branch `windows` (merge
   fast-forward ke 0.19.15). Branch `engine` sudah di-merge ke `main` pada
   0.22.13; branch `redownload` dan `instance` sudah lebih dulu masuk.
-- **Rilis terakhir di jalur `main`**: 0.25.0 — pemecahan segmen dinamis
+- **Rilis terakhir di jalur `main`**: 0.25.1 — perbaikan speed limiter yang
+  ter-cap di sekitar 5 MB/s. Gate receive-rate menidurkan `bytes / rate` per
+  write callback curl dan tidak pernah membayar kembali overhead tidurnya;
+  karena libcurl menyerahkan chunk 16 KiB, laju yang tercapai jenuh di
+  `chunk / overhead`, sehingga limit 10, 20, dan 50 MB/s semuanya menghasilkan
+  ~5 MB/s. Pacing kini memakai token bucket yang menabung kredit dari jam
+  dinding, jadi 5, 10, 20, dan 40 MB/s semuanya berada dalam beberapa persen
+  dari nilai yang diset; burst dibatasi 50 ms dan tidur pacing maksimum 20 ms
+  agar pause/cancel dan perubahan limit live tetap responsif. Sebelumnya 0.25.0 —
+  pemecahan segmen dinamis
   (dynamic split): saat ada slot koneksi kosong dan semua rentang rencana sudah
   berjalan, segmen aktif dengan perkiraan sisa waktu terbesar dipecah; bagian
   depan tetap diunduh koneksi lama, bagian belakang lewat koneksi baru. Jumlah
@@ -40,7 +49,7 @@
   perilaku aplikasi sama dengan 0.22.4, setelah 0.22.4 mengirim progress dan
   kecepatan ke UI tiap 50 ms dan 0.22.3 menyesuaikan UI/UX jendela *Refresh
   download URL*.
-- **Versi kerja**: 0.25.0. Installer Windows (Inno Setup) menanyakan
+- **Versi kerja**: 0.25.1. Installer Windows (Inno Setup) menanyakan
   scope pemasangan: **Only for me** (default, `%LOCALAPPDATA%\Programs\SwiftDM`,
   tanpa UAC) atau **All users** (`Program Files\SwiftDM`, memicu UAC). Scope
   dicatat di `Software\SwiftDM` (HKCU/HKLM), instalasi di scope lain yang
