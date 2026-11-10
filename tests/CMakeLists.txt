@@ -12,6 +12,12 @@ add_executable(test_split_policy test_split_policy.cpp)
 target_link_libraries(test_split_policy PRIVATE swiftdm_core)
 add_test(NAME split_policy COMMAND test_split_policy)
 
+# Receive-rate gate: the achieved rate must track the configured limit instead
+# of saturating at chunk_size / sleep_overhead (the "caps at ~5 MB/s" bug).
+add_executable(test_rate_limit test_rate_limit.cpp)
+target_link_libraries(test_rate_limit PRIVATE swiftdm_core)
+add_test(NAME rate_limit COMMAND test_rate_limit)
+
 add_executable(test_settings test_settings.cpp)
 target_link_libraries(test_settings PRIVATE swiftdm_core)
 add_test(NAME settings COMMAND test_settings)

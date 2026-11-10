@@ -107,9 +107,19 @@ are our own choices where the original is UNKNOWN (E23).
 - While a transfer runs, the Download tab shows `Speed limit: <value>`
   in orange next to the Bandwidth value when the limiter is on.
 - **[design]**: per-download receive-rate gate; segments share it. The global
-  limit is not part of the original settings set.
-  `stream_download` (unknown size, FTP, HLS) uses libcurl's receive-rate cap so
-  the limiter applies to those paths as well.
+  limit is not part of the original settings set. `stream_download` (unknown
+  size, FTP, HLS) goes through the same gate, so the limiter applies to those
+  paths as well.
+- **[design: 0.25.1]** The gate is a token bucket that accrues credit from the
+  wall clock, so time spent outside it (curl bookkeeping, the disk write,
+  scheduler wake-up latency, platform timer granularity) is paid back instead of
+  added on top of the configured rate. The earlier implementation slept
+  `bytes / rate` per write callback; because every sleep also cost time it never
+  accounted for, the achieved rate saturated at `chunk / sleep_overhead`
+  (libcurl writes 16 KiB chunks, so any limit above roughly 5 MB/s produced
+  ~5 MB/s and raising the limiter had no effect). Burst credit is capped at
+  50 ms and a pacing sleep is at most 20 ms so a pause or a live rate change is
+  still noticed quickly. `test_rate_limit` guards the behaviour.
 - Configs and history rows written before 0.18.1 load with the toggle inferred
   from a non-zero stored limit (the old rule was "non-zero = limit on").
 - **[design: 0.18.2]** The active transfer shares an atomic per-download byte

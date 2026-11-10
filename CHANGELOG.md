@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.25.1 — 2026-11-10
+
+Fixes the speed limiter capping downloads at roughly 5 MB/s regardless of the
+configured value.
+
+- The receive-rate gate slept `bytes / rate` per curl write callback and never
+  paid back the sleep overhead. Because libcurl hands out 16 KiB chunks, the
+  achieved rate saturated at `chunk / sleep_overhead`: on a machine where a
+  sleep costs about 3 ms, every limit above ~5 MB/s produced ~5 MB/s. Setting
+  10, 20 or 50 MB/s made no difference, which is the reported symptom on the
+  main Downloads page.
+- Pacing is now a token bucket that accrues credit from the wall clock, so time
+  spent outside the gate is paid back rather than added on top of the limit.
+  There is no longer a ceiling: 5, 10, 20 and 40 MB/s all land within a couple
+  of percent of the configured value.
+- Burst credit is capped at 50 ms and a pacing sleep is at most 20 ms, so pause,
+  cancel and live rate changes stay responsive. An interrupted chunk is not
+  charged, so a pause/resume cycle does not start with a penalty.
+- `test_rate_limit` covers the regression: high rates track the limit, the rate
+  keeps scaling past the old ceiling, the configured rate is not overshot, low
+  rates stay exact, unlimited stays unlimited, interrupt returns promptly and
+  live rate changes apply. The test fails against the previous implementation.
+
 ## 0.25.0 — 2026-11-09
 
 Splits the slowest running segment when a connection slot is free, so the last
