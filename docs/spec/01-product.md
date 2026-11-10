@@ -85,7 +85,7 @@ Layout (from `main-window.png`):
    row or database entry yet): full URL, server-resolved file name and size, a
    `Category` dropdown (file-type default, user overridable), `Location`
    (category folder by default, user overridable) and the `Bandwidth` speed
-   limiter for this download (0.26.0). `Download Now` adds the
+   limiter for this download (0.25.2). `Download Now` adds the
    item to the main Downloads list and starts the transfer; `Download Later`
    adds it to the same list already paused and starts nothing (0.24.0);
    `Cancel` leaves no trace; `Add to queue` adds it to the chosen queue and
@@ -99,10 +99,10 @@ Layout (from `main-window.png`):
    - Rows are grouped into bold-titled sections (0.18.22): `File` holds
      `Name` and `Size` (content length, `Unknown size` when the server reports
      none); `Save` holds `URL` (read-only field), `Category` and `Location`;
-     `Bandwidth` holds the per-download speed limiter (0.26.0).
+     `Bandwidth` holds the per-download speed limiter (0.25.2).
      The size is no longer inline with the file name (0.18.9). Every
      description is vertically centered with the widget next to it (0.18.9).
-   - **Per-download speed limiter (0.26.0)**: the `Bandwidth` section carries
+   - **Per-download speed limiter (0.25.2)**: the `Bandwidth` section carries
      the shared speed-limit editor (enable toggle, KB/s value and presets). The
      limiter is off by default, so a download starts unlimited; the choice
      applies to the row and can be changed later from the download window's
@@ -220,7 +220,7 @@ Layout (from `main-window.png`):
    planned but not shown until the `auths` store exists (removed from the
    dialog in 0.20.0). Queue settings are not in this window; each queue has its
    own `Queue Properties` dialog (0.19.0). The `Bandwidth` section was removed
-   in 0.26.0: the speed limiter is chosen per download.
+   in 0.25.2: the speed limiter is chosen per download.
    - *General*: app-wide behavior options — Show Download Confirmation Dialog
      (with a note that all files are downloaded automatically without
      confirmation while it is off, 0.18.17); Always Show the Confirmation

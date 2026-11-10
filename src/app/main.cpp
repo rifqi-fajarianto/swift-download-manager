@@ -303,7 +303,7 @@ int run_get(int argc, char** argv) {
     swiftdm::Settings settings;
     std::string settings_error;
     swiftdm::load_settings(config_path, settings, &settings_error);
-    // The speed limiter has no application-wide setting (0.26.0): it is chosen
+    // The speed limiter has no application-wide setting (0.25.2): it is chosen
     // per download. The CLI keeps --limit as the explicit way to set one; without
     // the flag the download is unlimited.
     if (limit_given) {

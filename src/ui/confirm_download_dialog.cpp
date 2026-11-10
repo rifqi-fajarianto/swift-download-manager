@@ -161,7 +161,7 @@ ConfirmDownloadDialog::ConfirmDownloadDialog(
     save_section->addRow(tr("Location:"), location_container);
 
     // Speed limiter for this download. The application-wide setting was removed
-    // (0.26.0): the choice belongs here, where the user already sees the file
+    // (0.25.2): the choice belongs here, where the user already sees the file
     // name and size. Off means unlimited.
     auto* bandwidth_section = add_form_section(layout, this, tr("Bandwidth"));
     bandwidth_section->parentWidget()->setObjectName("confirm_bandwidth_section");

@@ -68,7 +68,7 @@ class ConfirmDownloadDialog : public QDialog {
     // the main Downloads list but stays paused until the user starts it.
     bool later_requested() const { return later_requested_; }
     // Speed limiter chosen here. This window is the only place a new download
-    // can be limited (0.26.0): the application-wide setting was removed, so a
+    // can be limited (0.25.2): the application-wide setting was removed, so a
     // download starts unlimited unless the user enables it below. The download
     // window's Options tab can still change it afterwards.
     bool limit_enabled() const;

@@ -255,7 +255,7 @@ void test_autostart_entry(const std::string& dir) {
 #endif
 }
 
-// The speed limiter has no application-wide setting since 0.26.0: it is chosen
+// The speed limiter has no application-wide setting since 0.25.2: it is chosen
 // per download in the confirmation window. A config written by an older version
 // still carries the keys, and loading it must not fail (the keys are ignored).
 void test_legacy_bandwidth_keys_are_ignored(const std::string& dir) {

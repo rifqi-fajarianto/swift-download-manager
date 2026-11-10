@@ -38,7 +38,7 @@ struct Settings {
     int connections_at_once = 0;    // ConnectionsAtOnce: 0 = all at once, 1 = one by one
     // The speed limiter is per download: it is chosen in the Download
     // Confirmation window and can be changed later in the download window's
-    // Options tab. There is no application-wide default any more (0.26.0), so a
+    // Options tab. There is no application-wide default any more (0.25.2), so a
     // new download starts unlimited unless the confirmation says otherwise.
     bool use_ua_for_browser = false;  // UseUAgent
     std::string default_agent;      // DefaultAgent (filled by default_settings())

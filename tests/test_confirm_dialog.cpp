@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
                            QStringLiteral("Bandwidth")}),
           "the dialog has File, Save and Bandwidth sections in order");
 
-    // The speed limiter is chosen here since 0.26.0: the application-wide
+    // The speed limiter is chosen here since 0.25.2: the application-wide
     // setting is gone, so a new download is unlimited until this says otherwise.
     auto* limit_editor = qobject_cast<swiftdm::ui::SpeedLimitEditor*>(
         named_widget(&dialog, "confirm_bandwidth_limit"));

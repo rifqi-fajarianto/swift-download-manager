@@ -91,7 +91,7 @@ void MainWindow::add_download(const QString& url, qint64 queue_id) {
     options.url = request_url;
     options.output_dir = QString::fromStdString(settings_.download_dir);
     // A new download starts unlimited: the speed limiter is chosen in the
-    // Download Confirmation window (0.26.0), which is the only place it can be
+    // Download Confirmation window (0.25.2), which is the only place it can be
     // set before the transfer starts. The row keeps that value even when it is
     // added to a queue: the queue ignores it while the item belongs there, but a
     // later move back to Downloads can use it again.
@@ -210,7 +210,7 @@ void MainWindow::add_browser_download(const QJsonObject& data) {
     DownloadTask::Options options;
     options.url = url.toString(QUrl::FullyEncoded);
     options.output_dir = QString::fromStdString(settings_.download_dir);
-    // Unlimited until the confirmation window says otherwise (0.26.0). Without
+    // Unlimited until the confirmation window says otherwise (0.25.2). Without
     // a confirmation window the download simply runs unlimited; the Options tab
     // in the download window can still add a limit afterwards.
     options.limit_enabled = false;

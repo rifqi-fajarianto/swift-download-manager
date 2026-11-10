@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.26.0 — 2026-11-10
+## 0.25.2 — 2026-11-10
 
 Moves the speed limiter out of the application settings and into the Download
 Confirmation window, so the choice is made per download.
@@ -26,8 +26,8 @@ Confirmation window, so the choice is made per download.
 - `test_confirm_dialog` checks the new section, the default-off toggle and the
   getters. `test_settings` checks that legacy config keys are ignored and dropped
   on save, and `test_settings_dialog` no longer expects the Bandwidth section.
-- Version note: the `engine` branch is developing 0.26.x too; expect a version
-  bump when the two lines merge.
+- Shipped as 0.25.2: the 0.26.x number was reserved for the `engine` feature
+  line, which did not land, so this change ships as a patch on top of 0.25.1.
 
 ## 0.25.1 — 2026-11-10
 

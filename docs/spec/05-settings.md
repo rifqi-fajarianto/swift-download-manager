@@ -67,7 +67,7 @@ Each INI section matches one tab of the settings window: `general` (General),
 |---|---|---|---|---|
 | `MaxConnections` | download | DWORD | 8 ("8 recommended") | max connections per download |
 | `ConnectionsAtOnce` | download | DWORD | 0 | 0 = create additional connections all at once; else one by one |
-| ~~`BandWidthLimit`~~ | — | — | — | **removed in 0.26.0**: the speed limiter is per download, chosen in the Download Confirmation window and changeable in the download window's Options tab. An older config may still carry the key; it is read as unknown and dropped on the next save. |
+| ~~`BandWidthLimit`~~ | — | — | — | **removed in 0.25.2**: the speed limiter is per download, chosen in the Download Confirmation window and changeable in the download window's Options tab. An older config may still carry the key; it is read as unknown and dropped on the next save. |
 | `UseUAgent` | download | DWORD | 2 | use configured UA for browser-sent downloads too |
 | `DefaultAgent` | download | STRING | Chrome-like modern UA | default User-Agent |
 | `DownloadDirectory` | download | STRING | `%USERPROFILE%\Downloads` | destination root |

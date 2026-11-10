@@ -34,6 +34,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.25.2" date="2026-11-10">
+      <description>
+        <p>Moves the speed limiter out of the application settings and into the Download Confirmation window, so the choice is made per download. The Bandwidth section of Settings and the BandWidthLimit/BandWidthLimitEnabled config keys are gone; an older config that still carries them loads normally and they are dropped on the next save. The confirmation window has a new Bandwidth section with the shared editor (toggle, KB/s value and presets), off by default, so a download starts unlimited unless the user turns it on there. With the confirmation window off, new downloads run unlimited, and the Options tab in the download window still adds a limit afterwards.</p>
+      </description>
+    </release>
     <release version="0.25.1" date="2026-11-10">
       <description>
         <p>Fixes the speed limiter capping downloads at roughly 5 MB/s regardless of the configured value. The receive-rate gate slept bytes/rate per curl write callback and never paid back the sleep overhead, so because libcurl hands out 16 KiB chunks the achieved rate saturated at chunk/sleep_overhead: every limit above ~5 MB/s produced ~5 MB/s. Pacing is now a token bucket that accrues credit from the wall clock, so 5, 10, 20 and 40 MB/s all land within a couple of percent of the configured value. Burst credit is capped at 50 ms and a pacing sleep is at most 20 ms, so pause, cancel and live rate changes stay responsive.</p>
